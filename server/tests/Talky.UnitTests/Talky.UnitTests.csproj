@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Talky.Identity\Talky.Identity.csproj" />
     <ProjectReference Include="..\..\src\Talky.Search\Talky.Search.csproj" />
     <ProjectReference Include="..\..\src\Talky.Protocol\Talky.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Server\Talky.Server.csproj" />
   </ItemGroup>
 
 </Project>

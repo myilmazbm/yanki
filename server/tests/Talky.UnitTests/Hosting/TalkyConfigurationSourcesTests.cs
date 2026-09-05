@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Talky.Server.Hosting;
 
-namespace Talky.IntegrationTests.Host;
+namespace Talky.UnitTests.Hosting;
 
 /// <summary>
 /// <c>--data-dir</c> is the deployment contract the MSI and Install-Talky.ps1 rely on: the
