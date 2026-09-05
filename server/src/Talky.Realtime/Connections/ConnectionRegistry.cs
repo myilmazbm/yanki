@@ -44,7 +44,7 @@ public sealed class ConnectionRegistry : IConnectionRegistry
         cancellationToken.ThrowIfCancellationRequested();
 
         int delivered = 0;
-        foreach (ClientConnection connection in _connections.Values)
+        foreach (ClientConnection connection in EnumerateConnections())
         {
             if (connection.Enqueue(frame, ephemeral))
             {
@@ -62,7 +62,7 @@ public sealed class ConnectionRegistry : IConnectionRegistry
         cancellationToken.ThrowIfCancellationRequested();
 
         int delivered = 0;
-        foreach (ClientConnection connection in _connections.Values)
+        foreach (ClientConnection connection in EnumerateConnections())
         {
             ServerFrame? frame = frameFactory(connection);
             if (frame is not null && connection.Enqueue(frame, ephemeral))
@@ -72,6 +72,19 @@ public sealed class ConnectionRegistry : IConnectionRegistry
         }
 
         return ValueTask.FromResult(delivered);
+    }
+
+    /// <summary>
+    /// Lazily walks the live connections. Unlike <see cref="Snapshot"/> and
+    /// <c>ConcurrentDictionary.Values</c> this does not copy 15k entries into a new list, so the
+    /// five-second sweep and the broadcast path stay allocation-light.
+    /// </summary>
+    internal IEnumerable<ClientConnection> EnumerateConnections()
+    {
+        foreach (KeyValuePair<Guid, ClientConnection> entry in _connections)
+        {
+            yield return entry.Value;
+        }
     }
 
     /// <summary>Registers a freshly accepted (still unauthenticated) connection.</summary>

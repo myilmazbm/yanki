@@ -23,6 +23,9 @@ internal sealed class LoadRunner(LoadOptions options, TextWriter output)
         using var holdWindow = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         long started = Stopwatch.GetTimestamp();
 
+        // Sampled before the first connection, so the report can subtract the idle footprint.
+        long baselineTargetBytes = SampleTargetWorkingSet();
+
         var workers = new Task[options.Connections];
         int perTick = Math.Max(1, options.RampPerSecond);
         var rampDelay = TimeSpan.FromSeconds(1);
@@ -64,6 +67,7 @@ internal sealed class LoadRunner(LoadOptions options, TextWriter output)
             RoundTripMs = LatencyRecorder.Merge(_roundTrips),
             ClientWorkingSetBytes = Environment.WorkingSet,
             TargetWorkingSetBytes = peakTargetBytes == 0 ? null : peakTargetBytes,
+            TargetBaselineWorkingSetBytes = baselineTargetBytes == 0 ? null : baselineTargetBytes,
         };
     }
 

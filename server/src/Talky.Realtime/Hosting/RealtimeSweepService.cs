@@ -52,7 +52,7 @@ internal sealed class RealtimeSweepService(
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
 
-        foreach (ClientConnection connection in registry.Snapshot())
+        foreach (ClientConnection connection in registry.EnumerateConnections())
         {
             if (connection.CloseRequestedAt is { } closeRequestedAt)
             {

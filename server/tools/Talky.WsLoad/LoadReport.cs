@@ -27,6 +27,9 @@ internal sealed class LoadReport
 
     public long? TargetWorkingSetBytes { get; init; }
 
+    /// <summary>Server working set sampled before the first connection was opened.</summary>
+    public long? TargetBaselineWorkingSetBytes { get; init; }
+
     public double ConnectSuccessPercent =>
         Requested == 0 ? 0 : 100.0 * HandshakeMs.Length / Requested;
 
@@ -53,9 +56,14 @@ internal sealed class LoadReport
         if (TargetWorkingSetBytes is { } target)
         {
             output.WriteLine($"server process RSS    : {FormatBytes(target)}");
-            if (HandshakeMs.Length > 0)
+
+            if (TargetBaselineWorkingSetBytes is { } baseline)
             {
-                output.WriteLine($"server RSS/connection : {FormatBytes(target / HandshakeMs.Length)} (total working set divided by live connections)");
+                output.WriteLine($"server RSS at idle    : {FormatBytes(baseline)}");
+                if (HandshakeMs.Length > 0 && target > baseline)
+                {
+                    output.WriteLine($"server RSS/connection : {FormatBytes((target - baseline) / HandshakeMs.Length)} (growth over idle, divided by completed handshakes)");
+                }
             }
         }
     }
@@ -64,5 +72,7 @@ internal sealed class LoadReport
         double.IsNaN(value) ? "n/a" : value.ToString("F2", CultureInfo.InvariantCulture);
 
     private static string FormatBytes(long bytes) =>
-        $"{(bytes / (1024.0 * 1024.0)).ToString("F1", CultureInfo.InvariantCulture)} MiB";
+        bytes < 1024 * 1024
+            ? $"{(bytes / 1024.0).ToString("F1", CultureInfo.InvariantCulture)} KiB"
+            : $"{(bytes / (1024.0 * 1024.0)).ToString("F1", CultureInfo.InvariantCulture)} MiB";
 }

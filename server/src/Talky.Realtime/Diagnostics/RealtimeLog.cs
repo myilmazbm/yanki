@@ -21,10 +21,6 @@ internal static partial class RealtimeLog
         Message = "Realtime connection {ConnectionId} closed with {CloseCode} ({Reason}); lifetime {LifetimeMs} ms.")]
     public static partial void ConnectionClosed(ILogger logger, Guid connectionId, int closeCode, string reason, double lifetimeMs);
 
-    [LoggerMessage(EventId = 1003, Level = LogLevel.Information,
-        Message = "Realtime connection {ConnectionId} rejected: {Reason}.")]
-    public static partial void ConnectionRejected(ILogger logger, Guid connectionId, string reason);
-
     [LoggerMessage(EventId = 1004, Level = LogLevel.Debug,
         Message = "Realtime connection {ConnectionId} protocol error {Code}: {Reason}.")]
     public static partial void ProtocolError(ILogger logger, Guid connectionId, ErrorCode code, string reason);
