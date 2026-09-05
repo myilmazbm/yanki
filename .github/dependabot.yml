@@ -1,0 +1,75 @@
+version: 2
+
+updates:
+  # Server NuGet packages. Versions live in server/Directory.Packages.props (central
+  # package management), which Dependabot edits directly - `dotnet add package` is never
+  # used in this repository.
+  - package-ecosystem: nuget
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'Server:'
+    groups:
+      # The whole ASP.NET Core / EF Core stack must move together; separate PRs would
+      # each fail to restore.
+      microsoft-extensions:
+        patterns:
+          - 'Microsoft.AspNetCore.*'
+          - 'Microsoft.EntityFrameworkCore.*'
+          - 'Microsoft.Extensions.*'
+      grpc:
+        patterns:
+          - 'Grpc.*'
+          - 'Google.Protobuf'
+      test-stack:
+        patterns:
+          - 'xunit*'
+          - 'Microsoft.NET.Test.Sdk'
+          - 'coverlet.*'
+
+  # Client workspace (pnpm).
+  - package-ecosystem: npm
+    directory: /clients
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'Clients:'
+    groups:
+      buf:
+        patterns:
+          - '@bufbuild/*'
+      dev-tooling:
+        dependency-type: development
+
+  # Workflow actions. Majors are pinned in ci.yml; this keeps the minors honest.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'CI:'
+
+  # global.json pins the SDK feature band; this proposes patch updates to it.
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: 'Build:'

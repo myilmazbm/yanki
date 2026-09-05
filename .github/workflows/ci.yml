@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# One run per ref. A new push supersedes the one in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default; the msi job raises what it needs, nothing else does.
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: server (windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # SQL Server Express LocalDB ships with the windows runner image. Integration tests
+      # use it instead of a container, since production is SQL Server and there is no
+      # Docker anywhere in this project.
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          sqllocaldb start MSSQLLocalDB
+          sqllocaldb info MSSQLLocalDB
+
+      - name: Restore
+        run: dotnet restore server/Talky.slnx
+
+      # -m:1 keeps MSBuild single-node: the runners are 2-core and node reuse has caused
+      # flaky file locks on Windows.
+      - name: Build
+        run: dotnet build server/Talky.slnx --no-restore -warnaserror -m:1 -p:NodeReuse=false
+
+      - name: Test
+        run: dotnet test server/Talky.slnx --no-build --logger trx --results-directory artifacts/test-results -m:1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-results
+          path: artifacts/test-results/*.trx
+          if-no-files-found: warn
+
+  clients:
+    name: clients (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: clients
+    steps:
+      # buf breaking compares against origin/main, so the history is needed.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # pnpm comes from the packageManager field in clients/package.json.
+      - name: Enable corepack
+        run: corepack enable
+        working-directory: .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: clients/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # buf comes from the @bufbuild/buf devDependency so CI and developers run the same
+      # version. node-linker=hoisted puts the binary in the workspace root bin directory.
+      - name: Put buf on PATH
+        run: echo "$GITHUB_WORKSPACE/clients/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: buf lint
+        run: buf lint api/proto
+        working-directory: .
+
+      # Contracts are additive only. Skipped on main, where there is nothing to compare to.
+      - name: buf breaking
+        if: github.ref != 'refs/heads/main'
+        run: buf breaking api/proto --against '.git#branch=main,subdir=api/proto'
+        working-directory: .
+
+      - name: Generate protocol code
+        run: pnpm gen
+
+      # The generated TypeScript is committed. If regenerating changes it, the commit is
+      # stale and the client and server contracts have drifted apart.
+      - name: Check generated code is up to date
+        run: git diff --exit-code clients/packages/protocol/src/gen
+        working-directory: .
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+  msi:
+    name: msi (windows, tags only)
+    runs-on: windows-latest
+    needs: [server, clients]
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Publishes win-x64 self-contained single file, restores the wix local tool and
+      # builds artifacts/Talky.Server-<version>.msi.
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          # Tag v1.2.3 -> MSI ProductVersion 1.2.3.
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          ./deploy/windows/msi/Build-Msi.ps1 -Version $version -Verbose
+        env:
+          CI: 'true'
+
+      - name: Validate MSI
+        shell: pwsh
+        run: ./deploy/windows/msi/Test-Msi.ps1
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: Talky.Server-msi
+          path: artifacts/*.msi
+          if-no-files-found: error
+
+  scripts:
+    name: deployment scripts (windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Analyze
+        shell: pwsh
+        run: ./scripts/Invoke-ScriptAnalyzer.ps1
