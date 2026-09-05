@@ -1,0 +1,7 @@
+{
+  "extends": "@talky/config/tsconfig/node.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "*.ts"]
+}

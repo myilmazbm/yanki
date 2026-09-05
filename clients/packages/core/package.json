@@ -1,0 +1,30 @@
+{
+  "name": "@talky/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Platform-agnostic Talky client core: realtime WebSocket client, storage/platform seams.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.src.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "size": "node scripts/measure-size.mjs"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.14.1",
+    "@talky/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@talky/config": "workspace:*",
+    "@talky/test-utils": "workspace:*",
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
