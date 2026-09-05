@@ -1,14 +1,26 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["../api/proto/**/*.proto", "../api/openapi/*.json"],
   "tasks": {
     "gen": {
       "inputs": ["../../../api/proto/**/*.proto", "buf.gen.yaml"],
       "outputs": ["src/gen/**"]
     },
-    "typecheck": { "dependsOn": ["^gen", "gen", "^typecheck"] },
-    "lint": { "dependsOn": ["^gen", "gen"] },
-    "test": { "dependsOn": ["^gen", "gen"], "outputs": ["coverage/**"] },
-    "build": { "dependsOn": ["^build", "gen"], "outputs": ["dist/**"] }
+    "typecheck": {
+      "dependsOn": ["^gen", "gen", "^typecheck"]
+    },
+    "lint": {
+      "dependsOn": ["^gen", "gen"]
+    },
+    "test": {
+      "dependsOn": ["^gen", "gen"]
+    },
+    "build": {
+      "dependsOn": ["^build", "gen"],
+      "outputs": ["dist/**"]
+    },
+    "size": {
+      "dependsOn": ["^gen", "gen"],
+      "outputs": []
+    }
   }
 }

@@ -7,3 +7,5 @@ allowBuilds:
   '@bufbuild/buf': true
   esbuild: true
   turbo: true
+  # native resolver used by eslint-plugin-import-x
+  unrs-resolver: true
