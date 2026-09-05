@@ -9,7 +9,9 @@
 
     Steps:
       1. download WinSW-x64.exe from its official release and place it in InstallDir as
-         livekit-service.exe (WinSW reads the .xml with the same base name);
+         livekit-service.exe (WinSW reads the .xml with the same base name). WinSW
+         publishes no checksums file and the binary is unsigned, so its SHA-256 is
+         pinned in this script and verified after the download;
       2. render deploy\livekit\livekit.xml into InstallDir\livekit-service.xml;
       3. copy deploy\livekit\livekit.yaml next to the binary if it is not there yet
          (an existing file is never overwritten - it holds the node's keys);
@@ -37,7 +39,14 @@
     be readable by it.
 
 .PARAMETER WinSwVersion
-    WinSW release to download. Default 2.12.0.
+    WinSW release to download. Default 2.12.0. The WinSW project publishes neither a
+    checksums file nor an Authenticode signature on WinSW-x64.exe, so the expected SHA-256
+    is pinned in this script (see $WinSwSha256). Changing the version without updating that
+    hash is refused.
+
+.PARAMETER WinSwSha256
+    Expected SHA-256 of WinSW-x64.exe. Override only when you have independently verified a
+    different release; the default covers 2.12.0.
 
 .PARAMETER SignalRemoteAddress
     Remote addresses allowed to reach TCP 7880. Default 'LocalSubnet'. In production this
@@ -73,6 +82,7 @@ param(
     [string] $LogDir = (Join-Path $env:ProgramData 'Talky\logs\livekit'),
     [string] $ServiceAccount = 'LocalSystem',
     [string] $WinSwVersion = '2.12.0',
+    [string] $WinSwSha256 = '05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da',
     [string[]] $SignalRemoteAddress = @('LocalSubnet'),
     [switch] $NoStart,
     [switch] $SkipFirewall,
@@ -191,7 +201,15 @@ elseif ($PSCmdlet.ShouldProcess($WrapperExe, "Download WinSW $WinSwVersion")) {
     }
     $url = "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe"
     Invoke-WebRequest -Uri $url -OutFile $WrapperExe -UseBasicParsing -Headers @{ 'User-Agent' = 'talky-deploy' }
-    Write-Host ("fetched  WinSW-x64.exe {0} ({1:N1} MB)" -f $WinSwVersion, ((Get-Item -LiteralPath $WrapperExe).Length / 1MB))
+    # WinSW ships no checksums file and WinSW-x64.exe is not Authenticode signed, so the
+    # only integrity check available is a hash pinned here. Verify a new release by hand
+    # (Get-FileHash) before changing $WinSwSha256.
+    $actual = (Get-FileHash -LiteralPath $WrapperExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $WinSwSha256.ToLowerInvariant()) {
+        Remove-Item -LiteralPath $WrapperExe -Force -ErrorAction SilentlyContinue
+        throw "SHA-256 mismatch for WinSW-x64.exe ${WinSwVersion}: expected $WinSwSha256, got $actual. The download was deleted."
+    }
+    Write-Host ("fetched  WinSW-x64.exe {0} ({1:N1} MB), SHA-256 verified" -f $WinSwVersion, ((Get-Item -LiteralPath $WrapperExe).Length / 1MB))
 }
 
 # --- 2. wrapper configuration ---------------------------------------------------------

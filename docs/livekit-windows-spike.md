@@ -157,3 +157,15 @@ Her iki yolda da aynı portlar gerekir.
 | 3478 | UDP | İstemciler | Gömülü TURN |
 | 5349 | TCP | İstemciler | TURN over TLS |
 | 30000–40000 | UDP | İstemciler | TURN aktarım tahsisleri — **unutulursa medya akmaz** |
+
+---
+
+## 7. Tedarik zinciri notu
+
+`Get-LiveKit.ps1` ve `Invoke-LiveKitLoadTest.ps1`, LiveKit ve `lk` sürümlerini yayının
+`checksums.txt` dosyasına karşı doğrular. **WinSW bir `checksums.txt` yayımlamıyor ve
+`WinSW-x64.exe` Authenticode ile imzalı değil** (2.12.0'da doğrulandı:
+`Get-AuthenticodeSignature` → `NotSigned`). Bu yüzden beklenen SHA-256,
+`Install-LiveKitService.ps1` içinde `-WinSwSha256` varsayılanı olarak sabitlenmiştir
+(2.12.0 için `05b82d46…b3a0da`) ve indirmeden sonra doğrulanır. Sürüm yükseltilirken bu
+hash elle doğrulanıp güncellenmelidir.
