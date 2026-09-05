@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Talky.Core\Talky.Core.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Realtime\Talky.Realtime.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Identity\Talky.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Search\Talky.Search.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Protocol\Talky.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

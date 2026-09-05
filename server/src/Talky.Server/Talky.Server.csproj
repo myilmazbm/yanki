@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Talky.Core\Talky.Core.csproj" />
+    <ProjectReference Include="..\Talky.Data\Talky.Data.csproj" />
+    <ProjectReference Include="..\Talky.Realtime\Talky.Realtime.csproj" />
+    <ProjectReference Include="..\Talky.Identity\Talky.Identity.csproj" />
+    <ProjectReference Include="..\Talky.Media\Talky.Media.csproj" />
+    <ProjectReference Include="..\Talky.Files\Talky.Files.csproj" />
+    <ProjectReference Include="..\Talky.Search\Talky.Search.csproj" />
+    <ProjectReference Include="..\Talky.Push\Talky.Push.csproj" />
+    <ProjectReference Include="..\Talky.Federation\Talky.Federation.csproj" />
+    <ProjectReference Include="..\Talky.Protocol\Talky.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.EventLog" />
+  </ItemGroup>
+
+  <PropertyGroup>
+  </PropertyGroup>
+
+</Project>

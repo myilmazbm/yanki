@@ -1,0 +1,70 @@
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+*.swp
+.vs/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+artifacts/
+publish/
+*.nupkg
+*.snupkg
+BenchmarkDotNet.Artifacts/
+
+# --- Node / TypeScript ---
+node_modules/
+dist/
+.turbo/
+.vite/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+.eslintcache
+
+# --- Tauri / Rust ---
+clients/apps/desktop/src-tauri/target/
+clients/apps/desktop/src-tauri/gen/schemas/
+**/target/
+
+# --- Expo / React Native ---
+.expo/
+.expo-shared/
+clients/apps/mobile/ios/
+clients/apps/mobile/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# --- Generated (regenerated in CI, committed only under clients/packages/protocol/src/gen) ---
+api/openapi/talky.v1.json
+
+# --- Local data ---
+.data/
+*.mdf
+*.ldf
+*.ndf
+logs/
+*.log
+
+# --- IDE / OS ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Secrets ---
+*.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json

@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# pnpm >=10 blocks lifecycle scripts unless allow-listed here
+allowBuilds:
+  '@bufbuild/buf': true
+  esbuild: true
+  turbo: true

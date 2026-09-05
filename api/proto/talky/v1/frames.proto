@@ -1,0 +1,152 @@
+// Talky realtime WebSocket contract, protocol version 1.
+//
+// Wire encoding in v1 is proto3 JSON (one JSON object per WebSocket text frame).
+// The `oneof body` field name doubles as the frame type, e.g.
+//   {"rid":"0190...","hello":{"protoVersion":1,"token":"..."}}
+//   {"id":"0190...","welcome":{"sessionId":"...","heartbeatIntervalMs":25000}}
+// Binary protobuf encoding is reserved for a later version and needs no schema change.
+//
+// Rules (see docs/protocol.md):
+//   * Only additive changes inside a major version. Never renumber or reuse field numbers.
+//   * Every client→server frame that expects a reply carries `rid`; the server answers with
+//     exactly one Ack or Error carrying the same `rid`.
+//   * Server→client events carry `id` (UUIDv7) for de-duplication and, when scoped to a
+//     conversation, a per-conversation monotonically increasing `seq`.
+syntax = "proto3";
+
+package talky.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Talky.Protocol.V1";
+
+// ---------------------------------------------------------------------------
+// Envelopes
+// ---------------------------------------------------------------------------
+
+// Client → Server.
+message ClientFrame {
+  // Request id (UUIDv7) used to correlate the Ack/Error reply. Empty for fire-and-forget frames.
+  string rid = 1;
+
+  oneof body {
+    Hello hello = 10;
+    Ping ping = 11;
+    Bye bye = 12;
+  }
+}
+
+// Server → Client.
+message ServerFrame {
+  // Event id (UUIDv7). Clients de-duplicate on it.
+  string id = 1;
+
+  oneof body {
+    Welcome welcome = 10;
+    Pong pong = 11;
+    Ack ack = 12;
+    Error error = 13;
+    ResyncRequired resync_required = 14;
+    Reconnect reconnect = 15;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session lifecycle
+// ---------------------------------------------------------------------------
+
+// First frame on every connection. Authenticates and (optionally) resumes.
+message Hello {
+  // Protocol major version the client speaks. Server closes with PROTOCOL_VERSION_UNSUPPORTED otherwise.
+  uint32 proto_version = 1;
+  // Opaque session token (Bearer). Cookie-authenticated web clients may leave this empty.
+  string token = 2;
+  // Stable per-install device id (UUID). Used for multi-device sessions and push routing.
+  string device_id = 3;
+  ClientInfo client = 4;
+  // Resume cursor: conversation_id → last seq the client has applied. Max 50 entries; the
+  // rest is reconciled through GET /api/v1/sync.
+  map<string, int64> since = 5;
+}
+
+message ClientInfo {
+  // "web" | "desktop" | "ios" | "android"
+  string platform = 1;
+  string app_version = 2;
+  string os = 3;
+  string locale = 4;
+}
+
+// Reply to a successful Hello.
+message Welcome {
+  string session_id = 1;
+  string user_id = 2;
+  // Node that owns this connection; surfaced in the admin panel and in client diagnostics.
+  string node_id = 3;
+  google.protobuf.Timestamp server_time = 4;
+  // Server pings at this interval; clients treat 2× as dead.
+  uint32 heartbeat_interval_ms = 5;
+  // Server build version (informational).
+  string server_version = 6;
+}
+
+message Ping {
+  // Client monotonic timestamp (ms); echoed back in Pong for RTT measurement.
+  int64 ts = 1;
+}
+
+message Pong {
+  int64 ts = 1;
+  google.protobuf.Timestamp server_time = 2;
+}
+
+// Graceful close initiated by the client (logout, app exit).
+message Bye {}
+
+// Positive reply to a client request identified by `rid`.
+message Ack {
+  string rid = 1;
+  // Id of the entity the request created/affected (e.g. message id), when applicable.
+  string id = 2;
+  // Per-conversation sequence assigned to the created entity, when applicable.
+  int64 seq = 3;
+}
+
+message Error {
+  // Empty when the error is not tied to a request (e.g. protocol violation before Hello).
+  string rid = 1;
+  ErrorCode code = 2;
+  // Human-readable, English, safe to log. Never contains user data.
+  string message = 3;
+  // Optional retry hint for RATE_LIMITED / UNAVAILABLE.
+  uint32 retry_after_ms = 4;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_UNAUTHENTICATED = 1;
+  ERROR_CODE_PROTOCOL_VERSION_UNSUPPORTED = 2;
+  ERROR_CODE_INVALID_FRAME = 3;
+  ERROR_CODE_HELLO_REQUIRED = 4;
+  ERROR_CODE_ALREADY_AUTHENTICATED = 5;
+  ERROR_CODE_RATE_LIMITED = 6;
+  ERROR_CODE_FORBIDDEN = 7;
+  ERROR_CODE_NOT_FOUND = 8;
+  ERROR_CODE_UNAVAILABLE = 9;
+  ERROR_CODE_INTERNAL = 10;
+}
+
+// The server could not replay the gap (too large, node restarted, bus partition).
+// The client must call GET /api/v1/sync and backfill the listed conversations via REST.
+message ResyncRequired {
+  // Empty + full=true means "everything".
+  repeated string conversation_ids = 1;
+  bool full = 2;
+}
+
+// Server is draining (rolling upgrade). Client should reconnect after a random delay in
+// [0, delay_ms]; the connection will be closed shortly after this frame.
+message Reconnect {
+  uint32 delay_ms = 1;
+  string reason = 2;
+}
