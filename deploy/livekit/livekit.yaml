@@ -1,0 +1,80 @@
+# LiveKit SFU - Talky media node (Windows Server, standalone).
+#
+# Deliberately NOT configured here:
+#   redis:      no Redis in the Talky footprint. Without it LiveKit runs single-node
+#               routing and each node is independent; the Talky backend decides which
+#               node hosts a room and hands the client a token for that node.
+#   limit:      LiveKit's own capacity management is unavailable on Windows
+#               (hwstats reports "CPU monitoring unsupported on current platform"),
+#               so placement is driven by the Talky backend, not by the SFU.
+#
+# Replace every <...> placeholder. Install-LiveKitService.ps1 copies this file next to
+# livekit-server.exe and the service is started with --config <that copy>.
+
+# Signalling / HTTP. YARP inside talky.exe reverse-proxies this under
+# https://talky.corp/media/{node}/rtc, so 7880 never needs to face clients directly.
+port: 7880
+
+rtc:
+  # Media ports. One UDP port is enough: LiveKit multiplexes every peer connection on it.
+  udp_port: 7882
+  # TCP fallback for clients whose network blocks UDP but allows outbound TCP.
+  tcp_port: 7881
+  # On-prem: never probe a STUN service for a public address. The node advertises the
+  # address configured below.
+  use_external_ip: false
+  # The address clients must reach this node on. Set it per node - this is the single
+  # most common cause of "connected, no media".
+  node_ip: <10.20.30.41>
+
+# Embedded TURN. No coturn in the Talky footprint.
+turn:
+  enabled: true
+  # Must resolve to this node and match the SAN of the certificate below.
+  domain: <media-01.talky.corp>
+  udp_port: 3478
+  tls_port: 5349
+  # PEM certificate and key readable by the LiveKit service account. TURN/TLS on 5349 is
+  # the fallback for clients that are blocked from using UDP entirely.
+  cert_file: <C:\Program Files\LiveKit\turn-cert.pem>
+  key_file: <C:\Program Files\LiveKit\turn-key.pem>
+  # Set to true instead of cert_file/key_file when a load balancer terminates TLS for 5349.
+  external_tls: false
+  # TURN hands every relayed allocation its own UDP port out of this range, so the range
+  # must be open inbound as well - forgetting it is the classic "TURN connects but no
+  # media" failure. The defaults are 30000-40000; they are pinned here so the firewall
+  # rules and the config cannot drift apart. Narrow the range if the network team insists,
+  # but keep at least per_user_relay_allocation_limit ports per expected relayed
+  # participant on this node.
+  relay_range_start: 30000
+  relay_range_end: 40000
+
+# API credentials. The same pair goes into Talky:Media:LiveKit:ApiKey / ApiSecret on every
+# Talky node; talky.exe mints the room tokens. Rotate with `lk` or by editing both sides.
+keys:
+  <talky>: <api-secret-at-least-32-chars>
+
+# Room lifecycle events (participant joined/left, room finished, track published) are
+# posted to the Talky API, which is how the backend learns a room is empty and frees the
+# node for the next meeting.
+webhook:
+  # Must be one of the keys above; LiveKit signs the webhook with it.
+  api_key: <talky>
+  urls:
+    - https://talky.corp/internal/livekit/webhook
+
+room:
+  # Close a room 60 s after it was created if nobody ever joined.
+  empty_timeout: 60
+  # Close a room 15 s after the last participant leaves, so a quick reconnect keeps it.
+  departure_timeout: 15
+  # Meetings are created by the backend through the server API, never implicitly by a
+  # client that happens to hold a token.
+  auto_create: false
+
+logging:
+  # Structured logs so the Talky admin panel and any log shipper can parse them.
+  json: true
+  level: info
+  # Per-participant/track detail; raise to 1 only while debugging a specific session.
+  pion_level: error
