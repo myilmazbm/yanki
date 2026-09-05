@@ -1,0 +1,30 @@
+{
+  "description": "A Hello announcing a protocol version the node does not speak is rejected with PROTOCOL_VERSION_UNSUPPORTED and close code 1002.",
+  "frames": [
+    {
+      "dir": "c2s",
+      "json": {
+        "rid": "0190f0a1-0000-7000-8000-000000000010",
+        "hello": {
+          "protoVersion": 2,
+          "token": "dev:u1",
+          "deviceId": "5a3c9e2b-1f44-4c8a-9d21-7e6b0f1a2c33"
+        }
+      }
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "error": {
+          "rid": "0190f0a1-0000-7000-8000-000000000010",
+          "code": "ERROR_CODE_PROTOCOL_VERSION_UNSUPPORTED",
+          "message": "…"
+        }
+      }
+    }
+  ],
+  "close": {
+    "code": 1002
+  }
+}

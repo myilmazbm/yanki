@@ -1,0 +1,30 @@
+{
+  "description": "A Hello carrying a token the authenticator rejects is answered with UNAUTHENTICATED and close code 1008. The token is never echoed back.",
+  "frames": [
+    {
+      "dir": "c2s",
+      "json": {
+        "rid": "0190f0a1-0000-7000-8000-000000000020",
+        "hello": {
+          "protoVersion": 1,
+          "token": "expired-or-unknown-token",
+          "deviceId": "5a3c9e2b-1f44-4c8a-9d21-7e6b0f1a2c33"
+        }
+      }
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "error": {
+          "rid": "0190f0a1-0000-7000-8000-000000000020",
+          "code": "ERROR_CODE_UNAUTHENTICATED",
+          "message": "…"
+        }
+      }
+    }
+  ],
+  "close": {
+    "code": 1008
+  }
+}

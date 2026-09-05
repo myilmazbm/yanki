@@ -1,0 +1,52 @@
+{
+  "description": "When the node starts draining, every connection is asked to reconnect after its own random delay in [0, delayMs] and is then closed with 1001. delayMs is omitted from the expectation because proto3 JSON drops it when the drawn delay is 0.",
+  "frames": [
+    {
+      "dir": "c2s",
+      "json": {
+        "rid": "0190f0a1-0000-7000-8000-000000000001",
+        "hello": {
+          "protoVersion": 1,
+          "token": "dev:u1",
+          "deviceId": "5a3c9e2b-1f44-4c8a-9d21-7e6b0f1a2c33",
+          "client": {
+            "platform": "web",
+            "appVersion": "0.1.0",
+            "os": "windows",
+            "locale": "tr-TR"
+          }
+        }
+      }
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "welcome": {
+          "sessionId": "…",
+          "userId": "…",
+          "nodeId": "…",
+          "serverTime": "…",
+          "heartbeatIntervalMs": 25000,
+          "serverVersion": "…"
+        }
+      }
+    },
+    {
+      "dir": "server-action",
+      "action": "drain"
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "reconnect": {
+          "reason": "draining"
+        }
+      }
+    }
+  ],
+  "close": {
+    "code": 1001
+  }
+}
