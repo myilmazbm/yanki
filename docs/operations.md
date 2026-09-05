@@ -95,7 +95,7 @@ Set-Acl -Path $keyPath -AclObject $acl
 ```
 
 3. Parmak izini `Install-Talky.ps1 -CertificateThumbprint` ile verin; betik onu
-   `Talky:Tls:CertificateThumbprint` alanına yazar.
+   `Talky:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`).
 
 LiveKit'in gömülü TURN'ü ayrı bir **PEM** çifti ister (`turn.cert_file` / `turn.key_file`)
 ve bunlar dosya olarak durur; TLS'i yük dengeleyici sonlandırıyorsa `external_tls: true`

@@ -115,6 +115,7 @@ describe('fixture replayer', () => {
       name: 'broken',
       file: '<inline>',
       frames: [{ dir: 'c2s', json: { hello: { protoVersion: 99 } } }],
+      clientReplay: true,
     };
     await expect(replay(broken)).rejects.toThrow(/expected 99, got 1/);
   });

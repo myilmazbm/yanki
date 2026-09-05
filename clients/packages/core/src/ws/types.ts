@@ -63,6 +63,12 @@ export interface WsClientEvents extends Record<string, unknown[]> {
   resyncRequired: [resync: ResyncRequired];
   /** A reconnect attempt has been armed. */
   reconnectScheduled: [info: ReconnectScheduled];
+  /**
+   * The server evicted this connection because a newer connection of the same user is live
+   * (`Reconnect{reason:"too_many_connections"}`). The client is `closed` and will not retry;
+   * the app decides (typically "signed in on another device").
+   */
+  evicted: [reason: string];
   /** A fresh round-trip-time sample, in milliseconds. */
   rtt: [rttMs: number];
 }

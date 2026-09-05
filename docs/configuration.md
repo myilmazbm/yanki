@@ -22,6 +22,7 @@ Sonraki kaynak öncekini ezer:
 | 3 | `%ProgramData%\Talky\appsettings.json` | **Makine yapılandırması.** MSI burayı yazar, yükseltmede korunur. |
 | 4 | `%ProgramData%\Talky\appsettings.Local.json` | Tek makineye özel geçici düzeltmeler. |
 | 5 | `--config <dosya>` | Ek JSON dosyası. Dosya yoksa süreç hata ile çıkar. |
+| 3–4 (alternatif) | `--data-dir <dizin>` verilirse `<dizin>\appsettings.json` ve `<dizin>\appsettings.Local.json`, `%ProgramData%\Talky` çiftinin yerini alır. |
 | 6 | Ortam değişkenleri | Önce ön eksiz, sonra `TALKY_` ön ekli olanlar. |
 | 7 | Komut satırı (`--role`, `--urls`, `--set`) | En yüksek öncelik. |
 
@@ -65,6 +66,7 @@ Tüm komutlarda geçerli seçenekler:
 | Seçenek | Anlamı |
 |---|---|
 | `--config <dosya>`, `-c` | Ek JSON yapılandırma dosyası (kaynak sırası: 5). |
+| `--data-dir <dizin>` | Node veri dizini (varsayılan `%ProgramData%\Talky`). Dizindeki `appsettings.json` ve `appsettings.Local.json` kaynak 3–4 yerine yüklenir; `Talky:Logging:Directory` varsayılanı `<dizin>\logs` olur; çözülen yol `Talky:DataDirectory` anahtarıyla yayımlanır. Windows servisi (MSI / Install-Talky.ps1) bu seçenekle başlar. |
 | `--role <roller>` | `Talky:Node:Roles` değerini ezer, örn. `--role api,worker`. |
 | `--urls <urls>` | `Talky:Server:Urls` değerini **tümüyle** değiştirir. Virgülle veya boşlukla ayrılır. |
 | `--set <anahtar>=<değer>` | Tek bir yapılandırma anahtarını ezer, örn. `--set Talky:Server:DrainSeconds=60`. Tekrarlanabilir. |

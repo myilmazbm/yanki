@@ -20,6 +20,15 @@ internal sealed record HostStartupArguments(
     IReadOnlyList<string> Settings,
     IReadOnlyList<string> HostSettings)
 {
+    /// <summary>
+    /// Value of <c>--data-dir</c>: the node's data directory. Its <c>appsettings.json</c> and
+    /// <c>appsettings.Local.json</c> replace the <c>%ProgramData%\Talky</c> pair as configuration
+    /// sources, <c>Talky:Logging:Directory</c> defaults to <c>&lt;dir&gt;\logs</c>, and the resolved
+    /// path is published as <c>Talky:DataDirectory</c> for other modules (search index, previews).
+    /// This is what the Windows service (MSI / Install-Talky.ps1) passes.
+    /// </summary>
+    public string? DataDirectory { get; init; }
+
     /// <summary>Arguments as passed by the Windows service, which runs the bare executable.</summary>
     public static HostStartupArguments Empty { get; } = new(null, null, [], [], []);
 

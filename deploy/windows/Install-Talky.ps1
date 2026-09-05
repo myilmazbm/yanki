@@ -47,7 +47,7 @@
     balancer terminates TLS on an isolated back-end network.
 
 .PARAMETER SqlConnectionString
-    Connection string written to ConnectionStrings:Talky.
+    Connection string written to Talky:Database:ConnectionString.
 
 .PARAMETER CertificateThumbprint
     Thumbprint of the TLS certificate in LocalMachine\My that Kestrel binds.
@@ -144,6 +144,12 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Accept "a,b" / "a;b" as well as real arrays: when the script is launched with -File from
+# cmd/bash, PowerShell passes list parameters as a single string.
+$Urls = @($Urls | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
+$Roles = @($Roles | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
+$MeshSeeds = @($MeshSeeds | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
 
 $ServiceName = 'Talky'
 $ServiceDisplayName = 'Talky'
@@ -242,10 +248,11 @@ function Write-TalkyConfig {
     }
 
     $seedsJson = ($MeshSeeds | ForEach-Object { '"' + (ConvertTo-JsonScalar $_) + '"' }) -join ', '
-    $urlsValue = ($Urls -join ';')
+    # Talky:Server:Urls is a JSON array; the template carries the placeholder between the brackets.
+    $urlsJson = ($Urls | ForEach-Object { '"' + (ConvertTo-JsonScalar $_) + '"' }) -join ', '
 
     $rendered = Get-Content -LiteralPath $TemplatePath -Raw
-    $rendered = $rendered.Replace('__URLS__', (ConvertTo-JsonScalar $urlsValue))
+    $rendered = $rendered.Replace('__URLS__', $urlsJson)
     $rendered = $rendered.Replace('__SQL_CONNECTION_STRING__', (ConvertTo-JsonScalar $SqlConnectionString))
     $rendered = $rendered.Replace('__CERT_THUMBPRINT__', (ConvertTo-JsonScalar $CertificateThumbprint))
     $rendered = $rendered.Replace('__ROLES__', (ConvertTo-JsonScalar ($Roles -join ',')))
@@ -254,6 +261,13 @@ function Write-TalkyConfig {
     $rendered = $rendered -replace '"Seeds":\s*\[\]', ('"Seeds": [' + $seedsJson + ']')
     if ($FileShare) {
         $rendered = $rendered -replace '"ShareUnc":\s*""', ('"ShareUnc": "' + (ConvertTo-JsonScalar $FileShare) + '"')
+    }
+    if (-not $CertificateThumbprint) {
+        # Lab mode: no certificate in the store. The ASP.NET Core development certificate is only
+        # accepted with AllowInsecureHttp; production nodes must supply -CertificateThumbprint.
+        Write-Warning 'No -CertificateThumbprint given: rendering Certificate.Source=DevCert with AllowInsecureHttp=true (lab use only).'
+        $rendered = $rendered -replace '"Source":\s*"Store"', '"Source": "DevCert"'
+        $rendered = $rendered -replace '"AllowInsecureHttp":\s*false', '"AllowInsecureHttp": true'
     }
 
     # Fail before writing rather than leaving a node with unparsable configuration.

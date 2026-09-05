@@ -53,6 +53,8 @@ const CLOSE_NORMAL = 1000;
  */
 const PERMANENT_CLOSE_CODES: ReadonlySet<number> = new Set([1002, 1003]);
 const AUTH_CLOSE_CODE = 1008;
+/** `Reconnect.reason` sent when `MaxConnectionsPerUser` evicted this connection. */
+const EVICTION_REASON = 'too_many_connections';
 
 type TimerName =
   | 'heartbeat'
@@ -111,6 +113,8 @@ class TalkyWsClient implements WsClient {
   private serverReconnectDelayMs: number | null = null;
   /** Set when a fatal `Error` frame arrived and we are waiting for the server to close. */
   private fatalPending = false;
+  /** Set when the server evicted this connection in favour of a newer one of the same user. */
+  private evictionReason: string | null = null;
 
   constructor(options: WsClientOptions) {
     this.options = resolveOptions(options);
@@ -463,6 +467,14 @@ class TalkyWsClient implements WsClient {
   }
 
   private handleReconnectFrame(delayMs: number, reason: string): void {
+    if (reason === EVICTION_REASON) {
+      // `docs/protocol.md`: a newer connection of the same user is live. Reconnecting would
+      // evict *that* one and the two devices would take turns forever. Stop and tell the app.
+      this.evictionReason = reason;
+      this.options.logger.warn('server evicted this connection', { reason });
+      this.initiateClose('evicted');
+      return;
+    }
     // `docs/protocol.md`: reconnect after a random delay in [0, delayMs] so a draining node
     // does not get a thundering herd back.
     const delay = Math.max(0, Math.floor(this.options.random() * delayMs));
@@ -513,6 +525,22 @@ class TalkyWsClient implements WsClient {
 
     if (this.closedByUser) {
       this.setState('closed');
+      return;
+    }
+
+    const evictionReason = this.evictionReason;
+    this.evictionReason = null;
+    if (evictionReason !== null) {
+      this.options.logger.warn('connection evicted; not reconnecting', { code, evictionReason });
+      this.setState('closed');
+      this.emitSafe('evicted', evictionReason);
+      this.emitError(
+        new TalkyWsError({
+          reason: 'evicted',
+          message: `server evicted this connection (${evictionReason}); a newer connection of the same user is live`,
+          closeCode: code,
+        }),
+      );
       return;
     }
 

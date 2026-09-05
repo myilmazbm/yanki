@@ -75,6 +75,10 @@ public static class TalkyDataServiceCollectionExtensions
         services.AddHealthChecks()
             .AddCheck<SqlHealthCheck>(HealthCheckName, HealthStatus.Unhealthy, ["ready"]);
 
+        // No-op unless Talky:Database:MigrateOnStartup is true; must be registered before the web
+        // host appends Kestrel so the schema is current before the node starts listening.
+        services.AddHostedService<MigrateOnStartupHostedService>();
+
         return services;
     }
 }

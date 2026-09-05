@@ -35,8 +35,23 @@ export type { MemoryServer } from './memory-server.js';
 export { startMockServer } from './mock-server.js';
 export type { MockServer, MockServerStartOptions } from './mock-server.js';
 
-export { findFixturesDir, loadWsFixtures, replayFixture } from './fixtures.js';
-export type { ReplayContext, ReplayResult, WsFixture, WsFixtureEntry } from './fixtures.js';
+export {
+  expectedClientStateAfterClose,
+  findFixturesDir,
+  frameBodyKey,
+  helloProfile,
+  loadWsFixtures,
+  replayFixture,
+} from './fixtures.js';
+export type {
+  ReplayContext,
+  ReplayResult,
+  WsFixture,
+  WsFixtureClose,
+  WsFixtureDirection,
+  WsFixtureEntry,
+  WsFixtureHelloProfile,
+} from './fixtures.js';
 
 export type {
   CloseEventLike,

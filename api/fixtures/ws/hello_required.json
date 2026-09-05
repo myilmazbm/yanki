@@ -1,5 +1,7 @@
 {
   "description": "Any frame that arrives before the handshake is answered with HELLO_REQUIRED and close code 1008. Ping carries no rid, so the Error carries none either.",
+  "clientReplay": false,
+  "clientReplayNote": "The client cannot legitimately produce this sequence; it is exercised only by the server-side contract tests.",
   "frames": [
     {
       "dir": "c2s",

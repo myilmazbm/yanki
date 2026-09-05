@@ -27,7 +27,10 @@ internal static class MigrateCommand
 
         await using var app = builder.Build();
 
-        var runner = app.Services.GetService<IMigrationRunner>();
+        // The runner is registered scoped (it owns a DbContext), so it must come from a scope,
+        // not from the root provider.
+        await using var scope = app.Services.CreateAsyncScope();
+        var runner = scope.ServiceProvider.GetService<IMigrationRunner>();
         if (runner is null)
         {
             await Console.Error.WriteLineAsync(

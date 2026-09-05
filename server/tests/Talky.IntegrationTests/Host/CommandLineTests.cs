@@ -81,12 +81,15 @@ public sealed class CommandLineTests
     }
 
     [Fact]
-    public async Task Migrate_reports_a_missing_migration_runner()
+    public async Task Migrate_applies_the_schema_to_the_configured_database()
     {
-        // Talky.Data is not wired into Modules.cs yet, so this is the documented exit code the
-        // deployment script keys off.
+        // Talky.Data is wired into Modules.cs; the test environment points the host at a LocalDB
+        // database, so `talky migrate` must create/upgrade it and exit 0 (idempotent on re-run).
         Assert.Equal(
-            ExitCode.MissingDependency,
+            ExitCode.Success,
+            await TalkyCommandLine.RunAsync(["migrate"], CancellationToken.None));
+        Assert.Equal(
+            ExitCode.Success,
             await TalkyCommandLine.RunAsync(["migrate"], CancellationToken.None));
     }
 

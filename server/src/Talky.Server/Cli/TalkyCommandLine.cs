@@ -80,6 +80,13 @@ internal static class TalkyCommandLine
             Recursive = true,
         };
 
+        var dataDirOption = new Option<string?>("--data-dir")
+        {
+            Description = "Data directory of this node (default %ProgramData%\\Talky). Its appsettings.json is loaded, logs default to <dir>\\logs.",
+            HelpName = "dir",
+            Recursive = true,
+        };
+
         var roleOption = new Option<string?>("--role")
         {
             Description = $"Roles this node runs: '{NodeRoles.AllName}' or a comma separated list of {string.Join(", ", NodeRoles.Names)}.",
@@ -108,7 +115,10 @@ internal static class TalkyCommandLine
             parseResult.GetValue(roleOption),
             parseResult.GetValue(urlsOption) ?? [],
             parseResult.GetValue(setOption) ?? [],
-            hostSettings);
+            hostSettings)
+        {
+            DataDirectory = parseResult.GetValue(dataDirOption),
+        };
 
         var serve = new Command("serve", "Run the Talky server. This is what the Windows service starts.");
         serve.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
@@ -138,6 +148,7 @@ internal static class TalkyCommandLine
         };
 
         root.Options.Add(configOption);
+        root.Options.Add(dataDirOption);
         root.Options.Add(roleOption);
         root.Options.Add(urlsOption);
         root.Options.Add(setOption);

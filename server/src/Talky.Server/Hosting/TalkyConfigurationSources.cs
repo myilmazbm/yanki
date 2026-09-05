@@ -54,12 +54,27 @@ internal static class TalkyConfigurationSources
             optional: true,
             reloadOnChange: false);
 
+        // --data-dir replaces %ProgramData%\Talky as the node's configuration/data root. Its
+        // defaults sit below the data directory's own appsettings files, environment variables and
+        // the command line, so anything explicit still wins.
+        var dataDirectory = ResolveDataDirectory(arguments);
+        var dataDirectoryDefaults = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [$"{TalkyConfiguration.RootSection}:DataDirectory"] = dataDirectory,
+        };
+        if (!string.IsNullOrWhiteSpace(arguments.DataDirectory))
+        {
+            dataDirectoryDefaults[$"{TalkyConfiguration.LoggingSection}:Directory"] = Path.Combine(dataDirectory, "logs");
+        }
+
+        configuration.AddInMemoryCollection(dataDirectoryDefaults);
+
         configuration.AddJsonFile(
-            Path.Combine(ProgramDataDirectory, "appsettings.json"),
+            Path.Combine(dataDirectory, "appsettings.json"),
             optional: true,
             reloadOnChange: false);
         configuration.AddJsonFile(
-            Path.Combine(ProgramDataDirectory, "appsettings.Local.json"),
+            Path.Combine(dataDirectory, "appsettings.Local.json"),
             optional: true,
             reloadOnChange: false);
 
@@ -82,6 +97,19 @@ internal static class TalkyConfigurationSources
         {
             configuration.AddInMemoryCollection(overrides);
         }
+    }
+
+    /// <summary>
+    /// The node's data directory: <c>--data-dir</c> as an absolute path when given, otherwise
+    /// <see cref="ProgramDataDirectory"/>.
+    /// </summary>
+    public static string ResolveDataDirectory(HostStartupArguments arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        return string.IsNullOrWhiteSpace(arguments.DataDirectory)
+            ? ProgramDataDirectory
+            : Path.GetFullPath(Environment.ExpandEnvironmentVariables(arguments.DataDirectory));
     }
 
     /// <summary>Turns the parsed command line into configuration keys.</summary>

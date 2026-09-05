@@ -23,7 +23,9 @@ export type TalkyWsErrorReason =
   | 'transport'
   | 'decode'
   | 'heartbeat'
-  | 'handler';
+  | 'handler'
+  /** The server evicted this connection (`Reconnect{reason:"too_many_connections"}`); no retry. */
+  | 'evicted';
 
 /** Constructor payload for {@link TalkyWsError}. */
 export interface TalkyWsErrorInit {

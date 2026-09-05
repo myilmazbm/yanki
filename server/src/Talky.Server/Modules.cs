@@ -1,3 +1,6 @@
+using Talky.Data;
+using Talky.Realtime;
+
 namespace Talky.Server;
 
 /// <summary>
@@ -19,9 +22,9 @@ public static class Modules
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // LEAD: builder.Services.AddTalkyData(builder.Configuration);
+        builder.Services.AddTalkyData(builder.Configuration);
         // LEAD: builder.Services.AddTalkyIdentity(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyRealtime(builder.Configuration);
+        builder.Services.AddTalkyRealtime(builder.Configuration);
         // LEAD: builder.Services.AddTalkyMedia(builder.Configuration);
         // LEAD: builder.Services.AddTalkyFiles(builder.Configuration);
         // LEAD: builder.Services.AddTalkySearch(builder.Configuration);
@@ -44,7 +47,10 @@ public static class Modules
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        // LEAD: app.MapTalkyRealtime();
+        // WebSocket middleware must precede endpoint execution; WebApplication appends the endpoint
+        // middleware after everything added here, so this is early enough.
+        app.UseWebSockets();
+        app.MapTalkyRealtime();
         // LEAD: app.MapTalkyIdentity();
         // LEAD: app.MapTalkyFiles();
         // LEAD: app.MapTalkySearch();

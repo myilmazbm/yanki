@@ -1,5 +1,7 @@
 {
   "description": "A Hello announcing a protocol version the node does not speak is rejected with PROTOCOL_VERSION_UNSUPPORTED and close code 1002.",
+  "clientReplay": false,
+  "clientReplayNote": "The client cannot legitimately produce this sequence; it is exercised only by the server-side contract tests.",
   "frames": [
     {
       "dir": "c2s",
