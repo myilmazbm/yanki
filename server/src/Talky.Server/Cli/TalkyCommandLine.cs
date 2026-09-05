@@ -18,17 +18,35 @@ internal static class TalkyCommandLine
     /// <returns>The process exit code.</returns>
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(args);
+
         var configuration = new InvocationConfiguration
         {
             // The host owns graceful shutdown; System.CommandLine must not kill the process while
-            // the node is still draining, and must not swallow the exceptions we handle below.
+            // the node is still draining, and must not swallow the exceptions handled below.
             EnableDefaultExceptionHandler = false,
             ProcessTerminationTimeout = TimeSpan.FromDays(1),
         };
 
+        // Generic host settings such as --environment or --contentRoot are consumed by the host
+        // builder, not by this parser, so they are pulled out before parsing and allowed through.
+        var hostSettings = HostStartupArguments.ExtractHostSettings(args);
+
         try
         {
-            return await BuildRootCommand().Parse(args).InvokeAsync(configuration, cancellationToken);
+            var parseResult = BuildRootCommand(hostSettings).Parse(args);
+
+            var unexpected = parseResult.UnmatchedTokens
+                .FirstOrDefault(token => !hostSettings.Contains(token, StringComparer.Ordinal));
+            if (unexpected is not null)
+            {
+                await Console.Error.WriteLineAsync(unexpected.StartsWith('-')
+                    ? $"Unknown option '{unexpected}'. Run 'talky --help' to see the available options."
+                    : $"Unknown command '{unexpected}'. Run 'talky --help' to see the available commands.");
+                return ExitCode.Failure;
+            }
+
+            return await parseResult.InvokeAsync(configuration, cancellationToken);
         }
         catch (TalkyStartupException ex)
         {
@@ -52,7 +70,8 @@ internal static class TalkyCommandLine
     }
 
     /// <summary>Builds a fresh command tree; the options are per-call so nothing is shared.</summary>
-    private static RootCommand BuildRootCommand()
+    /// <param name="hostSettings">Generic host settings handed to the host builder as-is.</param>
+    private static RootCommand BuildRootCommand(string[] hostSettings)
     {
         var configOption = new Option<string?>("--config", "-c")
         {
@@ -88,7 +107,8 @@ internal static class TalkyCommandLine
             parseResult.GetValue(configOption),
             parseResult.GetValue(roleOption),
             parseResult.GetValue(urlsOption) ?? [],
-            parseResult.GetValue(setOption) ?? []);
+            parseResult.GetValue(setOption) ?? [],
+            hostSettings);
 
         var serve = new Command("serve", "Run the Talky server. This is what the Windows service starts.");
         serve.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
@@ -109,7 +129,13 @@ internal static class TalkyCommandLine
         config.Subcommands.Add(configValidate);
 
         var root = new RootCommand(
-            "Talky server: on-premises messaging, calling and meetings. Running talky with no command serves.");
+            "Talky server: on-premises messaging, calling and meetings. Running talky with no command serves.")
+        {
+            // Generic host settings (--environment, --contentRoot, --applicationName, --webroot)
+            // arrive on the command line from deployment scripts and from the ASP.NET Core test
+            // host. They are consumed by the host builder, not by this parser.
+            TreatUnmatchedTokensAsErrors = false,
+        };
 
         root.Options.Add(configOption);
         root.Options.Add(roleOption);

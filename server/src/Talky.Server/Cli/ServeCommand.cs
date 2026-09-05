@@ -24,6 +24,7 @@ internal static class ServeCommand
 
         var app = builder.Build();
 
+        TalkyHostFactory.ValidateStartup(app);
         TalkyHostFactory.ConfigureApplication(app);
         Modules.MapModules(app);
 

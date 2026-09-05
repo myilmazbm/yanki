@@ -44,12 +44,12 @@ public sealed class DrainCoordinator : IDrainCoordinator, IDisposable
     {
         if (Interlocked.Exchange(ref _started, 1) == 0)
         {
-            _isDraining = true;
-
-            // Start the timer before signalling so nobody can observe a drain without a deadline.
+            // Start the timer before flipping the flag, so nobody can observe a drain that has no
+            // deadline yet. The volatile write to _isDraining publishes _graceTask.
             _graceTask = grace <= TimeSpan.Zero
                 ? Task.CompletedTask
                 : Task.Delay(grace, _timeProvider, CancellationToken.None);
+            _isDraining = true;
             _gracePublished.SetResult();
 
             if (_logger.IsEnabled(LogLevel.Information))

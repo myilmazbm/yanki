@@ -37,11 +37,12 @@ internal static class TalkyHostFactory
         var isWindowsService = WindowsServiceHelpers.IsWindowsService();
 
         // A Windows service starts with C:\Windows\System32 as its working directory, so the
-        // content root must be pinned to the directory holding talky.exe.
+        // content root is pinned to the directory holding talky.exe unless the command line pins
+        // one itself (the ASP.NET Core test host does).
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
-            Args = [],
-            ContentRootPath = AppContext.BaseDirectory,
+            Args = [.. arguments.HostSettings],
+            ContentRootPath = arguments.HasContentRoot ? null : AppContext.BaseDirectory,
         });
 
         TalkyConfigurationSources.Apply(
@@ -191,16 +192,38 @@ internal static class TalkyHostFactory
             kestrel.AddServerHeader = false;
             kestrel.ConfigureEndpointDefaults(listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
 
-            var server = kestrel.ApplicationServices.GetRequiredService<IOptions<ServerOptions>>().Value;
-            var environment = kestrel.ApplicationServices.GetRequiredService<IHostEnvironment>();
-            GuardInsecureConfiguration(server, environment);
-
-            var resolution = CertificateResolver.Resolve(server.Certificate);
-            if (resolution.Certificate is not null)
+            // Resolved when an HTTPS endpoint is actually bound, not while the container is built:
+            // `talky doctor` has to be able to build the host on a node whose certificate is broken.
+            kestrel.ConfigureHttpsDefaults(https =>
             {
-                kestrel.ConfigureHttpsDefaults(https => https.ServerCertificate = resolution.Certificate);
-            }
+                var server = kestrel.ApplicationServices.GetRequiredService<IOptions<ServerOptions>>().Value;
+                var resolution = CertificateResolver.Resolve(server.Certificate);
+                if (resolution.Certificate is not null)
+                {
+                    https.ServerCertificate = resolution.Certificate;
+                }
+            });
         });
+
+    /// <summary>
+    /// Last gate before the node starts listening: refuses an unsafe transport setup and proves the
+    /// certificate can be loaded, so a bad thumbprint fails with one readable line instead of a
+    /// Kestrel bind error.
+    /// </summary>
+    /// <param name="app">The built application.</param>
+    /// <exception cref="TalkyStartupException">The node must not serve with this configuration.</exception>
+    public static void ValidateStartup(WebApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        var server = app.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
+        GuardInsecureConfiguration(server, app.Environment);
+
+        if (server.Urls.Any(url => url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        {
+            using var probe = CertificateResolver.Resolve(server.Certificate).Certificate;
+        }
+    }
 
     /// <summary>
     /// Refuses the combination that silently downgrades transport security outside development.

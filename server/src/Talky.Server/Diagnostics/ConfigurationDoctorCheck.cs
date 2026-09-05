@@ -37,7 +37,7 @@ internal sealed class ConfigurationDoctorCheck(
                 ["urls"] = string.Join(", ", serverOptions.Urls),
                 ["drainSeconds"] = serverOptions.DrainSeconds.ToString(CultureInfo.InvariantCulture),
                 ["certificateSource"] = serverOptions.Certificate.Source.ToString(),
-                ["logDirectory"] = loggingOptions.Directory,
+                ["logDirectory"] = Logging.TalkyLogging.ExpandDirectory(loggingOptions.Directory),
             };
 
             return Task.FromResult(DoctorResult.Ok("Configuration binds and validates.", details));
