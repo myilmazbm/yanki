@@ -1,0 +1,45 @@
+{
+  "description": "Bye is a graceful client-initiated close: the server answers with close code 1000 and sends no further frames.",
+  "frames": [
+    {
+      "dir": "c2s",
+      "json": {
+        "rid": "0190f0a1-0000-7000-8000-000000000001",
+        "hello": {
+          "protoVersion": 1,
+          "token": "dev:u1",
+          "deviceId": "5a3c9e2b-1f44-4c8a-9d21-7e6b0f1a2c33",
+          "client": {
+            "platform": "web",
+            "appVersion": "0.1.0",
+            "os": "windows",
+            "locale": "tr-TR"
+          }
+        }
+      }
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "welcome": {
+          "sessionId": "…",
+          "userId": "…",
+          "nodeId": "…",
+          "serverTime": "…",
+          "heartbeatIntervalMs": 25000,
+          "serverVersion": "…"
+        }
+      }
+    },
+    {
+      "dir": "c2s",
+      "json": {
+        "bye": {}
+      }
+    }
+  ],
+  "close": {
+    "code": 1000
+  }
+}

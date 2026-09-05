@@ -1,0 +1,26 @@
+{
+  "description": "Any frame that arrives before the handshake is answered with HELLO_REQUIRED and close code 1008. Ping carries no rid, so the Error carries none either.",
+  "frames": [
+    {
+      "dir": "c2s",
+      "json": {
+        "ping": {
+          "ts": "1725540000000"
+        }
+      }
+    },
+    {
+      "dir": "s2c",
+      "json": {
+        "id": "…",
+        "error": {
+          "code": "ERROR_CODE_HELLO_REQUIRED",
+          "message": "…"
+        }
+      }
+    }
+  ],
+  "close": {
+    "code": 1008
+  }
+}

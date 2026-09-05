@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <Description>Replays the golden WebSocket fixtures in api/fixtures/ws against a self-contained realtime host.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,8 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Talky.Server\Talky.Server.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Core\Talky.Core.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Realtime\Talky.Realtime.csproj" />
     <ProjectReference Include="..\..\src\Talky.Protocol\Talky.Protocol.csproj" />
+  </ItemGroup>
+
+  <!-- One realtime test host, shared with the integration tests. -->
+  <ItemGroup>
+    <Compile Include="..\Talky.IntegrationTests\Realtime\Harness\*.cs" LinkBase="Realtime\Harness" />
   </ItemGroup>
 
 </Project>
