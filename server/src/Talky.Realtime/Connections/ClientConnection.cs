@@ -32,7 +32,7 @@ public sealed class ClientConnection
     private readonly Lock _overflowGate = new();
 
     private int _closeSignalled;
-    private volatile bool _resyncQueued;
+    private int _aborted;
     private volatile SessionPrincipal? _principal;
     private long _closeRequestedTicks;
     private WebSocketCloseStatus _closeStatus = RealtimeCloseCodes.Normal;
@@ -168,11 +168,18 @@ public sealed class ClientConnection
         RequestClose(status, description);
     }
 
-    /// <summary>Aborts the transport without a close handshake. Used by the sweep as a last resort.</summary>
+    /// <summary>
+    /// Aborts the transport without a close handshake. Used by the sweep as a last resort for a
+    /// peer that stopped answering. Idempotent: the sweep may see the same connection repeatedly.
+    /// </summary>
     public void Abort()
     {
         RequestClose(RealtimeCloseCodes.GoingAway, "aborted");
-        AbortCore();
+
+        if (Interlocked.Exchange(ref _aborted, 1) == 0)
+        {
+            AbortCore();
+        }
     }
 
     internal void AttachPrincipal(SessionPrincipal principal, string deviceId, string platform)
@@ -221,11 +228,6 @@ public sealed class ClientConnection
         using PooledUtf8Payload payload = FrameCodec.FormatServerFrame(frame);
         await _socket.SendAsync(payload.Memory, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
 
-        if (frame.BodyCase == ServerFrame.BodyOneofCase.ResyncRequired)
-        {
-            _resyncQueued = false;
-        }
-
         _metrics.FrameSent(ServerFrames.TypeTag(frame));
     }
 
@@ -270,7 +272,7 @@ public sealed class ClientConnection
     {
         lock (_overflowGate)
         {
-            if (IsClosing || _resyncQueued)
+            if (IsClosing)
             {
                 _metrics.FramesDropped(OverflowTypeTag);
                 return;
@@ -282,11 +284,7 @@ public sealed class ClientConnection
                 discarded++;
             }
 
-            _resyncQueued = true;
-            if (!_outbound.Writer.TryWrite(ServerFrames.ResyncRequired(full: true)))
-            {
-                _resyncQueued = false;
-            }
+            _outbound.Writer.TryWrite(ServerFrames.ResyncRequired(full: true));
 
             // +1 for the frame that triggered the overflow and was itself dropped.
             _metrics.FramesDropped(OverflowTypeTag, discarded + 1);
