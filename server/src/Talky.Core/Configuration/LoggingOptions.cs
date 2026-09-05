@@ -1,0 +1,43 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Talky.Core.Configuration;
+
+/// <summary>
+/// <c>Talky:Logging</c> — the Serilog sinks owned by the host. This is a different section from the
+/// framework's own <c>Logging</c> section, which still controls per-category levels.
+/// </summary>
+public sealed class LoggingOptions
+{
+    /// <summary>Default log directory. Environment variables are expanded at startup.</summary>
+    public const string DefaultDirectory = @"%ProgramData%\Talky\logs";
+
+    /// <summary>Windows event log source name used when <see cref="EventLog"/> is enabled.</summary>
+    public const string EventLogSourceName = "Talky";
+
+    /// <summary>Directory the rolling JSON log files are written to. Environment variables are expanded.</summary>
+    [Required(AllowEmptyStrings = false, ErrorMessage = "Talky:Logging:Directory must not be empty.")]
+    public string Directory { get; set; } = DefaultDirectory;
+
+    /// <summary>Number of daily log files kept on disk.</summary>
+    [Range(1, 3650, ErrorMessage = "Talky:Logging:RetainedFileCount must be between 1 and 3650.")]
+    public int RetainedFileCount { get; set; } = 30;
+
+    /// <summary>
+    /// Serilog minimum level: <c>Verbose</c>, <c>Debug</c>, <c>Information</c>, <c>Warning</c>,
+    /// <c>Error</c> or <c>Fatal</c>.
+    /// </summary>
+    [Required(AllowEmptyStrings = false, ErrorMessage = "Talky:Logging:MinimumLevel must not be empty.")]
+    public string MinimumLevel { get; set; } = "Information";
+
+    /// <summary>
+    /// Writes warnings and above to the Windows event log under source <c>Talky</c>.
+    /// Defaults to true when the process runs as a Windows service, false otherwise.
+    /// </summary>
+    public bool? EventLog { get; set; }
+
+    /// <summary>
+    /// Writes a human readable log to stdout. Defaults to true in Development, false otherwise
+    /// (a Windows service has no console).
+    /// </summary>
+    public bool? Console { get; set; }
+}
