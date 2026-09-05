@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WinSW wrapper for the LiveKit SFU.
+
+  LiveKit ships a plain console executable, so a wrapper turns it into a Windows service
+  with the same behaviour as the Talky service: delayed automatic start, graded restart
+  recovery and rolling logs under %ProgramData%\Talky\logs\livekit.
+
+  Install-LiveKitService.ps1 copies this file next to WinSW-x64.exe (renamed
+  livekit-service.exe, so WinSW picks up livekit-service.xml) and substitutes the
+  placeholders below. %BASE% is the directory holding the wrapper, i.e. InstallDir.
+-->
+<service>
+  <id>LiveKit</id>
+  <name>LiveKit</name>
+  <description>LiveKit SFU media node for Talky (WebRTC signalling, media and embedded TURN).</description>
+
+  <executable>%BASE%\livekit-server.exe</executable>
+  <arguments>--config "%BASE%\livekit.yaml"</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+
+  <!-- Same recovery ladder as the Talky service: 5 s, 10 s, then 30 s. -->
+  <onfailure action="restart" delay="5 sec" />
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <resetfailure>1 day</resetfailure>
+
+  <!-- LiveKit writes structured JSON to stdout; keep 10 files of 50 MB. -->
+  <logpath>__LOGDIR__</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>51200</sizeThreshold>
+    <keepFiles>10</keepFiles>
+  </log>
+
+  <!-- Ctrl+C lets LiveKit drain its sessions before the process is killed. -->
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <stoptimeout>30 sec</stoptimeout>
+
+  <!-- Media threads should not lose the CPU to background maintenance work. -->
+  <priority>High</priority>
+
+  <!-- Install-LiveKitService.ps1 removes this block entirely when the service runs as
+       LocalSystem (WinSW's default) and fills in the account otherwise. -->
+  <serviceaccount>
+    <username>__SERVICE_ACCOUNT__</username>
+    <allowservicelogon>true</allowservicelogon>
+  </serviceaccount>
+</service>

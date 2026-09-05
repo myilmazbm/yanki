@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Talky Server MSI (WiX v6, x64, per-machine).
+
+  Required preprocessor variables (passed by Build-Msi.ps1):
+    PublishDir      absolute path of the `dotnet publish` output that is harvested
+    ExeName         file name of the single-file host (talky.exe)
+    ProductVersion  MSI ProductVersion, e.g. 0.1.0
+
+  Public properties an operator may override on the msiexec command line:
+    INSTALLFOLDER    install directory      (default %ProgramFiles%\Talky)
+    DATADIR          data directory         (default %ProgramData%\Talky)
+    SERVICE_ACCOUNT  service logon account   (default LocalSystem)
+    SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA)
+    SERVICE_ROLES    role list passed to the host (default all)
+
+  gMSA note: a group managed service account is passwordless. Install with
+    msiexec /i Talky.Server-<v>.msi SERVICE_ACCOUNT="CORP\talky$" /qn
+  and leave SERVICE_PASSWORD unset. The account must already have
+  "Log on as a service" and the ACLs applied by
+  deploy\windows\Install-Talky.ps1 -AclOnly.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+
+  <Package Name="Talky Server"
+           Manufacturer="Talky"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="21199CEE-DB76-4FBA-A333-D90BE768217D"
+           Scope="perMachine"
+           Compressed="yes"
+           InstallerVersion="500"
+           Language="1033"
+           Codepage="1252">
+
+    <!-- Upgrades: uninstall the old version before laying down the new one so the
+         single-file host is never in use while its files are replaced. -->
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it before installing an older build." />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="mszip" />
+
+    <!-- Windows Server 2022 (10.0.20348) or later. -->
+    <Launch Condition="Installed OR (VersionNT &gt;= 603)"
+            Message="[ProductName] requires Windows Server 2022 or later (x64)." />
+
+    <!-- ARP metadata -->
+    <Property Id="ARPHELPLINK" Value="https://talky.corp/docs" />
+    <Property Id="ARPURLINFOABOUT" Value="https://talky.corp" />
+    <Property Id="ARPCONTACT" Value="Talky Operations" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="MSIFASTINSTALL" Value="7" />
+
+    <!-- Service identity. Default LocalSystem so a lab install needs no arguments. -->
+    <Property Id="SERVICE_ACCOUNT" Value="LocalSystem" Secure="yes" />
+    <Property Id="SERVICE_PASSWORD" Secure="yes" Hidden="yes" />
+    <Property Id="SERVICE_ROLES" Value="all" Secure="yes" />
+
+    <SummaryInformation Description="Talky Server (talky.exe) — chat, calls, meetings, files"
+                        Manufacturer="Talky" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Talky" />
+    </StandardDirectory>
+
+    <!-- DATADIR is a public directory id: msiexec /i ... DATADIR="D:\TalkyData" -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATADIR" Name="Talky">
+        <Directory Id="DATALOGSDIR" Name="logs" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Server" Title="Talky Server" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="ServerPayload" />
+      <ComponentRef Id="TalkyServiceHost" />
+      <ComponentGroupRef Id="DataDirectories" />
+    </Feature>
+
+    <!-- Everything from `dotnet publish` except the host itself (declared below with
+         the service) and build-time leftovers. -->
+    <ComponentGroup Id="ServerPayload" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**">
+        <Exclude Files="$(var.PublishDir)\$(var.ExeName)" />
+        <Exclude Files="$(var.PublishDir)\**\*.pdb" />
+        <Exclude Files="$(var.PublishDir)\**\*.xml" />
+        <Exclude Files="$(var.PublishDir)\**\appsettings.Development.json" />
+      </Files>
+    </ComponentGroup>
+
+    <Component Id="TalkyServiceHost" Directory="INSTALLFOLDER" Guid="F30A51B3-FD8C-4EC1-81ED-57E33129705C">
+      <File Id="TalkyExe" Name="$(var.ExeName)" Source="$(var.PublishDir)\$(var.ExeName)" KeyPath="yes" />
+
+      <ServiceInstall Id="TalkyServiceInstall"
+                      Name="Talky"
+                      DisplayName="Talky"
+                      Description="Talky server node (chat, calls, meetings, files)."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="[SERVICE_ACCOUNT]"
+                      Password="[SERVICE_PASSWORD]"
+                      Arguments="--role [SERVICE_ROLES] --data-dir &quot;[DATADIR]&quot;"
+                      Vital="yes">
+        <!-- Automatic (Delayed Start): the node waits for AD, DNS and SQL to settle. -->
+        <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
+        <!-- Recovery: restart after 5 s, 10 s, 30 s; failure count resets daily. -->
+        <ServiceConfigFailureActions ResetPeriod="86400" OnInstall="yes" OnReinstall="yes">
+          <Failure Action="restart" Delay="5000" />
+          <Failure Action="restart" Delay="10000" />
+          <Failure Action="restart" Delay="30000" />
+        </ServiceConfigFailureActions>
+      </ServiceInstall>
+
+      <ServiceControl Id="TalkyServiceControl"
+                      Name="Talky"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+
+      <!-- Inbound rules. 8080 (plain HTTP for a TLS-terminating load balancer) is
+           intentionally NOT opened by the MSI; Set-TalkyFirewall.ps1 -EnableHttp does it. -->
+      <fw:FirewallException Id="FwTalkyHttps" Name="Talky HTTPS (TCP 8443)"
+                            Description="Talky client and API traffic."
+                            Port="8443" Protocol="tcp" Profile="all" Scope="any"
+                            Outbound="no" />
+      <fw:FirewallException Id="FwTalkyMesh" Name="Talky cluster mesh (TCP 9443)"
+                            Description="gRPC full-mesh cluster bus between Talky nodes."
+                            Port="9443" Protocol="tcp" Profile="all" Scope="any"
+                            Outbound="no" />
+    </Component>
+
+    <ComponentGroup Id="DataDirectories">
+      <Component Id="DataDirComponent" Directory="DATADIR" Guid="DE23B3D4-76F0-46D8-9153-BFEF32C119D1" Permanent="yes">
+        <CreateFolder />
+      </Component>
+      <Component Id="DataLogsComponent" Directory="DATALOGSDIR" Guid="EABA1F8C-C104-41BC-8356-8FCB589479B0" Permanent="yes">
+        <CreateFolder />
+      </Component>
+      <!-- Written once, never replaced by an upgrade, never removed by uninstall. -->
+      <Component Id="DataAppSettings" Directory="DATADIR" Guid="FD250F75-274D-492C-8927-E5055E532D86"
+                 NeverOverwrite="yes" Permanent="yes">
+        <File Id="DataAppSettingsFile" Name="appsettings.json"
+              Source="$(var.TemplateDir)\appsettings.template.json" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+  </Package>
+</Wix>

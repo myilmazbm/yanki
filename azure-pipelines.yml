@@ -1,0 +1,175 @@
+# Azure DevOps Server (on-prem) equivalent of .github/workflows/ci.yml.
+#
+# Many customers who buy an on-prem product also host their own Azure DevOps Server, so the
+# pipeline is kept in step with the GitHub workflow: same jobs, same commands, same
+# ordering. When you change one, change the other in the same commit.
+#
+# Agent requirements:
+#   windows  - a self-hosted or Microsoft-hosted 'windows-latest' agent with SQL Server
+#              Express LocalDB (MSSQLLocalDB) installed. On self-hosted agents install it
+#              once; it is not provisioned by this pipeline.
+#   linux    - 'ubuntu-latest' with Node 22. corepack provides pnpm from the
+#              packageManager field in clients/package.json.
+
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - v*
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  isTag: $[startsWith(variables['Build.SourceBranch'], 'refs/tags/v')]
+  isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+
+stages:
+  - stage: build
+    displayName: Build and test
+    jobs:
+      - job: server
+        displayName: server (windows)
+        pool:
+          vmImage: windows-latest
+        timeoutInMinutes: 30
+        steps:
+          - task: UseDotNet@2
+            displayName: Set up .NET from global.json
+            inputs:
+              packageType: sdk
+              useGlobalJson: true
+
+          - powershell: |
+              sqllocaldb start MSSQLLocalDB
+              sqllocaldb info MSSQLLocalDB
+            displayName: Start SQL Server LocalDB
+
+          - script: dotnet restore server/Talky.slnx
+            displayName: Restore
+
+          - script: dotnet build server/Talky.slnx --no-restore -warnaserror -m:1 -p:NodeReuse=false
+            displayName: Build
+
+          - script: dotnet test server/Talky.slnx --no-build --logger trx --results-directory $(Build.ArtifactStagingDirectory)/test-results -m:1
+            displayName: Test
+
+          - task: PublishTestResults@2
+            displayName: Publish test results
+            condition: always()
+            inputs:
+              testResultsFormat: VSTest
+              testResultsFiles: '$(Build.ArtifactStagingDirectory)/test-results/*.trx'
+              failTaskOnFailedTests: true
+
+      - job: clients
+        displayName: clients (linux)
+        pool:
+          vmImage: ubuntu-latest
+        timeoutInMinutes: 30
+        steps:
+          # buf breaking needs the history to compare against main.
+          - checkout: self
+            fetchDepth: 0
+
+          - task: NodeTool@0
+            displayName: Set up Node 22
+            inputs:
+              versionSpec: '22.x'
+
+          - script: corepack enable
+            displayName: Enable corepack
+
+          - script: pnpm install --frozen-lockfile
+            displayName: Install
+            workingDirectory: clients
+
+          - script: echo "##vso[task.prependpath]$(Build.SourcesDirectory)/clients/node_modules/.bin"
+            displayName: Put buf on PATH
+
+          - script: buf lint api/proto
+            displayName: buf lint
+
+          - script: buf breaking api/proto --against '.git#branch=main,subdir=api/proto'
+            displayName: buf breaking
+            condition: and(succeeded(), eq(variables.isMain, false))
+
+          - script: pnpm gen
+            displayName: Generate protocol code
+            workingDirectory: clients
+
+          - script: git diff --exit-code clients/packages/protocol/src/gen
+            displayName: Check generated code is up to date
+
+          - script: pnpm typecheck
+            displayName: Typecheck
+            workingDirectory: clients
+
+          - script: pnpm lint
+            displayName: Lint
+            workingDirectory: clients
+
+          - script: pnpm test
+            displayName: Test
+            workingDirectory: clients
+
+      - job: scripts
+        displayName: deployment scripts (windows)
+        pool:
+          vmImage: windows-latest
+        timeoutInMinutes: 15
+        steps:
+          - powershell: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+            displayName: Install PSScriptAnalyzer
+
+          - powershell: ./scripts/Invoke-ScriptAnalyzer.ps1
+            displayName: Analyze
+
+  - stage: package
+    displayName: MSI
+    dependsOn: build
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+    jobs:
+      - job: msi
+        displayName: msi (windows)
+        pool:
+          vmImage: windows-latest
+        timeoutInMinutes: 45
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: sdk
+              useGlobalJson: true
+
+          - powershell: |
+              # refs/tags/v1.2.3 -> MSI ProductVersion 1.2.3
+              $version = '$(Build.SourceBranchName)' -replace '^v', ''
+              ./deploy/windows/msi/Build-Msi.ps1 -Version $version -Verbose
+            displayName: Build MSI
+            env:
+              CI: 'true'
+
+          - powershell: ./deploy/windows/msi/Test-Msi.ps1
+            displayName: Validate MSI
+
+          # Stage only the installer: artifacts/publish also holds the ~120 MB single-file
+          # host, which has no business in the pipeline artifact.
+          - task: CopyFiles@2
+            displayName: Stage MSI
+            inputs:
+              sourceFolder: artifacts
+              contents: '*.msi'
+              targetFolder: $(Build.ArtifactStagingDirectory)/msi
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish MSI
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/msi
+              artifact: Talky.Server-msi
