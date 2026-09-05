@@ -21,10 +21,12 @@ cd server && timeout 480 dotnet build Talky.slnx -m:1 -p:NodeReuse=false     # u
 cd server && dotnet test Talky.slnx -m:1 -p:NodeReuse=false
 cd clients && pnpm install && pnpm gen && pnpm typecheck && pnpm lint && pnpm test
 ```
-- **`dotnet add package` kullanma** (bu ortamda merkezi paket yönetimiyle asılı kalıyor). csproj'a `<PackageReference Include="X" />`,
-  `server/Directory.Packages.props`'a `<PackageVersion Include="X" Version="…" />` yaz. En son kararlı sürüm:
+- `dotnet add package` bu ortamda merkezi paket yönetimiyle asılı kalabiliyor; kullanırsan `timeout 120` ile sar, takılırsa görevi
+  durdur ve sürümü elle yaz: csproj'a `<PackageReference Include="X" />`, `server/Directory.Packages.props`'a
+  `<PackageVersion Include="X" Version="…" />`. En son kararlı sürüm:
   `node -e "fetch('https://api.nuget.org/v3-flatcontainer/<küçük-harf-id>/index.json').then(r=>r.json()).then(j=>console.log(j.versions.filter(v=>!v.includes('-')).pop()))"`
-- `dotnet build` çok düğümlü modda asılı kalabiliyor; her zaman `-m:1 -p:NodeReuse=false` ve `timeout` kullan.
+- `dotnet build` çok düğümlü modda asılı kalabiliyor; `-m:1 -p:NodeReuse=false` ve `timeout` ile çalıştır. Uzun süren bir komut arka
+  plana alınırsa önce görevi durdur (yalnızca alt süreçleri öldürmek betiği durdurmaz); asılabilecek komutları `|| true` ile maskeleme.
 - pnpm 11: build script izinleri `clients/pnpm-workspace.yaml` → `allowBuilds`. TypeScript **5.9'da sabit** (7.x'e geçme).
 - SQL: `(localdb)\MSSQLLocalDB` (SQL Server 2025 Express LocalDB); `sqllocaldb start MSSQLLocalDB`.
 - Proto değişince: `pnpm gen` (TS, commit'lenir) + .NET build (C#, build sırasında üretilir). `buf lint` temiz olmalı.
