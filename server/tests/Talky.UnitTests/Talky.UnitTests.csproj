@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Talky.Core\Talky.Core.csproj" />
+    <ProjectReference Include="..\..\src\Talky.Data\Talky.Data.csproj" />
     <ProjectReference Include="..\..\src\Talky.Realtime\Talky.Realtime.csproj" />
     <ProjectReference Include="..\..\src\Talky.Identity\Talky.Identity.csproj" />
     <ProjectReference Include="..\..\src\Talky.Search\Talky.Search.csproj" />

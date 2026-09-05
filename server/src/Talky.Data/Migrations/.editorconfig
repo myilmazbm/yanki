@@ -1,0 +1,13 @@
+# EF Core writes the files in this folder. They are generated code: they are reviewed as SQL, not
+# as C# style, and re-running `dotnet ef migrations add` would undo any hand formatting anyway.
+# Analyzers are off here so `TreatWarningsAsErrors` does not turn scaffolding into a build failure.
+# The only hand edits allowed are the documented post-processing steps in docs/data-model.md.
+
+[*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+dotnet_diagnostic.IDE0161.severity = none
+dotnet_diagnostic.IDE0005.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1062.severity = none
