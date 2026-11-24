@@ -145,7 +145,8 @@ try {
     # --- MSI leg ------------------------------------------------------------------------
     Write-Host "--- MSI leg ($MsiPath) ---"
     $log = Join-Path $env:TEMP 'talky-smoke-msi-install.log'
-    $code = Invoke-Msiexec @('/i', "`"$MsiPath`"", '/qn', '/l*v', "`"$log`"")
+    # /norestart: with /qn msiexec would otherwise reboot the VM by itself if it decides one is needed.
+    $code = Invoke-Msiexec @('/i', "`"$MsiPath`"", '/qn', '/norestart', '/l*v', "`"$log`"")
     Write-Check ($code -eq 0) "msiexec /i /qn exits 0 (got $code; log $log)"
     $svc = Get-Service -Name Talky -ErrorAction SilentlyContinue
     Write-Check ($null -ne $svc -and $svc.Status -eq 'Stopped') 'service Talky registered and stopped after msiexec'
@@ -166,7 +167,7 @@ try {
     # The MSI's own service stop waits at most 30 s, less than the node's drain
     # (DrainSeconds, 30 by default, plus shutdown); Stop-Service waits it out.
     Stop-Service -Name Talky
-    $code = Invoke-Msiexec @('/x', "`"$MsiPath`"", '/qn')
+    $code = Invoke-Msiexec @('/x', "`"$MsiPath`"", '/qn', '/norestart')
     Write-Check ($code -eq 0) "msiexec /x /qn exits 0 (got $code)"
     Write-Check ($null -eq (Get-Service -Name Talky -ErrorAction SilentlyContinue)) 'msiexec /x removed the service'
 }

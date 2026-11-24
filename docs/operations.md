@@ -310,7 +310,7 @@ Düğüm başına sıra (aynı anda **tek** düğüm):
 1. **Boşalt.** Düğüme boşaltma sinyali verilir. `/readyz` derhal **503** dönmeye başlar;
    yük dengeleyici düğümü havuzdan çıkarır ve yeni bağlantı gelmez.
 2. **İstemcileri nazikçe gönder.** Düğüm açık WebSocket oturumlarına
-   `Reconnect{delayMs = min(10000, boşaltma süresi)}` çerçevesi gönderir; boşaltma sırasında
+   `Reconnect{delayMs: 10000}` çerçevesi gönderir; boşaltma sırasında
    gelen yeni bağlantılar 1013 koduyla kapatılır. İstemciler yeniden bağlanmayı
    `[0, delayMs]` aralığında rastgele geciktirir — en fazla 10 sn'lik pencere, tek bir
    düğüme yığılan sürü etkisini önler.
@@ -434,8 +434,10 @@ pay geri yükleme).
 Bir isteği izlemek için JSON log satırlarındaki izleme kimliğini (`@tr`) kullanın. Düğümler
 arası izleme bugün yoktur; mesh M2'de gelir.
 
-Süreç başlarken (host ve logger daha yokken) biten hatalar ayrıca
+Servis başlarken (host ve logger daha yokken) biten hatalar ayrıca
 `<DataDir>\logs\talky-startup.log` dosyasına ve Olay Günlüğü'ne (kaynak `Talky`) yazılır.
+Elle çalıştırılan komutlar (`doctor`, `config validate`, `migrate`) bu ikisine yazmaz; hatayı
+yalnızca konsola basar.
 
 ---
 
@@ -454,7 +456,7 @@ Bugün var olan denetimler (tam liste):
 |---|---|
 | `config` | Bütün `Talky` seçenek bölümleri bağlanıp doğrulanabiliyor mu |
 | `certificate` | Yapılandırılan TLS sertifikası bulunuyor mu, süresi geçmemiş mi, gerçek düğümde geliştirme sertifikası mı |
-| `identity` | `talky.exe` hangi hesapla çalışıyor (üretimde gMSA olmalı, yönetici ya da operatör değil) |
+| `identity` | `doctor`'ın hangi hesapla çalıştırıldığını bildirir (bilgi amaçlı); servis hesabının kendisini sınamaz |
 | `log-directory` | Log klasörü var mı / oluşturulabiliyor mu, bu hesap yazabiliyor mu |
 | `os` | İşletim sistemi ve sürümü; istemci Windows sürümü (Windows 10/11) Development dışında uyarıdır ("yalnızca laboratuvar") |
 | `runtime` | .NET çalışma zamanı ve sunucu GC açık mı |

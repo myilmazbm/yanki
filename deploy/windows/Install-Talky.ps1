@@ -447,7 +447,11 @@ Write-Host ''
 
 # --- 1. folders -----------------------------------------------------------------------
 
-if (-not $ConfigOnly) {
+if ($ConfigOnly) {
+    # Rendering into a new folder (a preview) must not fail on the missing directory.
+    New-TalkyDirectory -Path $DataDir
+}
+else {
     foreach ($dir in @($InstallDir, $DataDir, $LogsDir, $IndexDir)) {
         New-TalkyDirectory -Path $dir
     }
