@@ -62,19 +62,6 @@ async function runFixture(fixture: WsFixture): Promise<void> {
 }
 
 describe('golden fixtures (api/fixtures/ws)', () => {
-  if (fixtures.length === 0) {
-    it('reports that no golden fixtures are present yet', () => {
-      const where = fixturesDir ?? '<api/fixtures/ws not found>';
-      console.info(
-        `[fixtures] no golden fixtures found in ${where} — nothing to replay. ` +
-          'The server work package authors these files; this suite starts enforcing them ' +
-          'automatically as soon as one lands.',
-      );
-      expect(fixtures).toEqual([]);
-    });
-    return;
-  }
-
   it('discovers the fixture directory', () => {
     expect(fixturesDir).not.toBeNull();
     expect(fixtures.length).toBeGreaterThan(0);

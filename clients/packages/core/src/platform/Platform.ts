@@ -7,7 +7,8 @@ import type { ClientDescriptor } from '../ws/types.js';
 /**
  * Everything host-specific that `@talky/core` may need, in one injected bundle.
  *
- * M0 declares the contract; the concrete adapters live in the app packages:
+ * DRAFT contract, finalised together with `Storage` by the M2 sync engine. No adapters exist
+ * yet; the planned ones are:
  *
  * | host    | storage             | websocket                     | notifications          |
  * |---------|---------------------|-------------------------------|------------------------|

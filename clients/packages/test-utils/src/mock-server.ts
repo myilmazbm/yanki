@@ -8,7 +8,8 @@ import type { MockServerOptions } from './types.js';
 
 /**
  * Protocol v1 is text-only, so a binary frame is a protocol violation. Feeding this marker
- * into the session makes the server answer with INVALID_FRAME, exactly as it should.
+ * into the session makes the server answer with INVALID_FRAME and close 1003, exactly as the
+ * real server does.
  */
 const BINARY_FRAME_MARKER = '<binary frame>';
 
@@ -23,7 +24,7 @@ function rawToText(data: RawData): string {
 export interface MockServerStartOptions extends MockServerOptions {
   /** TCP port. Default `0` — the OS picks a free one. */
   port?: number;
-  /** Path the endpoint is advertised on. Default `/api/v1/ws`. */
+  /** Path the endpoint is advertised on. Default `/ws`. */
   path?: string;
 }
 
@@ -86,6 +87,6 @@ export async function startMockServer(options: MockServerStartOptions = {}): Pro
     });
   };
 
-  const path = options.path ?? '/api/v1/ws';
+  const path = options.path ?? '/ws';
   return Object.assign(core, { url: `ws://127.0.0.1:${port.toString()}${path}`, port });
 }

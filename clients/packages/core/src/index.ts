@@ -19,7 +19,6 @@ export type {
   ReconnectReason,
   ReconnectScheduled,
   RequestOptions,
-  ResolvedWsClientOptions,
   WsClient,
   WsClientEvents,
   WsClientOptions,
@@ -42,13 +41,7 @@ export type {
 } from './ws/WebSocketLike.js';
 
 // Wire codec
-export {
-  clientFrame,
-  decodeClientFrame,
-  decodeServerFrame,
-  encodeClientFrame,
-  encodeServerFrame,
-} from './ws/codec.js';
+export { clientFrame, decodeServerFrame, encodeClientFrame } from './ws/codec.js';
 export type { ClientFrameBody, ServerFrameBody } from './ws/codec.js';
 
 // Reconnect + de-duplication primitives

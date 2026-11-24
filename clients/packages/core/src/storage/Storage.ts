@@ -1,9 +1,11 @@
 /**
  * Local persistence contract.
  *
- * M0 only defines the shape — the sync engine that fills it lands in M2. It is declared now
- * because the platform packages (web IndexedDB, Tauri SQLite, React Native SQLite) are built
- * against it, and because `@talky/core` must never reach for a concrete store itself.
+ * DRAFT. These contracts (and `MemoryStorage`, together with the `Platform` contracts in
+ * `platform/Platform.ts`) are a first sketch, to be finalised by the M2 sync engine, which
+ * needs an atomic "apply a page of events and advance the cursor" operation that this shape
+ * does not offer yet. No platform adapters (web IndexedDB, Tauri SQLite, React Native SQLite)
+ * exist yet. What is settled: `@talky/core` never reaches for a concrete store itself.
  *
  * All `seq` values are the server's per-conversation `int64` sequence and are modelled as
  * `bigint` so they never lose precision.

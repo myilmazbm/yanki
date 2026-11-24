@@ -106,10 +106,12 @@ class TalkyWsClient implements WsClient {
   private closedByUser = false;
   private attempt = 0;
   private heartbeatIntervalMs = DEFAULT_HEARTBEAT_MS;
-  private lastSentAt = 0;
   private lastRttMs: number | null = null;
   private currentWelcome: Welcome | null = null;
-  /** Set when the server told us it is draining; overrides the backoff for one attempt. */
+  /**
+   * Set when the server asked an open session to reconnect (drain); overrides the backoff for
+   * one attempt.
+   */
   private serverReconnectDelayMs: number | null = null;
   /** Set when a fatal `Error` frame arrived and we are waiting for the server to close. */
   private fatalPending = false;
@@ -234,6 +236,9 @@ class TalkyWsClient implements WsClient {
 
   private async openConnection(): Promise<void> {
     if (this.closedByUser) return;
+    // Leftovers of an earlier connection must never steer how this one ends.
+    this.evictionReason = null;
+    this.serverReconnectDelayMs = null;
     this.setState('connecting');
     this.connectionId += 1;
     const id = this.connectionId;
@@ -476,10 +481,17 @@ class TalkyWsClient implements WsClient {
       return;
     }
     // `docs/protocol.md`: reconnect after a random delay in [0, delayMs] so a draining node
-    // does not get a thundering herd back.
-    const delay = Math.max(0, Math.floor(this.options.random() * delayMs));
-    this.serverReconnectDelayMs = delay;
-    this.options.logger.info('server asked for a reconnect', { delayMs, delay, reason });
+    // does not get a thundering herd back. The delay is honoured only for an open session; a
+    // Reconnect during the handshake (a node refusing new connections) goes through the normal
+    // backoff so the attempt counter keeps growing.
+    if (this.currentState === 'open') {
+      this.serverReconnectDelayMs = Math.max(0, Math.floor(this.options.random() * delayMs));
+    }
+    this.options.logger.info('server asked for a reconnect', {
+      delayMs,
+      delay: this.serverReconnectDelayMs,
+      reason,
+    });
     this.initiateClose('server-reconnect');
   }
 
@@ -579,8 +591,8 @@ class TalkyWsClient implements WsClient {
     reason: ReconnectReason,
     closeCode: number | undefined,
   ): void {
-    this.setState('reconnecting');
-    this.emitSafe('reconnectScheduled', { attempt: this.attempt, delayMs, reason, closeCode });
+    // Arm the timer before telling anyone, so a listener that calls connect() synchronously
+    // cancels it instead of racing it.
     this.setTimer(
       'reconnect',
       () => {
@@ -588,6 +600,8 @@ class TalkyWsClient implements WsClient {
       },
       delayMs,
     );
+    this.setState('reconnecting');
+    this.emitSafe('reconnectScheduled', { attempt: this.attempt, delayMs, reason, closeCode });
   }
 
   /**
@@ -642,11 +656,6 @@ class TalkyWsClient implements WsClient {
   private onHeartbeatTick(): void {
     if (this.currentState !== 'open') return;
     const now = this.options.timers.now();
-    // `docs/protocol.md`: a frame already sent inside the window counts as the ping.
-    if (now - this.lastSentAt < this.heartbeatIntervalMs) {
-      this.scheduleHeartbeat();
-      return;
-    }
     try {
       this.writeFrame(
         clientFrame({ case: 'ping', value: create(PingSchema, { ts: BigInt(Math.trunc(now)) }) }),
@@ -655,13 +664,17 @@ class TalkyWsClient implements WsClient {
       this.options.logger.debug('ping could not be sent', { error });
       return;
     }
-    this.setTimer(
-      'pong',
-      () => {
-        this.onPongTimeout();
-      },
-      this.options.pongTimeoutMs,
-    );
+    // An armed deadline belongs to an earlier Ping; re-arming it would let a short heartbeat
+    // interval postpone the deadline forever on a dead link.
+    if (!this.timers.has('pong')) {
+      this.setTimer(
+        'pong',
+        () => {
+          this.onPongTimeout();
+        },
+        this.options.pongTimeoutMs,
+      );
+    }
     this.scheduleHeartbeat();
   }
 
@@ -709,7 +722,6 @@ class TalkyWsClient implements WsClient {
       });
     }
     socket.send(encodeClientFrame(frame));
-    this.lastSentAt = this.options.timers.now();
   }
 
   private rejectPending(error: TalkyWsError): void {
@@ -786,7 +798,7 @@ class TalkyWsClient implements WsClient {
  *
  * ```ts
  * const client = createWsClient({
- *   url: 'wss://talky.local/api/v1/ws',
+ *   url: 'wss://talky.local/ws',
  *   getToken: async () => session.token,
  *   deviceId,
  *   client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },

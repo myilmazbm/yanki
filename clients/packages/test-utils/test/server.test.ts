@@ -3,14 +3,14 @@ import type { ClientFrameJson } from '@talky/protocol/v1';
 import { ackFrame, flush, startMemoryServer, startMockServer } from '../src/index.js';
 
 /** Drive the server the way a client would, without depending on `@talky/core`. */
-function open(url = 'ws://mock/api/v1/ws'): ReturnType<typeof startMemoryServer> {
+function open(url = 'ws://mock/ws'): ReturnType<typeof startMemoryServer> {
   return startMemoryServer({ welcome: { sessionId: url } });
 }
 
 async function connectRaw(
   server: ReturnType<typeof startMemoryServer>,
 ): Promise<{ socket: ReturnType<typeof server.webSocketFactory>; inbox: string[] }> {
-  const socket = server.webSocketFactory('ws://mock/api/v1/ws');
+  const socket = server.webSocketFactory('ws://mock/ws');
   const inbox: string[] = [];
   socket.onmessage = (event) => {
     if (typeof event.data === 'string') inbox.push(event.data);
@@ -104,14 +104,14 @@ describe('startMemoryServer', () => {
     await server.close();
   });
 
-  it('rejects invalid proto3 JSON with INVALID_FRAME and 1009', async () => {
+  it('rejects invalid proto3 JSON with INVALID_FRAME and 1003', async () => {
     const server = open();
     const { socket, inbox } = await connectRaw(server);
     socket.send('{"hello":{"protoVersion":"not a number"}}');
     await flush();
     const error = JSON.parse(inbox[0] ?? '{}') as { error?: { code?: string } };
     expect(error.error?.code).toBe('ERROR_CODE_INVALID_FRAME');
-    expect(server.latest().closeCode).toBe(1009);
+    expect(server.latest().closeCode).toBe(1003);
     await server.close();
   });
 
@@ -141,7 +141,7 @@ describe('startMemoryServer', () => {
 describe('startMockServer', () => {
   it('listens on a real port and speaks the same protocol', async () => {
     const server = await startMockServer();
-    expect(server.url).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/api\/v1\/ws$/);
+    expect(server.url).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/ws$/);
 
     const socket = new WebSocket(server.url);
     const inbox: string[] = [];
