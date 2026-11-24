@@ -72,4 +72,8 @@ internal static partial class RealtimeLog
     [LoggerMessage(EventId = 1016, Level = LogLevel.Warning,
         Message = "Realtime endpoint received a request that is not a WebSocket upgrade. Ensure app.UseWebSockets() runs before the endpoint middleware.")]
     public static partial void NotAWebSocketRequest(ILogger logger);
+
+    [LoggerMessage(EventId = 1017, Level = LogLevel.Warning,
+        Message = "No session authenticator is registered and development tokens are off; every realtime Hello will be rejected with UNAUTHENTICATED.")]
+    public static partial void NoSessionAuthenticator(ILogger logger);
 }

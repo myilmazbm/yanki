@@ -136,6 +136,23 @@ public sealed class HandshakeTests
     }
 
     [Fact]
+    public async Task WithoutAnAuthenticatorOrDevTokens_HelloIsRejectedWithUnauthenticatedAnd1008()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync(o => o.AllowDevTokens = false);
+        await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+
+        await client.SendAsync(RealtimeTestClient.HelloFrame(DevToken, rid: "rid-1"), cts.Token);
+
+        ServerFrame error = await client.ExpectFrameAsync(cts.Token);
+        Assert.Equal(ErrorCode.Unauthenticated, error.Error.Code);
+        Assert.Equal("rid-1", error.Error.Rid);
+
+        ServerMessage close = await client.ExpectCloseAsync(cts.Token);
+        Assert.Equal(WebSocketCloseStatus.PolicyViolation, close.CloseStatus);
+    }
+
+    [Fact]
     public async Task Bye_ClosesTheConnectionWith1000()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();

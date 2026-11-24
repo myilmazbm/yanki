@@ -8,6 +8,7 @@ using Talky.Core.Sessions;
 using Talky.Realtime.Configuration;
 using Talky.Realtime.Connections;
 using Talky.Realtime.Diagnostics;
+using Talky.Realtime.Sessions;
 
 namespace Talky.Realtime;
 
@@ -24,7 +25,7 @@ public static class RealtimeEndpointRouteBuilderExtensions
     /// </summary>
     /// <remarks>
     /// <para><c>app.UseWebSockets()</c> must run before the endpoint middleware; without it every
-    /// request is answered with 400 and a warning is logged.</para>
+    /// request is answered with 400.</para>
     /// <para>The endpoint authenticates through the <c>Hello</c> frame, not through HTTP. A host
     /// with a global authorization fallback policy should call <c>.AllowAnonymous()</c> on the
     /// returned builder, or place the route outside the policy.</para>
@@ -36,15 +37,14 @@ public static class RealtimeEndpointRouteBuilderExtensions
         IServiceProvider services = endpoints.ServiceProvider;
         RealtimeOptions options = services.GetRequiredService<IOptions<RealtimeOptions>>().Value;
 
-        if (services.GetService<ISessionAuthenticator>() is null)
-        {
-            throw new InvalidOperationException(
-                "No ISessionAuthenticator is registered. Register one (Talky.Identity) or set " +
-                "Talky:Realtime:AllowDevTokens to true in development.");
-        }
-
         var handler = services.GetRequiredService<RealtimeConnectionHandler>();
         ILogger logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(RealtimeMetrics.MeterName);
+
+        if (services.GetRequiredService<ISessionAuthenticator>() is FailClosedSessionAuthenticator)
+        {
+            RealtimeLog.NoSessionAuthenticator(logger);
+        }
+
         RealtimeLog.EndpointConfigured(
             logger,
             options.Path,
@@ -54,8 +54,9 @@ public static class RealtimeEndpointRouteBuilderExtensions
             options.OutboundQueueCapacity,
             options.MaxConnectionsPerUser);
 
+        // GET carries HTTP/1.1 upgrades; HTTP/2 WebSockets (RFC 8441) arrive as extended CONNECT.
         return endpoints
-            .MapGet(options.Path, (RequestDelegate)handler.HandleAsync)
+            .MapMethods(options.Path, [HttpMethods.Get, HttpMethods.Connect], (RequestDelegate)handler.HandleAsync)
             .WithName(EndpointName)
             .WithDisplayName("Talky realtime WebSocket");
     }

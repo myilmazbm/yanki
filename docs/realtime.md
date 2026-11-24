@@ -26,11 +26,14 @@ app.MapTalkyRealtime();       // Talky:Realtime:Path üzerine haritalar, varsay�
 - `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır ve tek seferlik bir uyarı loglanır.
 - Kimlik doğrulama HTTP değil **`Hello` çerçevesi** üzerinden yapılır. Ana hatta genel bir
   authorization fallback politikası varsa endpoint'te `.AllowAnonymous()` çağırın.
-- Hiç `ISessionAuthenticator` kayıtlı değilse `MapTalkyRealtime` açılışta anlaşılır bir
-  `InvalidOperationException` ile durur.
+- Gerçek bir `ISessionAuthenticator` kayıtlı değilse ve geliştirme jetonları kapalıysa modül
+  **kapalı-güvenli** (fail-closed) bir doğrulayıcı kaydeder: düğüm açılır, açılışta tek bir uyarı
+  (olay 1017) loglanır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 ile yanıtlanır. Talky.Identity
+  (M1) kendi doğrulayıcısını düz `AddSingleton` ile kaydeder; `AddTalkyRealtime`'dan önce kaydederse
+  `TryAdd` hiçbir şey yapmaz, sonra kaydederse son kayıt olarak o çözülür — sıra fark etmez.
 
-Modülün ana hattan beklediği kayıtlar: `INodeInfo`, `IDrainCoordinator` ve (geliştirme dışında)
-bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProvider.System` eklenir.
+Modülün ana hattan beklediği kayıtlar: `INodeInfo`, `IDrainCoordinator` ve (M1'den itibaren)
+gerçek bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProvider.System` eklenir.
 
 ## Bağlantı yaşam döngüsü
 
@@ -147,7 +150,7 @@ bu yüzden tekrar tekrar çağrılması güvenlidir.
 | `PongTimeoutMs` | `10000` | Yalnızca istemci ipucu; sunucu uygulamaz. |
 | `MaxFrameBytes` | `65536` | Kabul edilen en büyük gelen çerçeve; aşılırsa 1009. |
 | `OutboundQueueCapacity` | `256` | Bağlantı başına giden kuyruk. %75'i geçici çerçeve eşiğidir. |
-| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır. |
+| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır; `Development` ortamı dışında ana hat (`talky.exe`) bunu açılışta reddeder, `Talky:Server:AllowInsecureHttp=true` olan laboratuvar düğümleri hariç. Kapalıyken ve gerçek doğrulayıcı yokken her `Hello` reddedilir. |
 | `MaxConnectionsPerUser` | `16` | Kullanıcı başına eşzamanlı bağlantı tavanı. |
 
 Değerler DataAnnotations ile sınırlıdır ve `ValidateOnStart` sayesinde hatalı bir yapılandırma
