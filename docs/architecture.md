@@ -258,7 +258,7 @@ Performans bütçesi tek yerde tutulur: `docs/plan-v1.md` §6 (p99 hedefleri, d�
 ikinci bir bütçe yoktur. Yük testleri M2'de gecelik koşuya girer (`docs/plan-v1.md` §7).
 
 Yeniden başlatmada yeniden bağlanma dalgası en çok 10 sn'ye yayılır: drain eden düğüm herkese
-`Reconnect{delayMs = min(10000, …)}` gönderir, istemci `[0, delayMs]` aralığında rastgele bekler
+`Reconnect{delayMs: 10000}` gönderir, istemci `[0, delayMs]` aralığında rastgele bekler
 (`docs/protocol.md`).
 
 ## 13. Riskler
