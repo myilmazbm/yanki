@@ -7,6 +7,11 @@ Bütün betikler `deploy/windows/` ve `deploy/livekit/` altındadır, PowerShell
 yükseltilmiş oturum ister ve **`-WhatIf` destekler**. Bir sunucuda ilk kez çalıştırmadan
 önce her zaman `-WhatIf` ile çalıştırın.
 
+> **Durum (M0).** Bu kılavuz v1'in hedeflenen işletimini anlatır. M0'da yalnızca host
+> (`talky.exe`), CLI (`serve`, `migrate`, `doctor`, `config`), SQL şeması, `/ws` el sıkışması
+> ve kurulum betikleri/MSI vardır. Mesh, rol ayrımı, admin paneli, dosya payı ve arama
+> aşağıda **planlı** olarak, kilometre taşıyla işaretlidir; takvim `docs/plan-v1.md` bölüm 9.
+
 ---
 
 ## 1. Ön koşullar
@@ -95,7 +100,10 @@ Set-Acl -Path $keyPath -AclObject $acl
 ```
 
 3. Parmak izini `Install-Talky.ps1 -CertificateThumbprint` ile verin; betik onu
-   `Talky:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`).
+   `Talky:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`). `-Urls` içinde
+   https varken parmak izi verilmezse betik hiçbir şey yazmadan durur. Sertifikasız
+   laboratuvar düğümü için yalnızca http URL'leri verin (`-Urls http://+:8080`); betik o
+   zaman `AllowInsecureHttp=true` yazar.
 
 LiveKit'in gömülü TURN'ü ayrı bir **PEM** çifti ister (`turn.cert_file` / `turn.key_file`)
 ve bunlar dosya olarak durur; TLS'i yük dengeleyici sonlandırıyorsa `external_tls: true`
@@ -119,59 +127,87 @@ kullanın ve dosyaları hiç oluşturmayın.
 
 `-WhatIf` çıktısı beklediğinizle örtüşüyorsa aynı komutu `-WhatIf` olmadan çalıştırın.
 
-Betik sırayla: klasörleri açar, ACL'leri uygular (`InstallDir` üzerinde okuma+çalıştırma,
-`DataDir`/`logs`/`index` üzerinde değiştirme), yayın çıktısını kopyalar,
-`appsettings.json`'ı şablondan üretir, servisi **Automatic (Delayed Start)** olarak kaydeder,
-kurtarma eylemlerini 5 sn / 10 sn / 30 sn olarak ayarlar, güvenlik duvarı kurallarını ekler,
-servisi başlatır ve `talky doctor` çalıştırır.
+**Betik yolu** — `Install-Talky.ps1` sırayla: klasörleri açar, ACL'leri uygular
+(`InstallDir` üzerinde okuma+çalıştırma, `DataDir`/`logs`/`index` üzerinde değiştirme),
+Windows Olay Günlüğü kaynağı `Talky`'yi (Application) oluşturur, yayın çıktısını kopyalar,
+`appsettings.json`'ı şablondan üretir, `talky migrate` ile şemayı uygular, servisi
+**Automatic (Delayed Start)** olarak `"<InstallDir>\talky.exe" --data-dir "<DataDir>"`
+komut satırıyla kaydeder, kurtarma eylemlerini 5 sn / 10 sn / 30 sn olarak ayarlar, güvenlik
+duvarı kurallarını ekler (`Set-TalkyFirewall.ps1`), servisi başlatır ve `talky doctor`
+çalıştırır. Servis başlamazsa `doctor` yine çalışır, betik hata verir ve
+`<DataDir>\logs`'u gösterir.
 
-MSI ile kurulum (kurumsal dağıtım araçları için):
+Var olan bir düğümde betik `<DataDir>\appsettings.json`'ı **korur** (bunu tek satırla
+söyler); dosya yalnızca `-ConfigOnly` veya `-Force` ile, zaman damgalı bir yedek alınarak
+yeniden üretilir. Var olan servisin oturum hesabı yalnızca `-ServiceAccount` verildiğinde
+değişir. Şemayı bir DBA uyguluyorsa `-SkipMigrate` verin.
+
+**MSI yolu** (kurumsal dağıtım araçları için). MSI dosyaları kurar, servisi **durmuş**
+olarak kaydeder ve Olay Günlüğü kaynağını oluşturur; `appsettings.json` yazmaz, güvenlik
+duvarına dokunmaz ve servisi başlatmaz. Sıra:
 
 ```powershell
 msiexec /i Talky.Server-<sürüm>.msi SERVICE_ACCOUNT="CORP\talky$" DATADIR="D:\TalkyData" /qn /l*v install.log
-# MSI ACL uygulamaz; gMSA kullanılıyorsa hemen ardından:
 .\deploy\windows\Install-Talky.ps1 -AclOnly -ServiceAccount 'CORP\talky$' -DataDir 'D:\TalkyData'
-# ve %ProgramData%\Talky\appsettings.json içindeki yer tutucuları doldurun:
 .\deploy\windows\Install-Talky.ps1 -ConfigOnly -DataDir 'D:\TalkyData' -SqlConnectionString '…' -CertificateThumbprint '…'
+& 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'
+.\deploy\windows\Set-TalkyFirewall.ps1
+Start-Service Talky
+& 'C:\Program Files\Talky\talky.exe' doctor --data-dir 'D:\TalkyData'
 ```
 
 MSI, LocalSystem'e varsayılan verir ve gMSA'yı `SERVICE_ACCOUNT` ile alır; `SERVICE_PASSWORD`
-her zaman boş kalır. Kurulumdan sonra kurtarma ayarlarını doğrulayın:
+her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.json`'da
+(`Talky:Node:Roles`) durur. MSI yükseltmesi de servisi başlatmaz; yükseltmeden sonra
+`Start-Service Talky` gerekir. Kurulumdan sonra kurtarma ayarlarını doğrulayın:
 
 ```powershell
 sc.exe qfailure Talky      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
 sc.exe qc Talky            # START_TYPE AUTO_START (DELAYED)
 ```
 
-### 4.2 Üç düğümlü küme
+**Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
+`/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri). Servis kurup
+kaldırdığı için yalnızca atılabilir bir VM'de, yükseltilmiş oturumda ve
+`-AcknowledgeServiceInstall` ile çalıştırılır. Henüz hiç çalıştırılmadı.
 
-Tipik yerleşim: iki `api` düğümü, bir `search` düğümü, ayrı SQL AG, ayrı LiveKit düğümü.
+**SQL izinleri.** `talky migrate` kurulumu yapan yönetici hesabıyla (Integrated Security
+ise o Windows kimliğiyle) çalışır: veritabanı yoksa oluşturur (`dbcreator`), varsa üzerinde
+`db_owner` gerekir (`ALTER DATABASE … READ_COMMITTED_SNAPSHOT` ve şema değişiklikleri); kilit
+için `master`'da `sp_getapplock` kullanır. Servis hesabı (gMSA) şema değiştirmez: veritabanında
+bir login/kullanıcı ile `db_datareader` ve `db_datawriter` yeterlidir.
+`Test-TalkyPrerequisites.ps1` SQL'i betiği çalıştıran hesapla dener, gMSA ile değil; gMSA
+login'ini DBA ile ayrıca doğrulayın. Şemayı DBA uyguluyorsa ona `talky migrate`'i (veya
+`-SkipMigrate` ile kurulum sonrası) çalıştırtın.
+
+### 4.2 Üç düğümlü küme (planlı, M2)
+
+Düğümler arası yayın (gRPC mesh) ve rol ayrımı **M2**'de gelir. M0'da birden fazla düğüm
+kurulabilir ama düğümler birbirini tanımaz; yük dengeleyici arkasında birden çok `api`
+düğümü çapraz düğüm dağıtımı olmadan çalışır. `Talky:Node:Roles` bugün yalnızca bilgi
+amaçlıdır (`/api/v1/ping` gösterir), hiçbir şeyi açıp kapatmaz.
+
+Hedef yerleşim: iki `api` düğümü, bir `search` düğümü (M3), ayrı SQL AG, ayrı LiveKit
+düğümü. Düğüm keşfi SQL'deki `cluster_nodes` kaydıyla yapılacak; mesh için gerekenleri
+(port, güvenlik duvarı kuralı) M2 ekler.
 
 ```powershell
 # node-01 ve node-02 (api + worker)
 .\deploy\windows\Install-Talky.ps1 `
     -ServiceAccount 'CORP\talky$' -Roles api,worker `
     -SqlConnectionString 'Server=talky-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
-    -CertificateThumbprint <parmak-izi> `
-    -MeshSeeds node-01.corp,node-02.corp,node-03.corp `
-    -FileShare \\corp\dfs\talky\files
+    -CertificateThumbprint <parmak-izi>
 
-# node-03 (search)
+# node-03 (search, M3)
 .\deploy\windows\Install-Talky.ps1 `
     -ServiceAccount 'CORP\talky$' -Roles search `
     -SqlConnectionString 'Server=talky-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
     -CertificateThumbprint <parmak-izi> `
-    -MeshSeeds node-01.corp,node-02.corp,node-03.corp `
     -DataDir D:\TalkyData          # indeks NVMe üzerinde olsun
 ```
 
-`-MeshSeeds` her düğümde **aynı tam listeyi** içerir; düğüm kendini listeden eler. Mesh
-kuralı yalnızca `-MeshSeeds` verildiğinde açılır ve varsayılan olarak yerel alt ağa
-kısıtlıdır:
-
-```powershell
-.\deploy\windows\Set-TalkyFirewall.ps1 -MeshRemoteAddress 10.20.30.0/24
-```
+`talky migrate` yalnızca ilk düğümde gereklidir; diğerlerinde zararsızdır (kilit alır,
+bekleyen göç yoksa hiçbir şey yapmaz).
 
 Medya düğümü:
 
@@ -187,7 +223,7 @@ Medya düğümü:
 |---|---|---|---|
 | 8443 | TCP | Talky düğümü | İstemciler / yük dengeleyici |
 | 8080 | TCP | Talky düğümü | Yalnızca TLS'i yük dengeleyici sonlandırıyorsa (`-EnableHttp`) |
-| 9443 | TCP | Talky düğümü | Yalnızca diğer Talky düğümleri |
+| 9443 | TCP | Talky düğümü | Planlı (M2, mesh): yalnızca diğer Talky düğümleri. Bugün açılmaz |
 | 7880 | TCP | LiveKit | Yalnızca Talky `api` düğümleri |
 | 7881 | TCP | LiveKit | İstemciler (UDP engelliyse) |
 | 7882 | UDP | LiveKit | İstemciler |
@@ -210,6 +246,11 @@ Medya düğümü:
   heartbeat'i 25 sn'dir). Daha kısa bir değer bağlantıları gereksiz yere koparır.
 - TLS'i yük dengeleyici sonlandırıyorsa arka uçta 8080 kullanılabilir; bu durumda 8080
   yalnızca yük dengeleyicinin alt ağına açılmalıdır (`Set-TalkyFirewall.ps1 -EnableHttp`).
+  `-EnableHttp` yalnızca güvenlik duvarını açar; `<DataDir>\appsettings.json`'da şu üç
+  ayarı elle yapın (betik http/https karışık listeyi bilerek reddeder):
+  `Talky:Server:Urls` içine `http://+:8080`, `Talky:Server:AllowInsecureHttp: true` ve
+  `Talky:Server:KnownProxies` içine yük dengeleyicinin IP adresleri. Var olan dosya
+  sonraki kurulumlarda korunur.
 
 ---
 
@@ -222,22 +263,28 @@ Düğüm başına sıra (aynı anda **tek** düğüm):
 
 1. **Boşalt.** Düğüme boşaltma sinyali verilir. `/readyz` derhal **503** dönmeye başlar;
    yük dengeleyici düğümü havuzdan çıkarır ve yeni bağlantı gelmez.
-2. **İstemcileri nazikçe gönder.** Düğüm açık WebSocket oturumlarına `Reconnect{delayMs}`
-   çerçevesi gönderir. İstemciler yeniden bağlanmayı `[0, delayMs]` aralığında rastgele
-   geciktirir — 30 sn'lik pencere, tek bir düğüme yığılan sürü etkisini önler.
-3. **30 saniye bekle.** Bu süre boyunca düğüm devam eden istekleri tamamlar; yeni istek
-   almaz.
-4. **Durdur, değiştir, başlat.**
+2. **İstemcileri nazikçe gönder.** Düğüm açık WebSocket oturumlarına
+   `Reconnect{delayMs = min(10000, boşaltma süresi)}` çerçevesi gönderir; boşaltma sırasında
+   gelen yeni bağlantılar 1013 koduyla kapatılır. İstemciler yeniden bağlanmayı
+   `[0, delayMs]` aralığında rastgele geciktirir — en fazla 10 sn'lik pencere, tek bir
+   düğüme yığılan sürü etkisini önler.
+3. **Boşaltma süresini bekle** (`Talky:Server:DrainSeconds`, varsayılan 30 sn). Bu süre
+   boyunca düğüm devam eden istekleri tamamlar; yeni istek almaz.
+4. **Şemayı uygula — yalnızca ilk yükseltilen düğümden, bir kez.** Yeni sürümün
+   `talky migrate`'i, diğer düğümler yeniden başlamadan önce çalışır. `Install-Talky.ps1`
+   bunu servisi başlatmadan önce kendisi yapar; sonraki düğümlerde tekrar çalışması
+   zararsızdır (bekleyen göç yoktur) ya da `-SkipMigrate` ile atlanır.
+5. **Durdur, değiştir, başlat.**
 
 ```powershell
 # 1-3: sürücü betiği yerine servis üzerinden en basit yol
-Stop-Service Talky            # boşaltma koordinatörü 503 + Reconnect + 30 sn'yi kendi yürütür
-.\deploy\windows\Install-Talky.ps1 -ServiceAccount 'CORP\talky$' -Roles api,worker `
-    -SqlConnectionString '…' -CertificateThumbprint '…' -MeshSeeds …
-# Install-Talky.ps1 servisi zaten durdurur, dosyaları değiştirir ve başlatır.
+Stop-Service Talky            # boşaltma koordinatörü 503 + Reconnect + boşaltma süresini kendi yürütür
+.\deploy\windows\Install-Talky.ps1 -SourceDir <yeni-yayın>
+# Install-Talky.ps1 servisi zaten durdurur, dosyaları değiştirir, migrate çalıştırır ve
+# başlatır; var olan appsettings.json ve servis hesabı korunur.
 ```
 
-5. **Doğrula**, sonra bir sonraki düğüme geç:
+6. **Doğrula**, sonra bir sonraki düğüme geç:
 
 ```powershell
 Invoke-WebRequest https://node-01.corp:8443/readyz -UseBasicParsing   # 200 olmalı
@@ -249,15 +296,17 @@ Kurallar:
 - **Veritabanı göçleri geriye uyumlu olmalıdır.** Yuvarlanan yükseltme sırasında eski ve yeni
   sürüm aynı şemaya aynı anda yazar. Sütun silme ve yeniden adlandırma iki sürüme yayılır:
   önce yaz-ve-oku, sonra bir sonraki sürümde temizle.
-- Küme içinde **en fazla bir minör sürüm farkı** kabul edilir. Mesh el sıkışması sürümü
-  taşır ve uyumsuzluğu loglar.
+- Küme içinde **en fazla bir minör sürüm farkı** kabul edilir. Planlı (M2): mesh el
+  sıkışması sürümü taşıyacak ve uyumsuzluğu loglayacak.
 - MSI ile yükseltme `MajorUpgrade Schedule="afterInstallInitialize"` kullanır: eski sürüm
   önce kaldırılır, sonra yenisi kurulur — tek dosyalık host hiçbir zaman kullanımdayken
-  değiştirilmez. `DataDir` ve `appsettings.json` yükseltmede korunur.
+  değiştirilmez. `DataDir` ve `appsettings.json` yükseltmede korunur. MSI servisi
+  başlatmaz: `talky migrate` (ilk düğümde), sonra `Start-Service Talky`.
 
 Geri alma: bir önceki MSI'yi kurun (`msiexec /x` sonra eski sürümü `/i`) veya bir önceki
-yayın klasörünü `Install-Talky.ps1 -SourceDir` ile geri kopyalayın. Şema geriye uyumlu
-olduğu için veri geri alma gerekmez.
+yayın klasörünü `Install-Talky.ps1 -SourceDir <eski-yayın> -SkipMigrate` ile geri
+kopyalayın (yapılandırma ve servis hesabı korunur). Şema geriye uyumlu olduğu için veri
+geri alma gerekmez.
 
 ---
 
@@ -268,10 +317,10 @@ Yedeklenmesi gereken **iki** şey vardır. Üçüncüsü yoktur.
 | Ne | Nasıl | Sıklık |
 |---|---|---|
 | SQL Server `Talky` veritabanı | SQL native backup (FULL + DIFF + LOG), sıkıştırılmış ve doğrulanmış | FULL haftalık, DIFF günlük, LOG 15 dk |
-| Dosya payı `\\corp\dfs\talky\files` | Müşterinin standart dosya yedeklemesi veya DFS replikasyonu | Günlük |
+| Dosya payı `\\corp\dfs\talky\files` (planlı, M4) | Müşterinin standart dosya yedeklemesi veya DFS replikasyonu | Günlük |
 
-Yedeklenmesi **gerekmeyenler**: Lucene.NET arama indeksi (türetilmiş veridir, SQL'den
-yeniden kurulur), loglar, `InstallDir` (MSI'den yeniden kurulur).
+Yedeklenmesi **gerekmeyenler**: Lucene.NET arama indeksi (planlı, M3; türetilmiş veridir,
+SQL'den yeniden kurulur), loglar, `InstallDir` (MSI'den yeniden kurulur).
 
 ```sql
 BACKUP DATABASE [Talky] TO DISK = N'\\yedek\sql\Talky_FULL.bak'
@@ -302,14 +351,14 @@ pay geri yükleme).
 
 | Ne | Nerede |
 |---|---|
-| Talky düğümü (JSON, günlük döner, 31 dosya) | `%ProgramData%\Talky\logs\talky-<tarih>.log` |
-| Talky uyarı ve hataları | Windows Olay Günlüğü → Application, kaynak `Talky` |
+| Talky düğümü (JSON, günlük döner, son 30 dosya tutulur — `Talky:Logging:RetainedFileCount`) | `<DataDir>\logs\talky<yyyyMMdd>.log`, ör. `talky20261124.log` |
+| Talky uyarı ve hataları | Windows Olay Günlüğü → Application, kaynak `Talky` (her iki kurulum yolu da kaynağı oluşturur) |
 | LiveKit (WinSW sarmalayıcı, 50 MB × 10) | `%ProgramData%\Talky\logs\livekit\` |
 | MSI kurulumu | `msiexec /l*v <dosya>` ile verdiğiniz yol |
 | Arama indeksi (log değil, veri) | `<DataDir>\index` |
 
 Bir olayı düğümler arasında izlemek için log satırlarındaki `traceId` ve `conversationId`
-alanlarını kullanın; her ikisi de mesh üzerinden taşınır.
+alanlarını kullanın; mesh (M2) geldiğinde her ikisi de düğümler arasında taşınacak.
 
 ---
 
@@ -322,10 +371,21 @@ Her düğümde çalıştırılabilir; kurulumun son adımı olarak `Install-Talk
 & 'C:\Program Files\Talky\talky.exe' doctor --data-dir C:\ProgramData\Talky
 ```
 
-Denetlediği başlıklar: yapılandırmada kalan yer tutucular, SQL bağlantısı ve şema sürümü,
-TLS sertifikasının varlığı/geçerliliği/özel anahtarı, dosya payına yazma, LiveKit
-düğümlerine erişim, mesh eşlerinin durumu, `jobs` gecikmesi, disk alanı, saat kayması.
-Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk demektir. Bir düğümü havuza almadan önce
+Bugün var olan denetimler (tam liste):
+
+| Denetim | Ne bakar |
+|---|---|
+| `config` | Bütün `Talky` seçenek bölümleri bağlanıp doğrulanabiliyor mu |
+| `certificate` | Yapılandırılan TLS sertifikası bulunuyor mu, süresi geçmemiş mi, gerçek düğümde geliştirme sertifikası mı |
+| `identity` | `talky.exe` hangi hesapla çalışıyor (üretimde gMSA olmalı, yönetici ya da operatör değil) |
+| `log-directory` | Log klasörü var mı / oluşturulabiliyor mu, bu hesap yazabiliyor mu |
+| `os` | İşletim sistemi; Windows Server dışı laboratuvar olarak işaretlenir |
+| `runtime` | .NET çalışma zamanı ve sunucu GC açık mı |
+| `sql` | Veritabanına erişim, beklenen ayarlar ve bekleyen göçler (bekleyen göç uyarıdır: `talky migrate`) |
+
+Dosya payı, LiveKit, mesh eşleri, `jobs` gecikmesi, disk ve saat kayması denetimleri
+planlıdır ve ilgili özellikle (M2–M5) gelir. Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk
+demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğümü havuza almadan önce
 `doctor` ve `/readyz` birlikte yeşil olmalıdır.
 
 ---
@@ -334,16 +394,16 @@ düğümlerine erişim, mesh eşlerinin durumu, `jobs` gecikmesi, disk alanı, s
 
 | Belirti | Muhtemel sebep | Bakılacak yer |
 |---|---|---|
-| Servis başlıyor, hemen duruyor | `appsettings.json` içinde yer tutucu kalmış veya JSON bozuk | `%ProgramData%\Talky\logs`, ardından `talky doctor` |
+| Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs`, `talky config validate --data-dir <DataDir>`, ardından `talky doctor` |
 | Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok | `Test-ADServiceAccount -Identity talky`, GPO kullanıcı hakları |
 | TLS el sıkışması başarısız, servis ayakta | gMSA sertifikanın özel anahtarını okuyamıyor | Bölüm 3, anahtar dosyası ACL'i |
 | İstemci 401, tarayıcıda kimlik istemi | SPN eksik veya iki hesapta kayıtlı | `setspn -Q HTTP/talky.corp` |
 | Yük dengeleyici bütün düğümleri "down" görüyor | Prob `/healthz` yerine `/readyz` olmalı ya da düğüm boşaltmada | `Invoke-WebRequest .../readyz` |
-| Mesajlar geliyor ama gecikmeli, farklı düğümlerde | Mesh kurulmamış (9443 kapalı veya `MeshSeeds` eksik) | Panelde mesh eş durumu; `Test-NetConnection <eş> -Port 9443` |
-| Aramada yeni mesajlar çıkmıyor | İndeksleme `jobs` gecikmesi ya da `search` düğümü kapalı | Panelde `jobs` gecikmesi; `search` düğümünde `doctor` |
+| (M2) Mesajlar geliyor ama gecikmeli, farklı düğümlerde | Mesh kurulmamış | Admin panelinde (M3) mesh eş durumu; `Test-NetConnection <eş> -Port 9443` |
+| (M3) Aramada yeni mesajlar çıkmıyor | İndeksleme `jobs` gecikmesi ya da `search` düğümü kapalı | Admin panelinde `jobs` gecikmesi; `search` düğümünde `doctor` |
 | Toplantıda bağlanıyor ama ses/görüntü yok | TURN aktarım aralığı (30000–40000/UDP) kapalı; ya da `node_ip` yanlış | `Get-NetFirewallRule -Group LiveKit`; `livekit.yaml` içinde `rtc.node_ip` |
 | Toplantıya hiç katılınamıyor | 7880 proxy'si veya LiveKit servisi kapalı | `Get-Service LiveKit`, `%ProgramData%\Talky\logs\livekit\` |
-| Dosya yüklenmiyor | Pay erişimi ya da AMSI karantinası | `talky doctor` pay denetimi; `jobs` tablosunda tarama işleri |
+| (M4) Dosya yüklenmiyor | Pay erişimi ya da AMSI karantinası | Pay denetimi (M4 ile `doctor`'a gelir); `jobs` tablosunda tarama işleri |
 | Yeniden başlatmadan sonra herkes aynı anda bağlanıyor | `Reconnect{delayMs}` gönderilmeden servis durdurulmuş | Boşaltmayı bölüm 6'daki sıraya göre yapın |
 
 Kaldırma:
