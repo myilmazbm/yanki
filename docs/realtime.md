@@ -23,7 +23,8 @@ app.MapTalkyRealtime();       // Talky:Realtime:Path üzerine haritalar, varsay�
 - `MapTalkyRealtime(IEndpointRouteBuilder)` — `IEndpointConventionBuilder` döndürür, böylece
   `.AllowAnonymous()`, `.RequireHost(...)` gibi kurallar zincirlenebilir. Endpoint adı
   `TalkyRealtime`.
-- `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır ve tek seferlik bir uyarı loglanır.
+- `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır. WebSocket yükseltmesi olmayan her
+  istek 400 alır ve yalnızca `Debug` düzeyinde loglanır (olay 1016).
 - Kimlik doğrulama HTTP değil **`Hello` çerçevesi** üzerinden yapılır. Ana hatta genel bir
   authorization fallback politikası varsa endpoint'te `.AllowAnonymous()` çağırın.
 - Gerçek bir `ISessionAuthenticator` kayıtlı değilse ve geliştirme jetonları kapalıysa modül

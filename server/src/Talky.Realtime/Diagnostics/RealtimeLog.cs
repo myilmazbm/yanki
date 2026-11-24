@@ -33,7 +33,7 @@ internal static partial class RealtimeLog
         Message = "Realtime connection {ConnectionId} transport failure.")]
     public static partial void TransportFailure(ILogger logger, Guid connectionId, Exception exception);
 
-    [LoggerMessage(EventId = 1007, Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1007, Level = LogLevel.Debug,
         Message = "Realtime connection {ConnectionId} did not send Hello within {TimeoutMs} ms; closing.")]
     public static partial void HelloTimedOut(ILogger logger, Guid connectionId, double timeoutMs);
 
@@ -69,8 +69,8 @@ internal static partial class RealtimeLog
         Message = "Unhandled failure on realtime connection {ConnectionId}.")]
     public static partial void UnhandledConnectionFailure(ILogger logger, Guid connectionId, Exception exception);
 
-    [LoggerMessage(EventId = 1016, Level = LogLevel.Warning,
-        Message = "Realtime endpoint received a request that is not a WebSocket upgrade. Ensure app.UseWebSockets() runs before the endpoint middleware.")]
+    [LoggerMessage(EventId = 1016, Level = LogLevel.Debug,
+        Message = "Realtime endpoint received a request that is not a WebSocket upgrade; answered 400.")]
     public static partial void NotAWebSocketRequest(ILogger logger);
 
     [LoggerMessage(EventId = 1017, Level = LogLevel.Warning,
