@@ -74,7 +74,7 @@ zaman kapatmadan önce ulaşır.
 
 Bağlantı başına `ArrayPool`'dan 4 KiB'lik tek bir tampon kiralanır. v1'in tüm kontrol çerçeveleri
 buna sığar, yani sık yol tek `ReceiveAsync` + sıfır ek kiralamadır. Parçalı (fragmented) veya daha
-büyük mesajlar geçici olarak `MaxFrameBytes + 1` boyutlu havuz tamponuna taşar ve hemen iade edilir.
+büyük mesajlar geçici olarak `MaxFrameBytes` boyutlu havuz tamponuna taşar ve hemen iade edilir.
 Bağlantı başına 64 KiB ayırmak 15 bin bağlantıda ~1 GB olurdu; bu yüzden büyük tampon asla kalıcı
 değildir.
 
@@ -243,7 +243,8 @@ M0 yalnızca oturum katmanıdır; taşınan tek uygulama trafiği `Ping`/`Pong`'
 
 - **Fan-out.** Konuşma üyelerine olay dağıtımı. `IConnectionRegistry.GetByUser` ve
   `BroadcastAsync` bunun için hazır; sıcak yol `Snapshot()` yerine kullanıcıya göre indeks
-  kullanacak ve tek bir `ServerFrame` nesnesi tüm alıcılarda paylaşılacak (çerçeveler değişmezdir).
+  kullanacak; çerçeve **bir kez kodlanacak ve kodlanmış baytlar** tüm alıcılarda paylaşılacak
+  (bugün her yazıcı döngüsü çerçeveyi kendisi kodlar).
 - **`seq` ve resume.** `Hello.since` haritası bugün okunur ama kullanılmaz. M2'de bağlantı,
   konuşma başına son `seq`'i tutacak; boşluk kapatılabiliyorsa SQL'den tekrar oynatılacak,
   kapatılamıyorsa bugünkü `ResyncRequired` yolu kullanılacak.

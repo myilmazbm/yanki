@@ -347,7 +347,7 @@ internal sealed class RealtimeConnectionHandler(
                 : new InboundMessage(kind, chunk, first.Count, pooled: false);
         }
 
-        byte[] accumulator = ArrayPool<byte>.Shared.Rent(maxBytes + 1);
+        byte[] accumulator = ArrayPool<byte>.Shared.Rent(maxBytes);
         int total = first.Count;
         chunk.AsSpan(0, first.Count).CopyTo(accumulator);
 
