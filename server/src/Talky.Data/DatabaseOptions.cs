@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace Talky.Data;
 
@@ -36,4 +38,46 @@ public sealed class DatabaseOptions
     /// <c>talky migrate</c> as an explicit, auditable step.
     /// </summary>
     public bool MigrateOnStartup { get; set; }
+}
+
+/// <summary>
+/// Validates that <see cref="DatabaseOptions.ConnectionString"/> parses and names a database. Runs
+/// with the data annotations, so every consumer of the options (serve, doctor, migrate) fails through
+/// the normal options-validation path instead of a parse exception during DI resolution.
+/// </summary>
+public sealed class ValidateDatabaseOptions : IValidateOptions<DatabaseOptions>
+{
+    /// <inheritdoc />
+    public ValidateOptionsResult Validate(string? name, DatabaseOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        // Empty is reported by [Required]; do not report it twice.
+        if (string.IsNullOrWhiteSpace(options.ConnectionString))
+        {
+            return ValidateOptionsResult.Skip;
+        }
+
+        // The messages never echo the connection string: it may carry a password.
+        SqlConnectionStringBuilder builder;
+        try
+        {
+            builder = new SqlConnectionStringBuilder(options.ConnectionString);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return ValidateOptionsResult.Fail(
+                $"{DatabaseOptions.SectionName}:ConnectionString is not a valid SQL Server connection string " +
+                "(unknown keyword or malformed value).");
+        }
+
+        if (string.IsNullOrWhiteSpace(builder.InitialCatalog))
+        {
+            return ValidateOptionsResult.Fail(
+                $"{DatabaseOptions.SectionName}:ConnectionString must name the Talky database " +
+                "(Database or Initial Catalog).");
+        }
+
+        return ValidateOptionsResult.Success;
+    }
 }
