@@ -21,7 +21,13 @@ namespace Talky.Data.Jobs;
 /// ORDER BY and the queue is only approximately FIFO.
 /// </para>
 /// <para>Backoff is 5 s doubling per attempt, capped at one hour; after <c>max_attempts</c> the job
-/// is dead-lettered (<see cref="JobState.Dead"/>) rather than retried forever.</para>
+/// is dead-lettered (<see cref="JobState.Dead"/>) rather than retried forever, whether the last
+/// attempt failed or its worker vanished and the claim went stale.</para>
+/// <para>
+/// <c>attempts</c> is incremented by every claim and returned in <see cref="ClaimedJob"/>, so it is the
+/// fencing token: Complete and Fail only touch a row that is still running with the caller's
+/// attempts value.
+/// </para>
 /// </remarks>
 [SuppressMessage(
     "Naming",
@@ -84,43 +90,42 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         UPDATE dbo.jobs
            SET state = 2, locked_by = NULL, locked_at = NULL, last_error = NULL,
                updated_at = @now, completed_at = @now
-         WHERE id = @id AND state = 1;
+         WHERE id = @id AND state = 1 AND attempts = @attempts;
         SELECT @@ROWCOUNT;
         """;
 
+    // One statement: the SET expressions read the row's pre-update attempts, so the backoff and the
+    // dead-letter decision cannot race a concurrent sweep or claim.
     private const string FailSql = """
         SET NOCOUNT ON;
-        DECLARE @attempts int, @max int, @dead bit = 0, @delay int;
-
-        SELECT @attempts = j.attempts, @max = j.max_attempts
-        FROM dbo.jobs AS j WHERE j.id = @id AND j.state = 1;
-
-        IF @attempts IS NOT NULL
-        BEGIN
-            SET @delay = CASE WHEN @attempts >= 10 THEN 3600
-                              WHEN @attempts <= 1 THEN 5
-                              ELSE 5 * POWER(2, @attempts - 1) END;
-            IF @delay > 3600 SET @delay = 3600;
-            IF @attempts >= @max SET @dead = 1;
-
-            UPDATE dbo.jobs
-               SET state = CASE WHEN @dead = 1 THEN 3 ELSE 0 END,
-                   run_at = CASE WHEN @dead = 1 THEN run_at ELSE DATEADD(second, @delay, @now) END,
-                   locked_by = NULL,
-                   locked_at = NULL,
-                   last_error = @error,
-                   updated_at = @now,
-                   completed_at = CASE WHEN @dead = 1 THEN @now ELSE NULL END
-             WHERE id = @id AND state = 1;
-        END;
-
-        SELECT j.state FROM dbo.jobs AS j WHERE j.id = @id;
+        UPDATE dbo.jobs
+           SET state = CASE WHEN attempts >= max_attempts THEN 3 ELSE 0 END,
+               run_at = CASE WHEN attempts >= max_attempts THEN run_at
+                             ELSE DATEADD(second,
+                                          CASE WHEN attempts >= 10 THEN 3600
+                                               WHEN attempts <= 1 THEN 5
+                                               ELSE 5 * POWER(2, attempts - 1) END,
+                                          @now) END,
+               locked_by = NULL,
+               locked_at = NULL,
+               last_error = @error,
+               updated_at = @now,
+               completed_at = CASE WHEN attempts >= max_attempts THEN @now ELSE NULL END
+        OUTPUT inserted.state
+         WHERE id = @id AND state = 1 AND attempts = @attempts;
         """;
 
     private const string RequeueStaleSql = """
         SET NOCOUNT ON;
         UPDATE dbo.jobs
-           SET state = 0, locked_by = NULL, locked_at = NULL, updated_at = @now
+           SET state = CASE WHEN attempts >= max_attempts THEN 3 ELSE 0 END,
+               locked_by = NULL,
+               locked_at = NULL,
+               last_error = CASE WHEN attempts >= max_attempts
+                                 THEN N'Claim went stale on the last allowed attempt (worker lost).'
+                                 ELSE last_error END,
+               updated_at = @now,
+               completed_at = CASE WHEN attempts >= max_attempts THEN @now ELSE NULL END
          WHERE state = 1 AND locked_at IS NOT NULL AND locked_at < @cutoff;
         SELECT @@ROWCOUNT;
         """;
@@ -203,13 +208,16 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
     }
 
     /// <inheritdoc />
-    public async Task<bool> CompleteAsync(Guid jobId, CancellationToken cancellationToken = default)
+    public async Task<bool> CompleteAsync(ClaimedJob claim, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(claim);
+
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
         await using var command = NewCommand(CompleteSql, connection);
-        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = jobId;
+        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = claim.Id;
+        command.Parameters.Add("@attempts", SqlDbType.Int).Value = claim.Attempts;
         AddTimestamp(command, "@now", now);
 
         var affected = await command.ExecuteScalarAsync(cancellationToken);
@@ -217,28 +225,25 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
     }
 
     /// <inheritdoc />
-    public async Task<JobState> FailAsync(
-        Guid jobId,
+    public async Task<JobState?> FailAsync(
+        ClaimedJob claim,
         string errorMessage,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(claim);
         ArgumentNullException.ThrowIfNull(errorMessage);
 
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
         await using var command = NewCommand(FailSql, connection);
-        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = jobId;
+        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = claim.Id;
+        command.Parameters.Add("@attempts", SqlDbType.Int).Value = claim.Attempts;
         command.Parameters.Add("@error", SqlDbType.NVarChar, -1).Value = errorMessage;
         AddTimestamp(command, "@now", now);
 
         var state = await command.ExecuteScalarAsync(cancellationToken);
-        if (state is null or DBNull)
-        {
-            throw new InvalidOperationException($"Job {jobId} does not exist.");
-        }
-
-        return (JobState)Convert.ToInt32(state, CultureInfo.InvariantCulture);
+        return state is null or DBNull ? null : (JobState)Convert.ToInt32(state, CultureInfo.InvariantCulture);
     }
 
     /// <inheritdoc />

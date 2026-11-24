@@ -85,8 +85,8 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
         var claimed = Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
         Assert.Equal(id, claimed.Id);
 
-        Assert.True(await queue.CompleteAsync(id, CancellationToken.None));
-        Assert.False(await queue.CompleteAsync(id, CancellationToken.None));
+        Assert.True(await queue.CompleteAsync(claimed, CancellationToken.None));
+        Assert.False(await queue.CompleteAsync(claimed, CancellationToken.None));
 
         Assert.Equal(1, await CountAsync(jobType, JobState.Succeeded));
         Assert.Empty(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
@@ -102,15 +102,15 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
             jobType, "{}", maxAttempts: 3, cancellationToken: CancellationToken.None);
 
         // Attempt 1 fails: back to pending, but not before now + 5 s.
-        Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
-        Assert.Equal(JobState.Pending, await queue.FailAsync(id, "boom 1", CancellationToken.None));
+        var attempt = Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
+        Assert.Equal(JobState.Pending, await queue.FailAsync(attempt, "boom 1", CancellationToken.None));
         Assert.Empty(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
 
         fixture.Clock.Advance(TimeSpan.FromSeconds(6));
 
         // Attempt 2 fails: pending again, this time behind a 10 s delay.
-        Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
-        Assert.Equal(JobState.Pending, await queue.FailAsync(id, "boom 2", CancellationToken.None));
+        attempt = Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
+        Assert.Equal(JobState.Pending, await queue.FailAsync(attempt, "boom 2", CancellationToken.None));
         Assert.Empty(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
 
         fixture.Clock.Advance(TimeSpan.FromSeconds(6));
@@ -119,8 +119,8 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
         fixture.Clock.Advance(TimeSpan.FromSeconds(6));
 
         // Attempt 3 is the last one: the job is dead-lettered instead of rescheduled.
-        Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
-        Assert.Equal(JobState.Dead, await queue.FailAsync(id, "boom 3", CancellationToken.None));
+        attempt = Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
+        Assert.Equal(JobState.Dead, await queue.FailAsync(attempt, "boom 3", CancellationToken.None));
         Assert.Empty(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
 
         Assert.Equal(1, await CountAsync(jobType, JobState.Dead));
@@ -150,8 +150,8 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
         Assert.Equal(first, racing[0]);
 
         // Once the job is finished the key is free again.
-        Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
-        Assert.True(await queue.CompleteAsync(first, CancellationToken.None));
+        var claim = Assert.Single(await queue.ClaimAsync("w", [jobType], 10, CancellationToken.None));
+        Assert.True(await queue.CompleteAsync(claim, CancellationToken.None));
 
         var third = await queue.EnqueueAsync(jobType, "{}", dedupeKey: key, cancellationToken: CancellationToken.None);
         Assert.NotEqual(first, third);
@@ -163,8 +163,8 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
         var queue = fixture.Resolve<IJobQueue>();
         var jobType = NewType("stale");
 
-        var id = await queue.EnqueueAsync(jobType, "{}", cancellationToken: CancellationToken.None);
-        Assert.Single(await queue.ClaimAsync("dying-worker", [jobType], 10, CancellationToken.None));
+        var id = await queue.EnqueueAsync(jobType, "{}", maxAttempts: 2, cancellationToken: CancellationToken.None);
+        var dying = Assert.Single(await queue.ClaimAsync("dying-worker", [jobType], 10, CancellationToken.None));
 
         // The claim is fresh, so the sweep leaves it alone. (The count is deliberately not asserted:
         // the sweep is table-wide and other tests in this class share the database.)
@@ -180,6 +180,15 @@ public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<
 
         // Requeue does not reset attempts, so a poison job still reaches its dead-letter.
         Assert.Equal(2, reclaimed.Attempts);
+
+        // The dying worker's claim is fenced off: its late Complete does not touch the new attempt.
+        Assert.False(await queue.CompleteAsync(dying, CancellationToken.None));
+        Assert.Equal(JobState.Running, await StateAsync(id));
+
+        // The healthy worker dies too, on the last allowed attempt: the sweep dead-letters the job.
+        fixture.Clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.True(await queue.RequeueStaleAsync(TimeSpan.FromMinutes(1), CancellationToken.None) >= 1);
+        Assert.Equal(JobState.Dead, await StateAsync(id));
     }
 
     [RequiresSqlServerFact]
