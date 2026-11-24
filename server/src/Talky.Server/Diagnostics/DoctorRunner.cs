@@ -124,7 +124,7 @@ internal static class DoctorRunner
                 continue;
             }
 
-            builder.Append(new string(' ', widths[column] - cells[column].Length)).Append("  ");
+            builder.Append(' ', widths[column] - cells[column].Length).Append("  ");
         }
 
         builder.AppendLine();
