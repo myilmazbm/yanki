@@ -33,6 +33,7 @@ public sealed class ClientConnection
 
     private int _closeSignalled;
     private int _aborted;
+    private int _helloReceived;
     private volatile SessionPrincipal? _principal;
     private long _closeRequestedTicks;
     private WebSocketCloseStatus _closeStatus = RealtimeCloseCodes.Normal;
@@ -61,7 +62,9 @@ public sealed class ClientConnection
             // Wait (rather than Drop*) so TryWrite reports the overflow instead of silently
             // discarding a frame; the overflow policy lives in HandleOverflow.
             FullMode = BoundedChannelFullMode.Wait,
-            SingleReader = true,
+            // HandleOverflow drains the queue from producer threads, so the writer loop is not
+            // the only reader.
+            SingleReader = false,
             SingleWriter = false,
             AllowSynchronousContinuations = false,
         });
@@ -84,6 +87,12 @@ public sealed class ClientConnection
 
     /// <summary>True once <c>Welcome</c> has been queued.</summary>
     public bool IsAuthenticated => _principal is not null;
+
+    /// <summary>
+    /// True once a <c>Hello</c> frame has been received, even while authentication is still
+    /// running. The Hello timeout covers receiving the frame only.
+    /// </summary>
+    public bool HelloReceived => Volatile.Read(ref _helloReceived) != 0;
 
     /// <summary>Per-install device id supplied in <c>Hello</c>; empty when the client sent none.</summary>
     public string DeviceId { get; private set; } = string.Empty;
@@ -182,6 +191,8 @@ public sealed class ClientConnection
         }
     }
 
+    internal void MarkHelloReceived() => Volatile.Write(ref _helloReceived, 1);
+
     internal void AttachPrincipal(SessionPrincipal principal, string deviceId, string platform)
     {
         DeviceId = deviceId;
@@ -191,8 +202,11 @@ public sealed class ClientConnection
 
     /// <summary>
     /// The single writer loop. Drains the outbound queue onto the socket and, once the queue is
-    /// completed, sends the close frame. Exits on transport failure or cancellation.
+    /// completed, sends the close frame. Exits on transport failure or cancellation; any other
+    /// failure is logged and aborts the socket so the reader unblocks.
     /// </summary>
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "A faulted writer must not leave a registered connection with a dead writer; the failure is logged and the socket aborted.")]
     internal async Task RunOutboundAsync(CancellationToken cancellationToken)
     {
         try
@@ -217,6 +231,12 @@ public sealed class ClientConnection
         }
         catch (ObjectDisposedException)
         {
+            return;
+        }
+        catch (Exception ex)
+        {
+            RealtimeLog.UnhandledConnectionFailure(_logger, ConnectionId, ex);
+            Abort();
             return;
         }
 

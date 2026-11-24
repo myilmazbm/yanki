@@ -62,11 +62,16 @@ public static class RealtimeServiceCollectionExtensions
         services.AddHostedService<RealtimeSweepService>();
         services.AddHostedService<RealtimeDrainService>();
 
+        // TryAdd: a real authenticator (Talky.Identity, registered with a plain AddSingleton) wins
+        // regardless of order. Registered before this call, it makes the TryAdd a no-op; registered
+        // afterwards, it is the last registration and therefore the one the container resolves.
         if (ResolveAllowDevTokens(section, configure))
         {
-            // TryAdd: a real authenticator registered before this call always wins, and one
-            // registered afterwards replaces this as the last registration.
             services.TryAddSingleton<ISessionAuthenticator, DevTokenSessionAuthenticator>();
+        }
+        else
+        {
+            services.TryAddSingleton<ISessionAuthenticator, FailClosedSessionAuthenticator>();
         }
 
         return services;

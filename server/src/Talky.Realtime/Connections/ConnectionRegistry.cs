@@ -91,14 +91,20 @@ public sealed class ConnectionRegistry : IConnectionRegistry
     internal void Add(ClientConnection connection) =>
         _connections[connection.ConnectionId] = connection;
 
-    /// <summary>Indexes an authenticated connection under its user.</summary>
-    internal void AttachUser(ClientConnection connection, Guid userId)
+    /// <summary>
+    /// Indexes an authenticated connection under its user and, in the same step, selects the
+    /// connections that must be evicted so the user stays within <paramref name="limit"/> live
+    /// connections. Doing both under one lock means two simultaneous handshakes of one user can
+    /// never pick each other as victims.
+    /// </summary>
+    internal IReadOnlyList<ClientConnection> AttachUser(ClientConnection connection, Guid userId, int limit)
     {
         lock (_userGate)
         {
             ConcurrentDictionary<Guid, ClientConnection> bucket =
                 _byUser.GetOrAdd(userId, static _ => new ConcurrentDictionary<Guid, ClientConnection>());
             bucket[connection.ConnectionId] = connection;
+            return SelectEvictions(bucket, limit, connection.ConnectionId);
         }
     }
 
@@ -126,20 +132,17 @@ public sealed class ConnectionRegistry : IConnectionRegistry
     }
 
     /// <summary>
-    /// Selects the connections that must be evicted so the user stays within
-    /// <paramref name="limit"/> live connections. Oldest first; the connection identified by
-    /// <paramref name="keep"/> (the one that just authenticated) is never selected, and
-    /// connections that are already closing are ignored so repeated calls converge.
-    /// Ties on <see cref="ClientConnection.ConnectedAt"/> are broken by connection id, making
-    /// eviction deterministic even when several connections land in the same clock tick.
+    /// Oldest first; the connection identified by <paramref name="keep"/> (the one that just
+    /// authenticated) is never selected, and connections that are already closing are ignored so
+    /// repeated calls converge. Ties on <see cref="ClientConnection.ConnectedAt"/> are broken by
+    /// connection id, making eviction deterministic even when several connections land in the
+    /// same clock tick.
     /// </summary>
-    internal IReadOnlyList<ClientConnection> SelectEvictions(Guid userId, int limit, Guid keep)
+    private static List<ClientConnection> SelectEvictions(
+        ConcurrentDictionary<Guid, ClientConnection> bucket,
+        int limit,
+        Guid keep)
     {
-        if (!_byUser.TryGetValue(userId, out ConcurrentDictionary<Guid, ClientConnection>? bucket))
-        {
-            return [];
-        }
-
         int live = 0;
         foreach (ClientConnection candidate in bucket.Values)
         {

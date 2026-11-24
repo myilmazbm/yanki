@@ -9,6 +9,8 @@ namespace Talky.Realtime.Protocol;
 /// Wire codec for protocol version 1: one WebSocket text frame carries exactly one proto3-JSON
 /// object. Parsing ignores unknown fields (forward compatibility); formatting uses the default
 /// proto3 JSON mapping, so <c>int64</c> fields are emitted as strings and enums by name.
+/// A frame whose <c>oneof body</c> is empty or unknown to this build still parses (its
+/// <c>BodyCase</c> is <c>None</c>); the connection handler decides how to answer it.
 /// </summary>
 /// <remarks>
 /// The parse path decodes UTF-8 into a pooled char buffer, and the format path writes into a
@@ -24,7 +26,7 @@ public static class FrameCodec
     /// <summary>Reason a frame could not be decoded. Safe to log and to send in <c>Error.message</c>.</summary>
     public const string EmptyPayloadMessage = "Frame body is empty.";
 
-    /// <summary>Reason reported when the frame carries no known <c>oneof body</c> member.</summary>
+    /// <summary>Reason reported, after the handshake, for a frame with no known <c>oneof body</c> member.</summary>
     public const string UnknownBodyMessage = "Frame carries no known body.";
 
     /// <summary>Reason reported when the frame exceeds the configured maximum size.</summary>
@@ -37,7 +39,7 @@ public static class FrameCodec
     /// <param name="maxBytes">Maximum accepted payload size in bytes.</param>
     /// <param name="frame">The decoded frame when the method returns <see langword="true"/>.</param>
     /// <param name="error">A short English reason when the method returns <see langword="false"/>.</param>
-    /// <returns><see langword="true"/> when the payload is a well-formed frame with a known body.</returns>
+    /// <returns><see langword="true"/> when the payload is a well-formed frame, known body or not.</returns>
     public static bool TryParseClientFrame(
         ReadOnlySpan<byte> utf8Json,
         int maxBytes,
@@ -61,16 +63,7 @@ public static class FrameCodec
         char[] buffer = ArrayPool<char>.Shared.Rent(Encoding.UTF8.GetMaxCharCount(utf8Json.Length));
         try
         {
-            int charCount;
-            try
-            {
-                charCount = Encoding.UTF8.GetChars(utf8Json, buffer);
-            }
-            catch (DecoderFallbackException)
-            {
-                error = "Frame is not valid UTF-8.";
-                return false;
-            }
+            int charCount = Encoding.UTF8.GetChars(utf8Json, buffer);
 
             using var reader = new PooledCharReader(buffer.AsMemory(0, charCount));
             try
@@ -85,13 +78,6 @@ public static class FrameCodec
             catch (InvalidProtocolBufferException)
             {
                 error = "Frame does not match the protocol schema.";
-                return false;
-            }
-
-            if (frame.BodyCase == ClientFrame.BodyOneofCase.None)
-            {
-                frame = null;
-                error = UnknownBodyMessage;
                 return false;
             }
 
@@ -138,8 +124,4 @@ public static class FrameCodec
     /// <summary>Decodes a server frame from proto3 JSON. Convenience for tests and the load tool.</summary>
     public static ServerFrame ParseServerFrame(string json) =>
         Parser.Parse<ServerFrame>(json);
-
-    /// <summary>Decodes a client frame from proto3 JSON. Convenience for tests and fixtures.</summary>
-    public static ClientFrame ParseClientFrame(string json) =>
-        Parser.Parse<ClientFrame>(json);
 }

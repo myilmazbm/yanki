@@ -23,21 +23,25 @@ app.MapTalkyRealtime();       // Talky:Realtime:Path üzerine haritalar, varsay�
 - `MapTalkyRealtime(IEndpointRouteBuilder)` — `IEndpointConventionBuilder` döndürür, böylece
   `.AllowAnonymous()`, `.RequireHost(...)` gibi kurallar zincirlenebilir. Endpoint adı
   `TalkyRealtime`.
-- `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır ve tek seferlik bir uyarı loglanır.
+- `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır. WebSocket yükseltmesi olmayan her
+  istek 400 alır ve yalnızca `Debug` düzeyinde loglanır (olay 1016).
 - Kimlik doğrulama HTTP değil **`Hello` çerçevesi** üzerinden yapılır. Ana hatta genel bir
   authorization fallback politikası varsa endpoint'te `.AllowAnonymous()` çağırın.
-- Hiç `ISessionAuthenticator` kayıtlı değilse `MapTalkyRealtime` açılışta anlaşılır bir
-  `InvalidOperationException` ile durur.
+- Gerçek bir `ISessionAuthenticator` kayıtlı değilse ve geliştirme jetonları kapalıysa modül
+  **kapalı-güvenli** (fail-closed) bir doğrulayıcı kaydeder: düğüm açılır, açılışta tek bir uyarı
+  (olay 1017) loglanır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 ile yanıtlanır. Talky.Identity
+  (M1) kendi doğrulayıcısını düz `AddSingleton` ile kaydeder; `AddTalkyRealtime`'dan önce kaydederse
+  `TryAdd` hiçbir şey yapmaz, sonra kaydederse son kayıt olarak o çözülür — sıra fark etmez.
 
-Modülün ana hattan beklediği kayıtlar: `INodeInfo`, `IDrainCoordinator` ve (geliştirme dışında)
-bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProvider.System` eklenir.
+Modülün ana hattan beklediği kayıtlar: `INodeInfo`, `IDrainCoordinator` ve (M1'den itibaren)
+gerçek bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProvider.System` eklenir.
 
 ## Bağlantı yaşam döngüsü
 
 ```
   HTTP GET /ws (Upgrade)
         │
-        ├─ düğüm drain ediyorsa → Reconnect{reason:"draining"} + kapatma 1013
+        ├─ düğüm drain ediyorsa → yalnızca kapatma 1013 (Reconnect çerçevesi yok)
         │
         ▼
   AcceptWebSocketAsync(KeepAliveInterval, KeepAliveTimeout)
@@ -51,7 +55,8 @@ bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProvider.Sys
         │ Ping  ────────────────────────────── ┤ Pong
         │ Hello (ikinci) ────────────────────  ┤ Error{ALREADY_AUTHENTICATED} (açık kalır)
         │ Bye   ──────────────────────────────►│ kapatma 1000
-        │ bozuk/ikili çerçeve ────────────────►│ Error{INVALID_FRAME} + 1003
+        │ bilinmeyen/boş gövde ───────────────  ┤ Error{INVALID_FRAME, rid} (açık kalır)
+        │ bozuk JSON/ikili çerçeve ───────────►│ Error{INVALID_FRAME} + 1003
         │ büyük çerçeve ──────────────────────►│ Error{INVALID_FRAME} + 1009
         ▼                                      ▼
   registry'den çıkarılır ◄──────────── kuyruk boşaltılır, CloseOutputAsync
@@ -70,7 +75,7 @@ zaman kapatmadan önce ulaşır.
 
 Bağlantı başına `ArrayPool`'dan 4 KiB'lik tek bir tampon kiralanır. v1'in tüm kontrol çerçeveleri
 buna sığar, yani sık yol tek `ReceiveAsync` + sıfır ek kiralamadır. Parçalı (fragmented) veya daha
-büyük mesajlar geçici olarak `MaxFrameBytes + 1` boyutlu havuz tamponuna taşar ve hemen iade edilir.
+büyük mesajlar geçici olarak `MaxFrameBytes` boyutlu havuz tamponuna taşar ve hemen iade edilir.
 Bağlantı başına 64 KiB ayırmak 15 bin bağlantıda ~1 GB olurdu; bu yüzden büyük tampon asla kalıcı
 değildir.
 
@@ -81,12 +86,14 @@ değildir.
 | Yön | Mekanizma | Uygulama |
 |---|---|---|
 | Sunucu → istemci ölü mü? | RFC 6455 protokol ping/pong | `WebSocketAcceptContext.KeepAliveInterval = HeartbeatInterval`, `KeepAliveTimeout = 2 × HeartbeatInterval` (.NET 9+). Taşıma katmanı ölü eşi kendi kapatır; uygulama kodu çalışmaz, tarayıcı istemcisi hiçbir şey yazmaz. |
-| İstemci → sunucu ölü mü? | Uygulama `Ping`/`Pong` | İstemci `Welcome.heartbeatIntervalMs` aralığıyla `Ping{ts}` yollar; sunucu `Pong{ts, serverTime}` ile `ts`'i **birebir** geri döndürür. `PongTimeoutMs` yalnızca istemci ipucudur, sunucu onu uygulamaz. |
+| İstemci → sunucu ölü mü? | Uygulama `Ping`/`Pong` | İstemci `Welcome.heartbeatIntervalMs` aralığıyla `Ping{ts}` yollar; sunucu `Pong{ts, serverTime}` ile `ts`'i **birebir** geri döndürür. |
 
 **Bağlantı başına zamanlayıcı yoktur.** Tüm zamana bağlı işleri tek bir `PeriodicTimer` süpürmesi
 yapar (`RealtimeSweepService`):
 
-- `Hello` göndermeyen bağlantıları `Error{HELLO_REQUIRED}` + 1008 ile kapatır;
+- `Hello` göndermeyen bağlantıları `Error{HELLO_REQUIRED}` + 1008 ile kapatır. Zaman aşımı yalnızca
+  `Hello` çerçevesinin **alınmasını** kapsar: `Hello` gelmişse kimlik doğrulama sürerken bağlantı
+  süpürülmez; süreyi sınırlamak `ISessionAuthenticator` uygulamasının sorumluluğudur;
 - kapatma isteği üzerinden `CloseGrace` (2 sn) geçmiş, hâlâ kapanmamış soketleri `Abort()` eder.
 
 Süpürme aralığı `min(HelloTimeoutMs, 5 sn)`'dir: varsayılanda tam 5 saniye, testler veya sıkı bir
@@ -116,13 +123,14 @@ sessizce yutmak yerine `false` döndürmesidir. Politika tek bir yerde, `HandleO
 
 `RealtimeDrainService`, `IDrainCoordinator.DrainToken`'ı izler. Token iptal edildiğinde:
 
-1. Her bağlantıya **kendi** rastgele gecikmesiyle `Reconnect{delayMs, reason:"draining"}` yollanır.
-   `delayMs = random(0, min(10 sn, grace))`; `grace` olarak `HostOptions.ShutdownTimeout` okunur.
-   Gecikme bağlantı başına çekilir — amaç 15 bin istemcinin aynı milisaniyede bir sonraki düğüme
-   yığılmasını engellemektir. Rastgelelik `RandomNumberGenerator` ile üretilir.
+1. Her bağlantıya **aynı üst sınırla** `Reconnect{delayMs, reason:"draining"}` yollanır:
+   `delayMs = min(10 sn, grace)`; `grace` olarak `HostOptions.ShutdownTimeout` okunur. Rastgele
+   gecikmeyi **istemci** `[0, delayMs]` aralığında çeker — jitter yalnızca bir tarafta uygulanır.
+   Amaç 15 bin istemcinin aynı milisaniyede bir sonraki düğüme yığılmasını engellemektir.
 2. `CloseGrace` (2 sn) sonra tüm bağlantılar **1001** ile kapatılır.
-3. Drain sırasında gelen **yeni** bağlantılar `Reconnect{reason:"draining"}` + **1013**
-   (“try again later”) ile reddedilir.
+3. Drain sırasında gelen **yeni** bağlantılar `Reconnect` çerçevesi **olmadan** yalnızca **1013**
+   (“try again later”) ile kapatılır; istemci normal üstel geri çekilmesini uygular. İstemci
+   `Reconnect` gecikmesine yalnızca bağlantı `open` durumundayken uyar.
 
 ## Kullanıcı başına bağlantı bütçesi
 
@@ -144,10 +152,9 @@ bu yüzden tekrar tekrar çağrılması güvenlidir.
 | `Path` | `/ws` | Endpoint yolu; `/` ile başlamalı. |
 | `HeartbeatIntervalMs` | `25000` | `Welcome`'da duyurulan aralık **ve** protokol keep-alive ping aralığı. Keep-alive zaman aşımı bunun 2 katıdır. |
 | `HelloTimeoutMs` | `5000` | `Hello` için son tarih. Süpürme aralığını da belirler (`min(bu, 5 sn)`). |
-| `PongTimeoutMs` | `10000` | Yalnızca istemci ipucu; sunucu uygulamaz. |
 | `MaxFrameBytes` | `65536` | Kabul edilen en büyük gelen çerçeve; aşılırsa 1009. |
 | `OutboundQueueCapacity` | `256` | Bağlantı başına giden kuyruk. %75'i geçici çerçeve eşiğidir. |
-| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır. |
+| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır; `Development` ortamı dışında ana hat (`talky.exe`) bunu açılışta reddeder, `Talky:Server:AllowInsecureHttp=true` olan laboratuvar düğümleri hariç. Kapalıyken ve gerçek doğrulayıcı yokken her `Hello` reddedilir. |
 | `MaxConnectionsPerUser` | `16` | Kullanıcı başına eşzamanlı bağlantı tavanı. |
 
 Değerler DataAnnotations ile sınırlıdır ve `ValidateOnStart` sayesinde hatalı bir yapılandırma
@@ -172,7 +179,7 @@ aynı kullanıcıdır — çok cihazlı davranış ve bağlantı bütçesi verit
 | `talky.realtime.errors` | Counter | `code` = `ErrorCode` |
 | `talky.realtime.handshake_duration` | Histogram (ms) | — |
 
-Loglar `[LoggerMessage]` ile üretilir, İngilizcedir, olay id'leri 1000–1016 aralığındadır ve
+Loglar `[LoggerMessage]` ile üretilir, İngilizcedir, olay id'leri 1000–1017 aralığındadır ve
 **hiçbir zaman jeton ya da kullanıcı içeriği taşımaz** (kimliği doğrulanamayan bağlantıda bile
 yalnızca “token was rejected” yazılır).
 
@@ -219,7 +226,18 @@ dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll \
 
 ### Ölçülen değerler (M0, geliştirme makinesi, Windows 11, loopback)
 
-`RealtimeBench` (yalnız `Talky.Realtime` + Kestrel) karşısında, Release:
+Bu sayılar depoya **commit'lenmemiş** bir tezgâh ana hattı (`RealtimeBench`: yalnız `Talky.Realtime` +
+Kestrel, Release) karşısında ölçüldü; depodan birebir yeniden üretilemez. Yeniden ölçmek için
+`talky.exe`'yi `Development` ortamında (geliştirme jetonları açık) başlatıp `talky-wsload`'ı ona
+yöneltin, örneğin:
+
+```bash
+cd server
+dotnet run --project src/Talky.Server -c Release -- serve --environment Development --urls https://localhost:18444
+dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll --url wss://localhost:18444/ws   --connections 1000 --ramp 100/s --duration 30s --token "dev:u{i}" --insecure --target-pid <talky-pid>
+```
+
+Tezgâh sonuçları:
 
 | Senaryo | Sonuç |
 |---|---|
@@ -236,7 +254,8 @@ M0 yalnızca oturum katmanıdır; taşınan tek uygulama trafiği `Ping`/`Pong`'
 
 - **Fan-out.** Konuşma üyelerine olay dağıtımı. `IConnectionRegistry.GetByUser` ve
   `BroadcastAsync` bunun için hazır; sıcak yol `Snapshot()` yerine kullanıcıya göre indeks
-  kullanacak ve tek bir `ServerFrame` nesnesi tüm alıcılarda paylaşılacak (çerçeveler değişmezdir).
+  kullanacak; çerçeve **bir kez kodlanacak ve kodlanmış baytlar** tüm alıcılarda paylaşılacak
+  (bugün her yazıcı döngüsü çerçeveyi kendisi kodlar).
 - **`seq` ve resume.** `Hello.since` haritası bugün okunur ama kullanılmaz. M2'de bağlantı,
   konuşma başına son `seq`'i tutacak; boşluk kapatılabiliyorsa SQL'den tekrar oynatılacak,
   kapatılamıyorsa bugünkü `ResyncRequired` yolu kullanılacak.
@@ -248,7 +267,10 @@ M0 yalnızca oturum katmanıdır; taşınan tek uygulama trafiği `Ping`/`Pong`'
   başına kota M2 ile gelecek.
 
 Kablo biçiminde kırıcı değişiklik beklenmiyor: `ClientFrame`/`ServerFrame` `oneof` gövdeleri yalnız
-eklemeli büyür ve bilinmeyen alanlar bugün de yok sayılır.
+eklemeli büyür ve bilinmeyen alanlar bugün de yok sayılır. Daha yeni bir istemcinin eski bir düğüme
+gönderdiği bilinmeyen gövde, `Welcome`'dan sonra yalnızca o isteği `Error{INVALID_FRAME, rid}` ile
+düşürür; bağlantı açık kalır. `Welcome`'dan önce ise her Hello-dışı çerçeve gibi
+`Error{HELLO_REQUIRED}` + 1008 alır.
 
 ## Testler
 

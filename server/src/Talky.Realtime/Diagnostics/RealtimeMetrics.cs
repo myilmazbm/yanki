@@ -5,12 +5,12 @@ using Talky.Protocol.V1;
 namespace Talky.Realtime.Diagnostics;
 
 /// <summary>
-/// OpenTelemetry-compatible instruments for the realtime endpoint, published on the
-/// <c>Talky.Realtime</c> meter.
+/// <c>System.Diagnostics.Metrics</c> instruments for the realtime endpoint, published on the
+/// <c>Talky.Realtime</c> meter (observable out of process, for example with <c>dotnet-counters</c>).
 /// </summary>
 public sealed class RealtimeMetrics : IDisposable
 {
-    /// <summary>Meter name to enable in the host's OpenTelemetry configuration.</summary>
+    /// <summary>Name of the meter the instruments are published on.</summary>
     public const string MeterName = "Talky.Realtime";
 
     private const string DirectionTag = "direction";

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Talky.Core.Sessions;
 using Talky.Protocol.V1;
 using Talky.Realtime.Protocol;
+using Talky.Realtime.Sessions;
 using Talky.Testing.Realtime;
 
 namespace Talky.IntegrationTests.Realtime;
@@ -136,6 +137,23 @@ public sealed class HandshakeTests
     }
 
     [Fact]
+    public async Task WithoutAnAuthenticatorOrDevTokens_HelloIsRejectedWithUnauthenticatedAnd1008()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync(o => o.AllowDevTokens = false);
+        await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+
+        await client.SendAsync(RealtimeTestClient.HelloFrame(DevToken, rid: "rid-1"), cts.Token);
+
+        ServerFrame error = await client.ExpectFrameAsync(cts.Token);
+        Assert.Equal(ErrorCode.Unauthenticated, error.Error.Code);
+        Assert.Equal("rid-1", error.Error.Rid);
+
+        ServerMessage close = await client.ExpectCloseAsync(cts.Token);
+        Assert.Equal(WebSocketCloseStatus.PolicyViolation, close.CloseStatus);
+    }
+
+    [Fact]
     public async Task Bye_ClosesTheConnectionWith1000()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
@@ -166,16 +184,22 @@ public sealed class HandshakeTests
     }
 
     [Fact]
-    public async Task FrameWithNoKnownBody_IsRejectedWith1003()
+    public async Task FrameWithNoKnownBodyAfterWelcome_IsRejectedButTheConnectionStaysOpen()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
         await using RealtimeTestHost host = await RealtimeTestHost.StartAsync();
         await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+        await client.HandshakeAsync(DevToken, cts.Token);
 
         await client.SendTextAsync("""{"rid":"r1","somethingFromTheFuture":{"x":1}}""", cts.Token);
 
         ServerFrame error = await client.ExpectFrameAsync(cts.Token);
         Assert.Equal(ErrorCode.InvalidFrame, error.Error.Code);
+        Assert.Equal("r1", error.Error.Rid);
+
+        await client.SendAsync(new ClientFrame { Ping = new Ping { Ts = 9 } }, cts.Token);
+        ServerFrame pong = await client.ExpectFrameAsync(cts.Token);
+        Assert.Equal(9L, pong.Pong.Ts);
     }
 
     [Fact]
@@ -251,6 +275,20 @@ public sealed class HandshakeTests
     }
 
     [Fact]
+    public async Task SlowAuthentication_PastTheHelloTimeout_StillEndsInWelcome()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync(
+            o => o.HelloTimeoutMs = 200,
+            services => services.AddSingleton<ISessionAuthenticator>(new SlowSessionAuthenticator(TimeSpan.FromMilliseconds(600))));
+        await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+
+        Welcome welcome = await client.HandshakeAsync(DevToken, cts.Token);
+
+        Assert.True(Guid.TryParse(welcome.UserId, out _));
+    }
+
+    [Fact]
     public async Task PlainHttpRequest_IsAnsweredWith400()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
@@ -258,6 +296,19 @@ public sealed class HandshakeTests
         using HttpClient http = host.CreateHttpClient();
 
         using HttpResponseMessage response = await http.GetAsync(new Uri("http://localhost/ws"), cts.Token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PlainConnectRequest_IsAnsweredWith400NotMethodNotAllowed()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync();
+        using HttpClient http = host.CreateHttpClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Connect, new Uri("http://localhost/ws"));
+        using HttpResponseMessage response = await http.SendAsync(request, cts.Token);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -278,5 +329,17 @@ public sealed class HandshakeTests
 
         await host.WaitForRegistryAsync(0, cts.Token);
         Assert.Equal(0, host.Registry.Count);
+    }
+
+    /// <summary>Accepts development tokens, but only after a fixed delay.</summary>
+    private sealed class SlowSessionAuthenticator(TimeSpan delay) : ISessionAuthenticator
+    {
+        private readonly DevTokenSessionAuthenticator _inner = new();
+
+        public async ValueTask<SessionPrincipal?> AuthenticateAsync(string token, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return await _inner.AuthenticateAsync(token, cancellationToken);
+        }
     }
 }

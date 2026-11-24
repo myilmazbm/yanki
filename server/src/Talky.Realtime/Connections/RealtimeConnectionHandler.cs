@@ -77,11 +77,10 @@ internal sealed class RealtimeConnectionHandler(
         {
             if (drainCoordinator.IsDraining)
             {
+                // No Reconnect frame: a bare 1013 makes the client fall back to its exponential
+                // backoff instead of retrying the draining node immediately.
                 RealtimeLog.RefusedWhileDraining(logger, connection.ConnectionId);
-                connection.SendThenClose(
-                    ServerFrames.Reconnect(0, ReconnectReasons.Draining),
-                    RealtimeCloseCodes.TryAgainLater,
-                    ReconnectReasons.Draining);
+                connection.RequestClose(RealtimeCloseCodes.TryAgainLater, ReconnectReasons.Draining);
             }
             else
             {
@@ -90,18 +89,26 @@ internal sealed class RealtimeConnectionHandler(
         }
         finally
         {
-            registry.Remove(connection);
+            // Stay registered until the writer is done: the sweep can then abort a writer that is
+            // stuck in the close path once CloseGrace has passed.
             connection.RequestClose(RealtimeCloseCodes.Normal, string.Empty);
-            await outboundLoop;
-            metrics.ConnectionClosed();
+            try
+            {
+                await outboundLoop;
+            }
+            finally
+            {
+                registry.Remove(connection);
+                metrics.ConnectionClosed();
 
-            double lifetimeMs = (timeProvider.GetUtcNow() - connection.ConnectedAt).TotalMilliseconds;
-            RealtimeLog.ConnectionClosed(
-                logger,
-                connection.ConnectionId,
-                (int)connection.CloseStatus,
-                connection.CloseDescription,
-                lifetimeMs);
+                double lifetimeMs = (timeProvider.GetUtcNow() - connection.ConnectedAt).TotalMilliseconds;
+                RealtimeLog.ConnectionClosed(
+                    logger,
+                    connection.ConnectionId,
+                    (int)connection.CloseStatus,
+                    connection.CloseDescription,
+                    lifetimeMs);
+            }
         }
     }
 
@@ -217,8 +224,12 @@ internal sealed class RealtimeConnectionHandler(
                 return false;
 
             default:
-                Reject(connection, ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage, RealtimeCloseCodes.UnsupportedData, frame.Rid);
-                return false;
+                // Empty or unknown body (a newer client on an older node): fail this request only
+                // and keep the connection open, so additive protocol changes stay compatible.
+                metrics.ErrorRaised(ErrorCode.InvalidFrame);
+                RealtimeLog.ProtocolError(logger, connection.ConnectionId, ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage);
+                connection.Enqueue(ServerFrames.Error(ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage, frame.Rid));
+                return true;
         }
     }
 
@@ -228,6 +239,7 @@ internal sealed class RealtimeConnectionHandler(
         long startTimestamp,
         CancellationToken cancellationToken)
     {
+        connection.MarkHelloReceived();
         Hello hello = frame.Hello;
 
         if (hello.ProtoVersion != RealtimeProtocol.Version)
@@ -256,7 +268,8 @@ internal sealed class RealtimeConnectionHandler(
         }
 
         connection.AttachPrincipal(principal, hello.DeviceId, hello.Client?.Platform ?? string.Empty);
-        registry.AttachUser(connection, principal.UserId);
+        IReadOnlyList<ClientConnection> evictions =
+            registry.AttachUser(connection, principal.UserId, _options.MaxConnectionsPerUser);
 
         connection.Enqueue(ServerFrames.Welcome(
             sessionId: connection.ConnectionId,
@@ -270,7 +283,7 @@ internal sealed class RealtimeConnectionHandler(
         metrics.HandshakeCompleted(elapsed);
         RealtimeLog.HandshakeCompleted(logger, connection.ConnectionId, principal.UserId, connection.DeviceId, elapsed.TotalMilliseconds);
 
-        EnforceConnectionBudget(connection, principal.UserId);
+        EnforceConnectionBudget(evictions, principal.UserId);
         return true;
     }
 
@@ -279,9 +292,9 @@ internal sealed class RealtimeConnectionHandler(
     /// oldest connections. The evicted client gets <c>Reconnect{reason:"too_many_connections"}</c>
     /// before the 1001 close so it can tell this apart from a drain.
     /// </summary>
-    private void EnforceConnectionBudget(ClientConnection connection, Guid userId)
+    private void EnforceConnectionBudget(IReadOnlyList<ClientConnection> evictions, Guid userId)
     {
-        foreach (ClientConnection victim in registry.SelectEvictions(userId, _options.MaxConnectionsPerUser, connection.ConnectionId))
+        foreach (ClientConnection victim in evictions)
         {
             RealtimeLog.ConnectionBudgetExceeded(logger, userId, _options.MaxConnectionsPerUser, victim.ConnectionId);
             victim.SendThenClose(
@@ -335,7 +348,7 @@ internal sealed class RealtimeConnectionHandler(
                 : new InboundMessage(kind, chunk, first.Count, pooled: false);
         }
 
-        byte[] accumulator = ArrayPool<byte>.Shared.Rent(maxBytes + 1);
+        byte[] accumulator = ArrayPool<byte>.Shared.Rent(maxBytes);
         int total = first.Count;
         chunk.AsSpan(0, first.Count).CopyTo(accumulator);
 
