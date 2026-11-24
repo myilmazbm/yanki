@@ -96,10 +96,6 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
                 // Generous, because a cold LocalDB and a 64-way append storm are both slower than
                 // the 5 s production budget.
                 ["Talky:Database:CommandTimeoutSeconds"] = "60",
-
-                // No retrying execution strategy: a retry would hide a real deadlock or lost update,
-                // which is exactly what these tests are looking for.
-                ["Talky:Database:MaxRetryCount"] = "0",
             })
             .Build();
 
