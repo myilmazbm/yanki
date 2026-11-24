@@ -135,7 +135,8 @@ function Set-LiveKitFirewallRule {
     $verb = if ($existing) { 'Update' } else { 'Create' }
     if (-not $PSCmdlet.ShouldProcess($Name, "$verb inbound rule ($Protocol $Port)")) { return }
     if ($existing) {
-        Set-NetFirewallRule -DisplayName $Name -Group $FirewallGroup -Description $Description `
+        # The group is set at creation; -Group cannot be combined with -DisplayName here.
+        Set-NetFirewallRule -DisplayName $Name -Description $Description `
             -Direction Inbound -Action Allow -Protocol $Protocol -LocalPort $Port `
             -RemoteAddress $RemoteAddress -Profile Domain -Enabled True
         Write-Host "updated  $Name"
@@ -146,6 +147,13 @@ function Set-LiveKitFirewallRule {
             -RemoteAddress $RemoteAddress -Profile Domain -Enabled True | Out-Null
         Write-Host "created  $Name"
     }
+}
+
+# Runs one WinSW command and throws on a non-zero exit code.
+function Invoke-WinSw {
+    param([Parameter(Mandatory)][string] $Command)
+    & $WrapperExe $Command 2>&1 | Write-Verbose
+    if ($LASTEXITCODE -ne 0) { throw "WinSW $Command failed with exit code $LASTEXITCODE." }
 }
 
 # --- preconditions --------------------------------------------------------------------
@@ -165,9 +173,15 @@ if (-not (Test-Elevated)) {
 if ($Remove) {
     if (Test-Path -LiteralPath $WrapperExe) {
         if ($PSCmdlet.ShouldProcess($ServiceName, 'Stop and uninstall the WinSW service')) {
-            & $WrapperExe stop 2>&1 | Write-Verbose
-            & $WrapperExe uninstall 2>&1 | Write-Verbose
-            Write-Host "removed  service $ServiceName"
+            $current = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+            if ($current) {
+                if ($current.Status -ne 'Stopped') { Invoke-WinSw stop }
+                Invoke-WinSw uninstall
+                Write-Host "removed  service $ServiceName"
+            }
+            else {
+                Write-Host "absent   service $ServiceName"
+            }
         }
     }
     else {
@@ -227,7 +241,13 @@ if ($PSCmdlet.ShouldProcess($WrapperXml, 'Write WinSW configuration')) {
         $xml = [regex]::Replace($xml, '(?s)\s*<serviceaccount>.*?</serviceaccount>', '')
     }
     else {
-        $xml = $xml.Replace('__SERVICE_ACCOUNT__', $ServiceAccount)
+        # WinSW 2.12.0 takes the account as <domain> and <user>.
+        $accountParts = $ServiceAccount.Split('\')
+        if ($accountParts.Count -ne 2) {
+            throw "ServiceAccount must be 'LocalSystem' or DOMAIN\user, e.g. 'NT AUTHORITY\NetworkService'."
+        }
+        $xml = $xml.Replace('__SERVICE_DOMAIN__', [Security.SecurityElement]::Escape($accountParts[0]))
+        $xml = $xml.Replace('__SERVICE_USER__', [Security.SecurityElement]::Escape($accountParts[1]))
     }
     $null = [xml]$xml  # fail before writing if the substitution broke the document
     $utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -257,17 +277,19 @@ else {
 
 # --- 4. service -----------------------------------------------------------------------
 
+# WinSW 2.12.0 has no `refresh`: an existing registration is re-created with
+# uninstall + install so the rendered XML takes effect.
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingService) {
-    if ($PSCmdlet.ShouldProcess($ServiceName, 'Refresh the existing WinSW service registration')) {
-        & $WrapperExe stop 2>&1 | Write-Verbose
-        & $WrapperExe refresh 2>&1 | Write-Verbose
-        Write-Host "refreshed service $ServiceName"
+    if ($PSCmdlet.ShouldProcess($ServiceName, 'Re-create the existing WinSW service registration (uninstall + install)')) {
+        if ($existingService.Status -ne 'Stopped') { Invoke-WinSw stop }
+        Invoke-WinSw uninstall
+        Invoke-WinSw install
+        Write-Host "recreated service $ServiceName"
     }
 }
 elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Install the WinSW service')) {
-    & $WrapperExe install 2>&1 | Write-Verbose
-    if ($LASTEXITCODE -ne 0) { throw "WinSW install failed with exit code $LASTEXITCODE." }
+    Invoke-WinSw install
     Write-Host "created  service $ServiceName"
 }
 
@@ -275,7 +297,7 @@ if ($NoStart) {
     Write-Host 'start    skipped (-NoStart).'
 }
 elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
-    & $WrapperExe start 2>&1 | Write-Verbose
+    Invoke-WinSw start
     $started = Get-Service -Name $ServiceName
     $started.WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
     Write-Host "started  service $ServiceName ($($started.Status))"
