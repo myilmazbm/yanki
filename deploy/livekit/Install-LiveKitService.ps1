@@ -282,8 +282,19 @@ else {
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingService) {
     if ($PSCmdlet.ShouldProcess($ServiceName, 'Re-create the existing WinSW service registration (uninstall + install)')) {
-        if ($existingService.Status -ne 'Stopped') { Invoke-WinSw stop }
+        # 'stop' only requests the stop; 'stopwait' returns once the service is Stopped.
+        if ($existingService.Status -ne 'Stopped') { Invoke-WinSw stopwait }
         Invoke-WinSw uninstall
+        # 'uninstall' only marks the service for deletion; the SCM removes it once every
+        # handle to it is closed, and 'install' fails while it still exists.
+        $deadline = (Get-Date).AddSeconds(60)
+        while (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+            if ((Get-Date) -ge $deadline) {
+                throw ("Service $ServiceName is still registered 60 s after 'WinSW uninstall' (marked for " +
+                    "deletion while something holds a handle to it, e.g. services.msc). Close it and run this script again.")
+            }
+            Start-Sleep -Milliseconds 500
+        }
         Invoke-WinSw install
         Write-Host "recreated service $ServiceName"
     }

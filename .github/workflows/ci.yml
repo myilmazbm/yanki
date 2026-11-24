@@ -16,7 +16,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only by default; the msi job raises what it needs, nothing else does.
+# Read-only for every job; none of them needs more.
 permissions:
   contents: read
 
@@ -28,12 +28,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # global.json only states a minimum (rollForward latestMajor); CI compiles with one
-      # known SDK, the 10.0 LTS band.
+      # global.json only states a minimum (rollForward latestMajor), and the Windows image
+      # ships newer SDKs in C:\Program Files\dotnet. Installing into a job-private directory
+      # makes the latest 10.0.x the only SDK the muxer sees: setup-dotnet puts that
+      # directory first on PATH and sets DOTNET_ROOT for the later steps. (The runner
+      # context is not available in job-level env, so the variable sits on this step.)
       - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           dotnet-version: 10.0.x
+
+      - name: Show SDK
+        run: dotnet --version
 
       # SQL Server Express LocalDB ships with the windows runner image. Integration tests
       # use it instead of a container, since production is SQL Server and there is no
@@ -133,10 +141,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Same job-private SDK directory as the server job.
       - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           dotnet-version: 10.0.x
+
+      - name: Show SDK
+        run: dotnet --version
 
       # Publishes win-x64 self-contained single file, restores the wix local tool and
       # builds artifacts/Talky.Server-<version>.msi.

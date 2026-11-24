@@ -105,7 +105,9 @@ Set-Acl -Path $keyPath -AclObject $acl
    `Talky:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`). `-Urls` içinde
    https varken parmak izi verilmezse betik hiçbir şey yazmadan durur. Sertifikasız
    laboratuvar düğümü için yalnızca http URL'leri verin (`-Urls http://+:8080`); betik o
-   zaman `AllowInsecureHttp=true` yazar.
+   zaman `AllowInsecureHttp=true` yazar. Güvenlik duvarı adımı `-Urls`'i okumaz: yalnızca
+   8443'ü (ve `-EnableHttp` ile 8080'i) açar. http portu açılmadıysa betik bunu uyarı olarak
+   söyler ve açacak komutu verir: `Set-TalkyFirewall.ps1 -EnableHttp -HttpPort <port>`.
 
 LiveKit'in gömülü TURN'ü ayrı bir **PEM** çifti ister (`turn.cert_file` / `turn.key_file`)
 ve bunlar dosya olarak durur; TLS'i yük dengeleyici sonlandırıyorsa `external_tls: true`
@@ -136,20 +138,31 @@ Windows Olay Günlüğü kaynağı `Talky`'yi (Application) oluşturur, yayın �
 **Automatic (Delayed Start)** olarak `"<InstallDir>\talky.exe" --data-dir "<DataDir>"`
 komut satırıyla kaydeder, kurtarma eylemlerini 5 sn / 10 sn / 30 sn olarak ayarlar, güvenlik
 duvarı kurallarını ekler (`Set-TalkyFirewall.ps1`), servisi başlatır ve `talky doctor`
-çalıştırır. Servis başlamazsa `doctor` yine çalışır, betik hata verir ve
-`<DataDir>\logs`'u gösterir.
+çalıştırır. Servis başlamazsa (ya da Running bildirip 5 sn içinde düşerse) `doctor` yine
+çalışır, betik hata verir ve `<DataDir>\logs`'u gösterir.
 
 Var olan bir düğümde betik `<DataDir>\appsettings.json`'ı **korur** (bunu tek satırla
 söyler); dosya yalnızca `-ConfigOnly` veya `-Force` ile, zaman damgalı bir yedek alınarak
-yeniden üretilir. Var olan servisin oturum hesabı yalnızca `-ServiceAccount` verildiğinde
-değişir. Şemayı bir DBA uyguluyorsa `-SkipMigrate` verin.
+yeniden üretilir. Dosya korunurken `-Urls`, `-SqlConnectionString`, `-CertificateThumbprint`,
+`-Roles`, `-NodeId` veya `-FileShare` verilmişse betik bunların **uygulanmadığını** uyarı
+olarak söyler. Var olan servisin oturum hesabı yalnızca `-ServiceAccount` verildiğinde
+değişir. Servis zaten varsa ve `-DataDir` verilmemişse veri klasörü servisin komut
+satırındaki `--data-dir`'den alınır; verilen `-DataDir` ondan farklıysa ya da komut satırı
+okunamazsa betik iki yolu da söyleyerek durur. İstisna `-ConfigOnly`'dir: servise dokunmadığı
+için farklı bir `-DataDir` (örneğin bir önizleme klasörü) iki yolu da söyleyen bir uyarıyla
+kabul edilir ve yapılandırma oraya yazılır. Şemayı bir DBA uyguluyorsa `-SkipMigrate`
+verin.
 
 **MSI yolu** (kurumsal dağıtım araçları için). MSI dosyaları kurar, servisi **durmuş**
 olarak kaydeder ve Olay Günlüğü kaynağını oluşturur; `appsettings.json` yazmaz, güvenlik
 duvarına dokunmaz ve servisi başlatmaz. Sıra:
 
 ```powershell
-msiexec /i Talky.Server-<sürüm>.msi SERVICE_ACCOUNT="CORP\talky$" DATADIR="D:\TalkyData" /qn /l*v install.log
+# msiexec bir GUI programıdır: PowerShell onu beklemeden sonraki satıra geçer. -Wait ile
+# kurulumun bitmesini bekleyin ve çıkış kodunu denetleyin (0 dışı her kod durdurur;
+# 3010 = yeniden başlatma gerekli).
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','install.log'
+if ($p.ExitCode -ne 0) { throw "msiexec exited with $($p.ExitCode); see install.log" }
 .\deploy\windows\Install-Talky.ps1 -AclOnly -ServiceAccount 'CORP\talky$' -DataDir 'D:\TalkyData'
 .\deploy\windows\Install-Talky.ps1 -ConfigOnly -DataDir 'D:\TalkyData' -SqlConnectionString '…' -CertificateThumbprint '…'
 & 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'
@@ -158,19 +171,46 @@ Start-Service Talky
 & 'C:\Program Files\Talky\talky.exe' doctor --data-dir 'D:\TalkyData'
 ```
 
+Boşluk içeren bir değeri tırnakla verin: `'DATADIR="D:\Talky Data"'`.
+
 MSI, LocalSystem'e varsayılan verir ve gMSA'yı `SERVICE_ACCOUNT` ile alır; `SERVICE_PASSWORD`
 her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.json`'da
 (`Talky:Node:Roles`) durur. MSI yükseltmesi de servisi başlatmaz; yükseltmeden sonra
-`Start-Service Talky` gerekir. Kurulumdan sonra kurtarma ayarlarını doğrulayın:
+`Start-Service Talky` gerekir.
+
+> **MSI bu iki değeri hatırlamaz.** Yükseltme ve geri alma için çalıştırılan **her**
+> `msiexec /i` komutu `SERVICE_ACCOUNT=` ve `DATADIR=` değerlerini ilk kurulumdakiyle
+> **aynen** tekrarlamalıdır. Yükseltme eski servisi siler ve yenisini o komutun değerleriyle
+> kaydeder; değerler verilmezse servis **sessizce** LocalSystem hesabıyla ve varsayılan veri
+> klasörüyle (`C:\ProgramData\Talky`) yeniden oluşturulur, hiçbir uyarı çıkmaz. Özel bir
+> `DATADIR` kullanan düğümde varsayılan klasörde `appsettings.json` bulunmadığı için servis
+> başlamaz; varsayılan `DATADIR` kullanan düğümde servis gMSA yerine SYSTEM olarak başlar
+> (SQL ve Kerberos makine hesabıyla çalışır). Düzeltme planlıdır (aşağıda "Bilinen açıklar").
+
+Kurulumdan sonra kurtarma ayarlarını doğrulayın:
 
 ```powershell
 sc.exe qfailure Talky      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
 sc.exe qc Talky            # START_TYPE AUTO_START (DELAYED)
 ```
 
-Bilinen açık: host, arızalanan bir arka plan servisi yüzünden kendini durdurduğunda süreç
-bugün 0 koduyla çıkar; SCM bunu hata saymaz ve kurtarma eylemleri tetiklenmez. Doğru çıkış
-kodu ve `sc.exe failureflag` ayarı gerçek bir servis kurulumunda doğrulanınca gelecek.
+Bilinen açıklar:
+
+- Host, arızalanan bir arka plan servisi yüzünden kendini durdurduğunda süreç bugün 0
+  koduyla çıkar; SCM bunu hata saymaz ve kurtarma eylemleri tetiklenmez. Doğru çıkış kodu ve
+  `sc.exe failureflag` ayarı gerçek bir servis kurulumunda doğrulanınca gelecek.
+- MSI `SERVICE_ACCOUNT` ve `DATADIR` değerlerini hatırlamaz (yukarıdaki uyarı). Planlanan
+  düzeltme: MSI iki değeri ilk kurulumda HKLM altına yazar ve sonraki kurulumlarda oradan
+  geri okur (komut satırında açıkça verilen değer önceliklidir). Atılabilir bir VM'de
+  denenebilene kadar MSI'de değişiklik yapılmıyor; o zamana dek iki değer her `msiexec /i`
+  komutunda tekrarlanır.
+- MSI'nin kendi servis durdurması en fazla 30 sn bekler; düğüm ise durmadan önce
+  `DrainSeconds` (varsayılan 30 sn) boyunca boşaltır. Bu yüzden MSI yükseltmesi, kaldırması
+  ve geri alması her zaman önce `Stop-Service Talky` ile başlar (bölüm 6 ve 10). Çalışan bir
+  düğümde `msiexec`'in gerçekte ne yaptığı (1921/1603 ile geri alma mı, 3010 mu; MSI'nin
+  kendi durdurma eylemine gerek olup olmadığı), bir VM'de çalışan bir düğüme karşı
+  `msiexec /x` ve yükseltme amaçlı `msiexec /i` elle (`/l*v` günlüğüyle) denenene kadar
+  **doğrulanmamıştır**. Kabul testi `msiexec /x`'ten önce servisi durdurduğu için bunu ölçmez.
 
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri). Servis kurup
@@ -286,8 +326,22 @@ Düğüm başına sıra (aynı anda **tek** düğüm):
 # 1-3: sürücü betiği yerine servis üzerinden en basit yol
 Stop-Service Talky            # boşaltma koordinatörü 503 + Reconnect + boşaltma süresini kendi yürütür
 .\deploy\windows\Install-Talky.ps1 -SourceDir <yeni-yayın>
+# Özel veri klasörüyle kurulmuş düğümde (ör. node-03) klasörü açıkça verin:
+#   .\deploy\windows\Install-Talky.ps1 -SourceDir <yeni-yayın> -DataDir D:\TalkyData
 # Install-Talky.ps1 servisi zaten durdurur, dosyaları değiştirir, migrate çalıştırır ve
-# başlatır; var olan appsettings.json ve servis hesabı korunur.
+# başlatır; var olan appsettings.json ve servis hesabı korunur. -DataDir verilmezse var
+# olan servisin --data-dir'i kullanılır; verilen -DataDir ondan farklıysa betik durur.
+```
+
+MSI ile kurulmuş düğümde aynı adım (`SERVICE_ACCOUNT` ve `DATADIR` ilk kurulumdakiyle
+aynen):
+
+```powershell
+Stop-Service Talky            # önce: MSI'nin kendi durdurması boşaltmayı beklemez
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<yeni-sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','upgrade.log'
+if ($p.ExitCode -ne 0) { throw "msiexec exited with $($p.ExitCode); see upgrade.log" }
+& 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'   # yalnızca ilk düğümde
+Start-Service Talky
 ```
 
 6. **Doğrula**, sonra bir sonraki düğüme geç:
@@ -305,14 +359,28 @@ Kurallar:
 - Küme içinde **en fazla bir minör sürüm farkı** kabul edilir. Planlı (M2): mesh el
   sıkışması sürümü taşıyacak ve uyumsuzluğu loglayacak.
 - MSI ile yükseltme `MajorUpgrade Schedule="afterInstallInitialize"` kullanır: eski sürüm
-  önce kaldırılır, sonra yenisi kurulur — tek dosyalık host hiçbir zaman kullanımdayken
-  değiştirilmez. `DataDir` ve `appsettings.json` yükseltmede korunur. MSI servisi
-  başlatmaz: `talky migrate` (ilk düğümde), sonra `Start-Service Talky`.
+  önce kaldırılır, sonra yenisi kurulur. Servis önce `Stop-Service Talky` ile durdurulur:
+  MSI'nin kendi durdurması en fazla 30 sn bekler, boşaltma ise varsayılan olarak 30 sn
+  sürer (bölüm 4.1, "Bilinen açıklar"). `DataDir` klasörü ve `appsettings.json` yükseltmede
+  silinmez, ama servis yalnızca `DATADIR=` ve `SERVICE_ACCOUNT=` tekrarlandığında aynı klasörü
+  ve hesabı kullanır. MSI servisi başlatmaz: `talky migrate` (ilk düğümde), sonra
+  `Start-Service Talky`.
 
-Geri alma: bir önceki MSI'yi kurun (`msiexec /x` sonra eski sürümü `/i`) veya bir önceki
-yayın klasörünü `Install-Talky.ps1 -SourceDir <eski-yayın> -SkipMigrate` ile geri
-kopyalayın (yapılandırma ve servis hesabı korunur). Şema geriye uyumlu olduğu için veri
-geri alma gerekmez.
+Geri alma: bir önceki yayın klasörünü `Install-Talky.ps1 -SourceDir <eski-yayın> -SkipMigrate`
+ile geri kopyalayın (yapılandırma ve servis hesabı korunur; özel veri klasörüyle kurulmuş
+düğümde `-DataDir D:\TalkyData` ekleyin) ya da MSI ile kurulmuş düğümde yeni sürümü
+kaldırıp eskisini kurun:
+
+```powershell
+Stop-Service Talky
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','rollback-x.log'
+if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see rollback-x.log" }
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<eski-sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','rollback-i.log'
+if ($p.ExitCode -ne 0) { throw "msiexec /i exited with $($p.ExitCode); see rollback-i.log" }
+Start-Service Talky
+```
+
+Şema geriye uyumlu olduğu için veri geri alma gerekmez.
 
 ---
 
@@ -422,6 +490,15 @@ Kaldırma:
 .\deploy\windows\Uninstall-Talky.ps1 -WhatIf
 .\deploy\windows\Uninstall-Talky.ps1              # veri korunur
 .\deploy\windows\Uninstall-Talky.ps1 -RemoveData  # yapılandırma, log ve indeks de silinir
+```
+
+MSI ile kurulmuş düğümde servisi önce durdurun (MSI'nin kendi durdurması boşaltmayı
+beklemez, bölüm 4.1 "Bilinen açıklar"):
+
+```powershell
+Stop-Service Talky
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<sürüm>.msi','/qn','/norestart','/l*v','uninstall.log'
+if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see uninstall.log" }
 ```
 
 Hiçbir durumda SQL veritabanı ve dosya payı silinmez; onlar elle kaldırılır.
