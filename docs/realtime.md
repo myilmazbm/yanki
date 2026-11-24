@@ -124,7 +124,7 @@ sessizce yutmak yerine `false` döndürmesidir. Politika tek bir yerde, `HandleO
 `RealtimeDrainService`, `IDrainCoordinator.DrainToken`'ı izler. Token iptal edildiğinde:
 
 1. Her bağlantıya **aynı üst sınırla** `Reconnect{delayMs, reason:"draining"}` yollanır:
-   `delayMs = min(10 sn, grace)`; `grace` olarak `HostOptions.ShutdownTimeout` okunur. Rastgele
+   `delayMs = 10000` (sabit). Rastgele
    gecikmeyi **istemci** `[0, delayMs]` aralığında çeker — jitter yalnızca bir tarafta uygulanır.
    Amaç 15 bin istemcinin aynı milisaniyede bir sonraki düğüme yığılmasını engellemektir.
 2. `CloseGrace` (2 sn) sonra tüm bağlantılar **1001** ile kapatılır.

@@ -25,7 +25,7 @@ public sealed class DrainTests
             ServerFrame reconnect = await client.ExpectFrameAsync(cts.Token);
             Assert.Equal(ServerFrame.BodyOneofCase.Reconnect, reconnect.BodyCase);
             Assert.Equal(ReconnectReasons.Draining, reconnect.Reconnect.Reason);
-            // The bound, identical for everyone: min(10 s, drain grace). The client draws the delay.
+            // The bound, identical for everyone: 10 s. The client draws the delay.
             Assert.Equal(10_000u, reconnect.Reconnect.DelayMs);
 
             ServerMessage close = await client.ExpectCloseAsync(cts.Token);

@@ -1,5 +1,5 @@
 {
-  "description": "When the node starts draining, every connection receives Reconnect with the same upper bound delayMs = min(10000, drain grace), picks its own random delay in [0, delayMs] and is then closed with 1001. delayMs is normally present; it is omitted from the expectation because the bound depends on the host's drain grace (and proto3 JSON drops it when the grace is 0).",
+  "description": "When the node starts draining, every connection receives Reconnect with the same upper bound delayMs = 10000, picks its own random delay in [0, delayMs] and is then closed with 1001.",
   "frames": [
     {
       "dir": "c2s",
@@ -41,6 +41,7 @@
       "json": {
         "id": "…",
         "reconnect": {
+          "delayMs": 10000,
           "reason": "draining"
         }
       }

@@ -73,11 +73,10 @@ kapatmasına yanıt), `draining` (1001 ve 1013), `too_many_connections` (1001), 
 
 `Reconnect.reason` değerleri sözleşmenin parçasıdır:
 
-- `"draining"` — node kapanıyor. Sunucu herkese aynı üst sınırı gönderir: `delayMs = min(10000, drain grace ms)`;
+- `"draining"` — node kapanıyor. Sunucu herkese aynı üst sınırı gönderir: `delayMs = 10000`;
   istemci `[0, delayMs]` aralığında rastgele bekler ve yeniden bağlanır; sunucu yaklaşık 2 s sonra 1001 ile kapatır.
   İstemci `Reconnect` gecikmesine yalnızca durumu `open` iken uyar; başka durumda gecikmeyi yok sayar ve backoff
-  uygular. `delayMs` 0 ise JSON'da yer almaz (proto3 varsayılanı düşürür); eksik = 0. Bugün "drain grace" host'un
-  kapanma süresidir (`Talky:Server:DrainSeconds` + 15 s), bu yüzden gönderilen değer pratikte 10000'dir.
+  uygular. `delayMs` 0 ise JSON'da yer almaz (proto3 varsayılanı düşürür); eksik = 0.
 - `"too_many_connections"` — aynı kullanıcının daha yeni bir bağlantısı canlı, bu bağlantı düşürüldü (`MaxConnectionsPerUser`).
   İstemci **yeniden bağlanmaz** (`closed`, `evicted` olayı); aksi halde iki cihaz sırayla birbirini düşürür.
   Uygulama kararı verir ("başka cihazda oturum açıldı").
