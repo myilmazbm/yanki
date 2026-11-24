@@ -19,6 +19,13 @@ namespace Talky.Data.Chat;
 /// <para>
 /// Idempotency is the unique index on <c>(sender_id, client_msg_id)</c>: a retried send finds the
 /// existing row (fast path, no transaction) or loses the insert race and re-reads it (catch path).
+/// The key is global per sender, so a row found in another conversation is a conflict, never a
+/// duplicate.
+/// </para>
+/// <para>
+/// <c>SET XACT_ABORT ON</c> makes a client timeout or cancellation (an attention, which TRY/CATCH
+/// cannot catch) roll the transaction back on the server, so the conversation row lock is never left
+/// behind on a pooled connection.
 /// </para>
 /// </remarks>
 public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProvider timeProvider) : IMessageAppender
@@ -26,18 +33,31 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
     /// <summary>Raised by <c>THROW</c> in the batch when the conversation row does not exist.</summary>
     private const int ConversationNotFoundError = 50404;
 
+    /// <summary>
+    /// Raised by <c>THROW</c> in the batch when the sender already used the client message id in a
+    /// different conversation.
+    /// </summary>
+    private const int ClientMsgIdConflictError = 50409;
+
     private const string AppendSql = """
+        SET XACT_ABORT ON;
         SET NOCOUNT ON;
 
         DECLARE @id uniqueidentifier, @seq bigint, @created datetime2(3), @dedup bit = 0;
+        DECLARE @existing_conversation uniqueidentifier;
         DECLARE @alloc TABLE (seq bigint NOT NULL);
 
-        SELECT @id = m.id, @seq = m.seq, @created = m.created_at
+        SELECT @id = m.id, @seq = m.seq, @created = m.created_at, @existing_conversation = m.conversation_id
         FROM dbo.messages AS m
         WHERE m.sender_id = @sender_id AND m.client_msg_id = @client_msg_id;
 
         IF @id IS NOT NULL
         BEGIN
+            IF @existing_conversation <> @conversation_id
+            BEGIN
+                THROW 50409, 'talky: client message id already used in another conversation', 1;
+            END;
+
             SET @dedup = 1;
         END
         ELSE
@@ -80,13 +100,19 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
 
                 IF ERROR_NUMBER() IN (2601, 2627)
                 BEGIN
-                    SELECT @id = m.id, @seq = m.seq, @created = m.created_at
+                    SELECT @id = m.id, @seq = m.seq, @created = m.created_at,
+                           @existing_conversation = m.conversation_id
                     FROM dbo.messages AS m
                     WHERE m.sender_id = @sender_id AND m.client_msg_id = @client_msg_id;
 
                     IF @id IS NULL
                     BEGIN
                         THROW;
+                    END;
+
+                    IF @existing_conversation <> @conversation_id
+                    BEGIN
+                        THROW 50409, 'talky: client message id already used in another conversation', 1;
                     END;
 
                     SET @dedup = 1;
@@ -149,6 +175,12 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
         {
             throw new InvalidOperationException(
                 $"Conversation {request.ConversationId} does not exist, so no message could be appended.",
+                ex);
+        }
+        catch (SqlException ex) when (ex.Number == ClientMsgIdConflictError)
+        {
+            throw new ClientMsgIdConflictException(
+                $"Client message id {request.ClientMsgId} was already used by this sender in another conversation.",
                 ex);
         }
     }
