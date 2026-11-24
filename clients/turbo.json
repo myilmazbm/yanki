@@ -12,7 +12,8 @@
       "dependsOn": ["^gen", "gen"]
     },
     "test": {
-      "dependsOn": ["^gen", "gen"]
+      "dependsOn": ["^gen", "gen"],
+      "inputs": ["$TURBO_DEFAULT$", "../../../api/fixtures/**"]
     },
     "build": {
       "dependsOn": ["^build", "gen"],
