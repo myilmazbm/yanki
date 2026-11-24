@@ -267,6 +267,7 @@ public sealed class MessageAppendTests(TalkyDatabaseFixture fixture, ITestOutput
 
             // Newest first inside a page.
             Assert.Equal(page.Select(m => m.Seq).OrderByDescending(s => s), page.Select(m => m.Seq));
+            Assert.All(page, m => Assert.Equal(DateTimeKind.Utc, m.CreatedAt.Kind));
 
             seen.AddRange(page.Select(m => m.Seq));
             before = page[^1].Seq;

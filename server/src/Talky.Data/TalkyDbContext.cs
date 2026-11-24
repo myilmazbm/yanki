@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Talky.Core.Domain;
 using Talky.Data.Modeling;
 
@@ -60,7 +61,11 @@ public sealed class TalkyDbContext(DbContextOptions<TalkyDbContext> options) : D
         // Every timestamp in Talky is UTC with millisecond resolution: datetime2(3) is 6 bytes
         // instead of the 8 bytes of the default datetime2(7), and milliseconds are as fine as any
         // of our clocks (and as the wire protocol) actually are.
-        configurationBuilder.Properties<DateTime>().HaveColumnType("datetime2(3)");
+        // SQL Server hands datetime2 back with Kind=Unspecified; mark it Utc on read (nullable
+        // properties included) so EF-read and raw-SQL timestamps agree. Writes are unchanged.
+        configurationBuilder.Properties<DateTime>()
+            .HaveColumnType("datetime2(3)")
+            .HaveConversion<UtcDateTimeConverter>();
         configurationBuilder.Properties<string>().AreUnicode();
     }
 
@@ -75,3 +80,7 @@ public sealed class TalkyDbContext(DbContextOptions<TalkyDbContext> options) : D
         modelBuilder.UseSnakeCaseNames();
     }
 }
+
+/// <summary>Stores a <see cref="DateTime"/> as is and reads it back with <see cref="DateTimeKind.Utc"/>.</summary>
+internal sealed class UtcDateTimeConverter()
+    : ValueConverter<DateTime, DateTime>(value => value, value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
