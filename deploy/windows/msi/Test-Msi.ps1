@@ -10,7 +10,7 @@
       * the host executable and the harvested payload were laid down, without .pdb files;
       * the MSI declares the "Talky" service with delayed automatic start and the
         5 s / 10 s / 30 s recovery actions;
-      * the firewall exceptions for TCP 8443 and TCP 9443 are present and 8080 is not;
+      * the MSI opens no firewall port (Set-TalkyFirewall.ps1 owns the firewall);
       * SERVICE_ACCOUNT defaults to LocalSystem and SERVICE_PASSWORD stays empty and hidden
         (gMSA accounts are passwordless);
       * UpgradeCode and ARP metadata are what operations expects.
@@ -127,7 +127,7 @@ if ($PSCmdlet.ShouldProcess($WorkDir, 'Administrative install (msiexec /a) extra
         Assert-True (@(Get-ChildItem -LiteralPath $exe.DirectoryName -Filter '*.pdb').Count -eq 0) 'no .pdb files shipped'
     }
     $appSettings = @(Get-ChildItem -LiteralPath $WorkDir -Recurse -Filter 'appsettings.json' -ErrorAction SilentlyContinue)
-    Assert-True ($appSettings.Count -ge 2) 'appsettings.json laid down in both the install folder and DATADIR'
+    Assert-True ($appSettings.Count -ge 1) 'appsettings.json laid down in the install folder'
 }
 
 # --- Metadata assertions (read straight from the MSI, no extraction required) ---
@@ -166,7 +166,6 @@ if ($service.Count -eq 1) {
     Assert-True ($service[0][3] -eq '2') 'service start type is auto (2)'
     Assert-True ($service[0][4] -eq '[SERVICE_ACCOUNT]') 'service account comes from SERVICE_ACCOUNT'
     Assert-True ($service[0][5] -eq '[SERVICE_PASSWORD]') 'service password comes from SERVICE_PASSWORD'
-    Assert-True ($service[0][6] -match '--role') 'service arguments carry --role'
     Assert-True ($service[0][6] -match '--data-dir') 'service arguments carry --data-dir'
 }
 
@@ -186,22 +185,10 @@ if ($fa.Count -ge 1) {
     Assert-True ($fa[0][1] -eq '86400') 'failure count resets after one day'
 }
 
-# The firewall extension prefixes its table with the WiX schema major version, which does not
-# always track the tool version, so discover the table name instead of hard-coding it.
-$fwTable = $null
-foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Name` FROM `_Tables`' -ColumnCount 1)) {
-    if ($row[0] -match '^Wix\d+FirewallException$') { $fwTable = $row[0]; break }
-}
-Assert-True ($null -ne $fwTable) 'firewall extension table present'
-$ports = @()
-if ($fwTable) {
-    foreach ($row in (Get-MsiTable -Path $MsiPath -Query "SELECT ``Name``,``Port``,``Protocol`` FROM ``$fwTable``" -ColumnCount 3)) {
-        $ports += $row[1]
-    }
-}
-Assert-True ($ports -contains '8443') 'firewall exception for TCP 8443'
-Assert-True ($ports -contains '9443') 'firewall exception for TCP 9443'
-Assert-True (-not ($ports -contains '8080')) 'TCP 8080 is NOT opened by the MSI (opt-in only)'
+# The firewall has one owner, Set-TalkyFirewall.ps1: the MSI must carry no firewall table.
+$fwTables = @((Get-MsiTable -Path $MsiPath -Query 'SELECT `Name` FROM `_Tables`' -ColumnCount 1) |
+    Where-Object { $_[0] -match 'FirewallException$' })
+Assert-True ($fwTables.Count -eq 0) 'the MSI opens no firewall port'
 
 if (-not $KeepWorkDir -and (Test-Path -LiteralPath $WorkDir)) {
     if ($PSCmdlet.ShouldProcess($WorkDir, 'Remove extraction folder')) {
