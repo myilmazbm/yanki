@@ -251,6 +251,8 @@ class TalkyWsClient implements WsClient {
       this.emitError(
         new TalkyWsError({ reason: 'transport', message: 'getToken() rejected', cause: error }),
       );
+      // An error listener may have called close() (or close() and connect()).
+      if (this.isSuperseded(id)) return;
       this.scheduleBackoffReconnect('token', undefined);
       return;
     }
@@ -263,6 +265,7 @@ class TalkyWsClient implements WsClient {
       this.emitError(
         new TalkyWsError({ reason: 'transport', message: 'could not open a socket', cause: error }),
       );
+      if (this.isSuperseded(id)) return;
       this.scheduleBackoffReconnect('transport', undefined);
       return;
     }

@@ -175,4 +175,23 @@ describe('handshake', () => {
       await harness.dispose();
     }
   });
+
+  it('stays closed when an error listener calls close() during a failed open', async () => {
+    const harness = createHarness({
+      client: { getToken: () => Promise.reject(new Error('signed out')) },
+    });
+    try {
+      harness.client.on('error', () => {
+        harness.client.close();
+      });
+      harness.client.connect();
+      await harness.waitUntil(() => harness.errors.length > 0);
+
+      expect(harness.client.state).toBe('closed');
+      expect(harness.reconnects).toEqual([]);
+      expect(harness.clock.pending).toBe(0);
+    } finally {
+      await harness.dispose();
+    }
+  });
 });
