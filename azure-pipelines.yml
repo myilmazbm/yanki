@@ -1,5 +1,8 @@
 # Azure DevOps Server (on-prem) equivalent of .github/workflows/ci.yml.
 #
+# Not run yet: the repository has no remote and the owner has not chosen the hosting
+# platform (GitHub or Azure DevOps Server); one of the two pipelines will be dropped then.
+#
 # Many customers who buy an on-prem product also host their own Azure DevOps Server, so the
 # pipeline is kept in step with the GitHub workflow: same jobs, same commands, same
 # ordering. When you change one, change the other in the same commit.
@@ -41,11 +44,13 @@ stages:
           vmImage: windows-latest
         timeoutInMinutes: 30
         steps:
+          # global.json only states a minimum (rollForward latestMajor); CI compiles with
+          # one known SDK, the 10.0 LTS band.
           - task: UseDotNet@2
-            displayName: Set up .NET from global.json
+            displayName: Set up .NET 10 SDK
             inputs:
               packageType: sdk
-              useGlobalJson: true
+              version: 10.0.x
 
           - powershell: |
               sqllocaldb start MSSQLLocalDB
@@ -91,13 +96,18 @@ stages:
             displayName: Install
             workingDirectory: clients
 
-          - script: echo "##vso[task.prependpath]$(Build.SourcesDirectory)/clients/node_modules/.bin"
-            displayName: Put buf on PATH
+          - script: pnpm format:check
+            displayName: Format check
+            workingDirectory: clients
 
-          - script: buf lint api/proto
+          - script: pnpm --filter @talky/protocol run lint:proto
             displayName: buf lint
+            workingDirectory: clients
 
-          - script: buf breaking api/proto --against '.git#branch=main,subdir=api/proto'
+          # PR and tag checkouts have a detached HEAD and only origin/main, so create main first.
+          - script: |
+              git branch -f main origin/main
+              cd clients && pnpm --filter @talky/protocol run breaking:proto
             displayName: buf breaking
             condition: and(succeeded(), eq(variables.isMain, false))
 
@@ -144,9 +154,10 @@ stages:
         timeoutInMinutes: 45
         steps:
           - task: UseDotNet@2
+            displayName: Set up .NET 10 SDK
             inputs:
               packageType: sdk
-              useGlobalJson: true
+              version: 10.0.x
 
           - powershell: |
               # refs/tags/v1.2.3 -> MSI ProductVersion 1.2.3

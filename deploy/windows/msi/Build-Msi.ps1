@@ -4,8 +4,7 @@
 
 .DESCRIPTION
     Runs `dotnet publish` for server/src/Talky.Server (win-x64, self-contained, single file),
-    restores the local WiX dotnet tool, makes sure the required WiX extensions are present and
-    then compiles deploy/windows/msi/Talky.Server.wxs into artifacts/Talky.Server-<version>.msi.
+    restores the local WiX dotnet tool and then compiles deploy/windows/msi/Talky.Server.wxs into artifacts/Talky.Server-<version>.msi.
 
     Everything is written under <repo>/artifacts, which is git-ignored.
 
@@ -47,12 +46,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $WxsPath = Join-Path $PSScriptRoot 'Talky.Server.wxs'
-$TemplateDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-
-# WiX extensions are resolved from the global extension cache; keep the versions in step
-# with .config/dotnet-tools.json.
-$WixVersion = '6.0.2'
-$WixExtensions = @('WixToolset.Firewall.wixext')
+$ExeName = 'talky.exe'
 
 function Invoke-Native {
     param(
@@ -108,17 +102,9 @@ if (-not (Test-Path -LiteralPath $PublishDir)) {
 }
 $PublishDir = (Resolve-Path -LiteralPath $PublishDir).Path
 
-# The host assembly is renamed to talky.exe; tolerate the pre-rename name so packaging
-# can be exercised before that change lands.
-$exe = @('talky.exe', 'Talky.Server.exe') |
-    ForEach-Object { Join-Path $PublishDir $_ } |
-    Where-Object { Test-Path -LiteralPath $_ } |
-    Select-Object -First 1
-if (-not $exe) {
-    throw "No host executable (talky.exe or Talky.Server.exe) found in $PublishDir."
+if (-not (Test-Path -LiteralPath (Join-Path $PublishDir $ExeName))) {
+    throw "Host executable $ExeName not found in $PublishDir."
 }
-$exeName = Split-Path -Leaf $exe
-Write-Verbose "Host executable: $exeName"
 
 if (-not (Test-Path -LiteralPath $OutputDir)) {
     if ($PSCmdlet.ShouldProcess($OutputDir, 'Create output directory')) {
@@ -131,13 +117,6 @@ if ($PSCmdlet.ShouldProcess('wix', 'dotnet tool restore')) {
     Invoke-Native dotnet @('tool', 'restore')
 }
 
-foreach ($ext in $WixExtensions) {
-    if ($PSCmdlet.ShouldProcess("$ext/$WixVersion", 'wix extension add -g')) {
-        # Idempotent: adding an already cached extension is a no-op.
-        Invoke-Native dotnet @('wix', 'extension', 'add', '-g', "$ext/$WixVersion")
-    }
-}
-
 # WIX1149 warns that the MSI ServiceConfig / ServiceConfigFailureActions tables are
 # documented as unreliable. We keep them anyway because the WixToolset.Util alternative
 # cannot express graded recovery delays (5 s / 10 s / 30 s), and operations.md has a
@@ -148,12 +127,10 @@ $wixArgs = @(
     '-nologo',
     '-sw1149',
     '-d', "PublishDir=$PublishDir",
-    '-d', "TemplateDir=$TemplateDir",
-    '-d', "ExeName=$exeName",
-    '-d', "ProductVersion=$Version"
+    '-d', "ExeName=$ExeName",
+    '-d', "ProductVersion=$Version",
+    '-out', $msiPath, $WxsPath
 )
-foreach ($ext in $WixExtensions) { $wixArgs += @('-ext', $ext) }
-$wixArgs += @('-out', $msiPath, $WxsPath)
 
 if ($PSCmdlet.ShouldProcess($msiPath, 'wix build')) {
     Invoke-Native dotnet $wixArgs

@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Removes a Talky node: the "Talky" service, the program files and the firewall rules.
+    Removes a Talky node: the "Talky" service, the firewall rules, the "Talky" event log
+    source and the program files.
 
 .DESCRIPTION
     Idempotent - anything already gone is reported and skipped.
@@ -10,8 +11,8 @@
     reinstall, so it is only removed when -RemoveData is given. Nothing in SQL Server
     and nothing on the SMB/DFS file share is touched, ever.
 
-    Order: stop the service, delete it, remove the firewall rules, remove InstallDir,
-    then optionally remove DataDir.
+    Order: stop the service, delete it, remove the firewall rules and the event log
+    source, remove InstallDir, then optionally remove DataDir.
 
 .PARAMETER InstallDir
     Program directory to remove. Default C:\Program Files\Talky.
@@ -101,6 +102,18 @@ else {
     $firewallArgs = @{ Remove = $true }
     if ($WhatIfPreference) { $firewallArgs['WhatIf'] = $true }
     & $FirewallScript @firewallArgs
+}
+
+# --- event log source -----------------------------------------------------------------
+
+if ($PSCmdlet.ShouldProcess("Application log", "Remove event log source $ServiceName if present")) {
+    if ([System.Diagnostics.EventLog]::SourceExists($ServiceName)) {
+        [System.Diagnostics.EventLog]::DeleteEventSource($ServiceName)
+        Write-Host "removed  event log source $ServiceName"
+    }
+    else {
+        Write-Host "absent   event log source $ServiceName"
+    }
 }
 
 # --- program files --------------------------------------------------------------------

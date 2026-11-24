@@ -1,3 +1,7 @@
+# Not run yet: the repository has no remote and the owner has not chosen the hosting
+# platform (GitHub or Azure DevOps Server). azure-pipelines.yml is the twin; keep the two in
+# step until one of them is dropped.
+
 name: CI
 
 on:
@@ -24,10 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET from global.json
+      # global.json only states a minimum (rollForward latestMajor); CI compiles with one
+      # known SDK, the 10.0 LTS band.
+      - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          global-json-file: global.json
+          dotnet-version: 10.0.x
 
       # SQL Server Express LocalDB ships with the windows runner image. Integration tests
       # use it instead of a container, since production is SQL Server and there is no
@@ -65,7 +71,7 @@ jobs:
       run:
         working-directory: clients
     steps:
-      # buf breaking compares against origin/main, so the history is needed.
+      # buf breaking compares against a local main branch, so the history is needed.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -84,20 +90,21 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # buf comes from the @bufbuild/buf devDependency so CI and developers run the same
-      # version. node-linker=hoisted puts the binary in the workspace root bin directory.
-      - name: Put buf on PATH
-        run: echo "$GITHUB_WORKSPACE/clients/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Format check
+        run: pnpm format:check
 
+      # buf comes from the @bufbuild/buf devDependency of @talky/protocol, run through its
+      # scripts so CI and developers use the same version.
       - name: buf lint
-        run: buf lint api/proto
-        working-directory: .
+        run: pnpm --filter @talky/protocol run lint:proto
 
       # Contracts are additive only. Skipped on main, where there is nothing to compare to.
+      # PR and tag checkouts have a detached HEAD and only origin/main, so create main first.
       - name: buf breaking
         if: github.ref != 'refs/heads/main'
-        run: buf breaking api/proto --against '.git#branch=main,subdir=api/proto'
-        working-directory: .
+        run: |
+          git branch -f main origin/main
+          pnpm --filter @talky/protocol run breaking:proto
 
       - name: Generate protocol code
         run: pnpm gen
@@ -126,10 +133,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET from global.json
+      - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          global-json-file: global.json
+          dotnet-version: 10.0.x
 
       # Publishes win-x64 self-contained single file, restores the wix local tool and
       # builds artifacts/Talky.Server-<version>.msi.

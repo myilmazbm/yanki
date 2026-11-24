@@ -7,7 +7,6 @@
     Pass / Warn / Fail result, then exits 1 if anything failed.
 
       OS              Windows Server 2022 (build 20348) or later, x64
-      Runtime         self-contained talky.exe needs no .NET runtime (informational)
       PowerShell      5.1 or later
       Elevation       running elevated (needed by Install-Talky.ps1)
       ServiceAccount  gMSA resolvable with Test-ADServiceAccount (needs RSAT AD module)
@@ -122,15 +121,7 @@ else {
     Add-Result -Check 'Architecture' -Status 'Fail' -Detail 'talky.exe is published win-x64 only.'
 }
 
-# --- Runtime and shell ----------------------------------------------------------------
-
-$dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
-if ($dotnet) {
-    Add-Result -Check 'Runtime' -Status 'Pass' -Detail "dotnet found at $($dotnet.Source); not required - talky.exe is self-contained."
-}
-else {
-    Add-Result -Check 'Runtime' -Status 'Pass' -Detail 'No .NET runtime installed; not required - talky.exe is self-contained.'
-}
+# --- Shell ---------------------------------------------------------------------------
 
 $psv = $PSVersionTable.PSVersion
 if ($psv.Major -ge 5) {

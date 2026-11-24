@@ -12,16 +12,20 @@
     DATADIR          data directory         (default %ProgramData%\Talky)
     SERVICE_ACCOUNT  service logon account   (default LocalSystem)
     SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA)
-    SERVICE_ROLES    role list passed to the host (default all)
+
+  The MSI lays down the files, registers the service STOPPED and creates the Windows
+  Event Log source "Talky". It writes no appsettings.json and opens no firewall port;
+  the node is configured afterwards with deploy\windows\Install-Talky.ps1 -AclOnly and
+  -ConfigOnly, `talky migrate`, Set-TalkyFirewall.ps1 and Start-Service Talky
+  (docs/operations.md).
 
   gMSA note: a group managed service account is passwordless. Install with
     msiexec /i Talky.Server-<v>.msi SERVICE_ACCOUNT="CORP\talky$" /qn
-  and leave SERVICE_PASSWORD unset. The account must already have
+  and leave SERVICE_PASSWORD unset. Before the service is started the account needs
   "Log on as a service" and the ACLs applied by
   deploy\windows\Install-Talky.ps1 -AclOnly.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <Package Name="Talky Server"
            Manufacturer="Talky"
@@ -41,9 +45,8 @@
 
     <MediaTemplate EmbedCab="yes" CompressionLevel="mszip" />
 
-    <!-- Windows Server 2022 (10.0.20348) or later. -->
-    <Launch Condition="Installed OR (VersionNT &gt;= 603)"
-            Message="[ProductName] requires Windows Server 2022 or later (x64)." />
+    <!-- No launch condition: VersionNT cannot express the Windows Server 2022 (build 20348)
+         floor. deploy\windows\Test-TalkyPrerequisites.ps1 checks the build. -->
 
     <!-- ARP metadata -->
     <Property Id="ARPHELPLINK" Value="https://talky.corp/docs" />
@@ -56,7 +59,6 @@
     <!-- Service identity. Default LocalSystem so a lab install needs no arguments. -->
     <Property Id="SERVICE_ACCOUNT" Value="LocalSystem" Secure="yes" />
     <Property Id="SERVICE_PASSWORD" Secure="yes" Hidden="yes" />
-    <Property Id="SERVICE_ROLES" Value="all" Secure="yes" />
 
     <SummaryInformation Description="Talky Server (talky.exe) — chat, calls, meetings, files"
                         Manufacturer="Talky" />
@@ -101,7 +103,7 @@
                       ErrorControl="normal"
                       Account="[SERVICE_ACCOUNT]"
                       Password="[SERVICE_PASSWORD]"
-                      Arguments="--role [SERVICE_ROLES] --data-dir &quot;[DATADIR]&quot;"
+                      Arguments="--data-dir &quot;[DATADIR].&quot;"
                       Vital="yes">
         <!-- Automatic (Delayed Start): the node waits for AD, DNS and SQL to settle. -->
         <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
@@ -113,23 +115,23 @@
         </ServiceConfigFailureActions>
       </ServiceInstall>
 
+      <!-- Never started by the MSI: the node has no configuration until
+           Install-Talky.ps1 -ConfigOnly has written <DATADIR>\appsettings.json. -->
       <ServiceControl Id="TalkyServiceControl"
                       Name="Talky"
-                      Start="install"
                       Stop="both"
                       Remove="uninstall"
                       Wait="yes" />
 
-      <!-- Inbound rules. 8080 (plain HTTP for a TLS-terminating load balancer) is
-           intentionally NOT opened by the MSI; Set-TalkyFirewall.ps1 -EnableHttp does it. -->
-      <fw:FirewallException Id="FwTalkyHttps" Name="Talky HTTPS (TCP 8443)"
-                            Description="Talky client and API traffic."
-                            Port="8443" Protocol="tcp" Profile="all" Scope="any"
-                            Outbound="no" />
-      <fw:FirewallException Id="FwTalkyMesh" Name="Talky cluster mesh (TCP 9443)"
-                            Description="gRPC full-mesh cluster bus between Talky nodes."
-                            Port="9443" Protocol="tcp" Profile="all" Scope="any"
-                            Outbound="no" />
+      <!-- Windows Event Log source "Talky" in the Application log. The host does not create
+           it at run time (a gMSA cannot), so the installer does, with the message file that
+           .NET's EventLog.CreateEventSource registers. -->
+      <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Talky"
+                   ForceDeleteOnUninstall="yes">
+        <RegistryValue Name="EventMessageFile" Type="expandable"
+                       Value="%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll" />
+        <RegistryValue Name="TypesSupported" Type="integer" Value="7" />
+      </RegistryKey>
     </Component>
 
     <ComponentGroup Id="DataDirectories">
@@ -138,12 +140,6 @@
       </Component>
       <Component Id="DataLogsComponent" Directory="DATALOGSDIR" Guid="EABA1F8C-C104-41BC-8356-8FCB589479B0" Permanent="yes">
         <CreateFolder />
-      </Component>
-      <!-- Written once, never replaced by an upgrade, never removed by uninstall. -->
-      <Component Id="DataAppSettings" Directory="DATADIR" Guid="FD250F75-274D-492C-8927-E5055E532D86"
-                 NeverOverwrite="yes" Permanent="yes">
-        <File Id="DataAppSettingsFile" Name="appsettings.json"
-              Source="$(var.TemplateDir)\appsettings.template.json" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 

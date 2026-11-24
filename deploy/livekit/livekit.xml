@@ -43,9 +43,12 @@
   <priority>High</priority>
 
   <!-- Install-LiveKitService.ps1 removes this block entirely when the service runs as
-       LocalSystem (WinSW's default) and fills in the account otherwise. -->
+       LocalSystem (WinSW's default) and fills in the account otherwise. Element names
+       follow WinSW 2.12.0 (doc/xmlConfigFile.md): domain + user, no password for a gMSA
+       or a built-in account. -->
   <serviceaccount>
-    <username>__SERVICE_ACCOUNT__</username>
+    <domain>__SERVICE_DOMAIN__</domain>
+    <user>__SERVICE_USER__</user>
     <allowservicelogon>true</allowservicelogon>
   </serviceaccount>
 </service>
