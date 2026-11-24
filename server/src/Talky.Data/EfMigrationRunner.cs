@@ -33,6 +33,13 @@ public sealed partial class EfMigrationRunner(
 {
     private const int LockTimeoutMilliseconds = 60_000;
 
+    /// <summary>
+    /// Command timeout for creating the database and applying migrations. The configured timeout is
+    /// the hot-path budget (seconds); a migration that rebuilds an index on a populated table needs
+    /// minutes. Status queries keep the configured timeout.
+    /// </summary>
+    private static readonly TimeSpan MigrationCommandTimeout = TimeSpan.FromMinutes(30);
+
     /// <inheritdoc />
     public async Task<MigrationStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -56,6 +63,10 @@ public sealed partial class EfMigrationRunner(
 
         await using var lockConnection = await connections.OpenMasterAsync(cancellationToken);
         await AcquireLockAsync(lockConnection, resource, cancellationToken);
+
+        // The context is pooled and scoped: restore its timeout so later queries on it stay short.
+        var commandTimeout = dbContext.Database.GetCommandTimeout();
+        dbContext.Database.SetCommandTimeout(MigrationCommandTimeout);
         try
         {
             var creator = (RelationalDatabaseCreator)dbContext.Database.GetService<IDatabaseCreator>();
@@ -80,7 +91,16 @@ public sealed partial class EfMigrationRunner(
         }
         finally
         {
-            await ReleaseLockAsync(lockConnection, resource);
+            dbContext.Database.SetCommandTimeout(commandTimeout);
+
+            try
+            {
+                await ReleaseLockAsync(lockConnection, resource);
+            }
+            catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+            {
+                LogLockReleaseFailed(logger, ex, resource);
+            }
         }
     }
 
@@ -132,7 +152,7 @@ public sealed partial class EfMigrationRunner(
         command.Parameters.Add("@Result", SqlDbType.Int).Direction = ParameterDirection.ReturnValue;
 
         // The lock is released by closing the connection anyway; this is only tidiness, and a
-        // failure here must not mask the outcome of the migration itself.
+        // failure here must not mask the outcome of the migration itself (the caller catches it).
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
@@ -153,4 +173,10 @@ public sealed partial class EfMigrationRunner(
         Level = LogLevel.Information,
         Message = "Applied {Count} migration(s) to {Database}.")]
     private static partial void LogApplied(ILogger logger, int count, string database);
+
+    [LoggerMessage(
+        EventId = 1005,
+        Level = LogLevel.Warning,
+        Message = "Could not release the migration lock {Resource}; it is released when its connection closes.")]
+    private static partial void LogLockReleaseFailed(ILogger logger, Exception exception, string resource);
 }

@@ -15,11 +15,16 @@ namespace Talky.Data.Diagnostics;
 /// <c>READ_COMMITTED_SNAPSHOT</c> being off is reported as a warning rather than an error: the node
 /// still works, but readers start blocking behind writers, which is exactly the failure mode Talky's
 /// read paths are designed to avoid. Pending migrations are a warning for the same reason - the node
-/// may still be serving a compatible older schema during a rolling upgrade.
+/// may still be serving a compatible older schema during a rolling upgrade. A database that is
+/// missing, not accessible, or has no migration applied at all is an error: there is no schema to
+/// serve.
 /// </remarks>
 public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScopeFactory scopeFactory)
     : IDoctorCheck
 {
+    /// <summary>SQL Server: "Cannot open database requested by the login".</summary>
+    private const int CannotOpenDatabaseError = 4060;
+
     private const string ProbeSql = """
         SELECT
             CONVERT(nvarchar(64), SERVERPROPERTY('ProductVersion')),
@@ -67,6 +72,14 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
             details["compatibilityLevel"] = reader.GetByte(3).ToString(CultureInfo.InvariantCulture);
             details["snapshotIsolation"] = reader.GetByte(4).ToString(CultureInfo.InvariantCulture);
         }
+        catch (SqlException ex) when (ex.Number == CannotOpenDatabaseError)
+        {
+            details["error"] = ex.Message;
+            return DoctorResult.Error(
+                $"Database '{connections.DatabaseName}' does not exist or is not accessible to this login; " +
+                "run 'talky migrate' to create it, or check the login's rights.",
+                details);
+        }
         catch (SqlException ex)
         {
             details["error"] = ex.Message;
@@ -80,20 +93,29 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
             return DoctorResult.Error("The SQL Server connection string is not usable.", details);
         }
 
+        int appliedCount;
         int pendingCount;
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
             var status = await runner.GetStatusAsync(cancellationToken);
+            appliedCount = status.Applied.Count;
             pendingCount = status.Pending.Count;
-            details["appliedMigrations"] = status.Applied.Count.ToString(CultureInfo.InvariantCulture);
+            details["appliedMigrations"] = appliedCount.ToString(CultureInfo.InvariantCulture);
             details["pendingMigrations"] = pendingCount.ToString(CultureInfo.InvariantCulture);
         }
         catch (SqlException ex)
         {
             details["error"] = ex.Message;
             return DoctorResult.Error("Migration state could not be read.", details);
+        }
+
+        if (appliedCount == 0)
+        {
+            return DoctorResult.Error(
+                $"Database '{connections.DatabaseName}' has no Talky schema (no migration applied); run 'talky migrate'.",
+                details);
         }
 
         var problems = new List<string>(2);

@@ -140,6 +140,97 @@ public sealed class MessageAppendTests(TalkyDatabaseFixture fixture, ITestOutput
     }
 
     [RequiresSqlServerFact]
+    public async Task Reusing_a_client_message_id_in_another_conversation_is_a_conflict()
+    {
+        var appender = fixture.Resolve<IMessageAppender>();
+        var first = await fixture.CreateConversationAsync(CancellationToken.None);
+        var second = await fixture.CreateConversationAsync(CancellationToken.None);
+        var sender = (await fixture.CreateUsersAsync(1, "conflict-", CancellationToken.None))[0];
+        var clientMsgId = Guid.NewGuid();
+
+        await appender.AppendAsync(
+            new MessageAppendRequest(first, sender, clientMsgId, MessageKind.Text, Body: "a"),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<ClientMsgIdConflictException>(() => appender.AppendAsync(
+            new MessageAppendRequest(second, sender, clientMsgId, MessageKind.Text, Body: "b"),
+            CancellationToken.None));
+
+        var lastSeq = await fixture.ScalarAsync<long>(
+            "SELECT c.last_seq FROM dbo.conversations AS c WHERE c.id = @c;",
+            CancellationToken.None,
+            new SqlParameter("@c", second));
+        Assert.Equal(0, lastSeq);
+    }
+
+    /// <summary>
+    /// A cancelled append must not leave the conversation row locked on the pooled connection it
+    /// returns to. The INSERT is held up by an uncommitted row with the same idempotency key, so the
+    /// cancel lands while the transaction holds the conversation row lock.
+    /// </summary>
+    [RequiresSqlServerFact]
+    public async Task A_cancelled_append_does_not_leave_the_conversation_row_locked()
+    {
+        var appender = fixture.Resolve<IMessageAppender>();
+        var conversationId = await fixture.CreateConversationAsync(CancellationToken.None);
+        var sender = (await fixture.CreateUsersAsync(1, "cancel-", CancellationToken.None))[0];
+        var clientMsgId = Guid.NewGuid();
+
+        // Both helper connections are outside the appender's pool: a pooled connection reset would
+        // roll an orphaned transaction back and hide the bug.
+        await using var blocker = await OpenUnpooledAsync();
+        await using var blockerTransaction = (SqlTransaction)await blocker.BeginTransactionAsync(CancellationToken.None);
+        await using (var insert = new SqlCommand(
+            """
+            INSERT INTO dbo.messages
+                (conversation_id, seq, id, sender_id, kind, body, client_msg_id, created_at)
+            VALUES (@other, 1, @id, @sender, 0, N'blocker', @client_msg_id, SYSUTCDATETIME());
+            SELECT @@SPID;
+            """,
+            blocker,
+            blockerTransaction))
+        {
+            insert.Parameters.AddWithValue("@other", Guid.NewGuid());
+            insert.Parameters.AddWithValue("@id", Guid.NewGuid());
+            insert.Parameters.AddWithValue("@sender", sender);
+            insert.Parameters.AddWithValue("@client_msg_id", clientMsgId);
+            var blockerSpid = Convert.ToInt32(await insert.ExecuteScalarAsync(CancellationToken.None), CultureInfo.InvariantCulture);
+
+            using var cancellation = new CancellationTokenSource();
+            var append = appender.AppendAsync(
+                new MessageAppendRequest(conversationId, sender, clientMsgId, MessageKind.Text, Body: "x"),
+                cancellation.Token);
+
+            await using var probe = await OpenUnpooledAsync();
+            await using var waiting = new SqlCommand(
+                "SELECT COUNT(*) FROM sys.dm_exec_requests AS r WHERE r.blocking_session_id = @spid;",
+                probe);
+            waiting.Parameters.AddWithValue("@spid", blockerSpid);
+
+            var deadline = Stopwatch.StartNew();
+            while (Convert.ToInt32(await waiting.ExecuteScalarAsync(CancellationToken.None), CultureInfo.InvariantCulture) == 0)
+            {
+                Assert.True(deadline.Elapsed < TimeSpan.FromSeconds(30), "The append never blocked on the INSERT.");
+                await Task.Delay(20, CancellationToken.None);
+            }
+
+            await cancellation.CancelAsync();
+            Assert.NotNull(await Record.ExceptionAsync(() => append));
+
+            await using var lockCheck = new SqlCommand(
+                """
+                SET LOCK_TIMEOUT 0;
+                SELECT c.last_seq FROM dbo.conversations AS c WITH (UPDLOCK, ROWLOCK) WHERE c.id = @c;
+                """,
+                probe);
+            lockCheck.Parameters.AddWithValue("@c", conversationId);
+            Assert.Equal(0L, await lockCheck.ExecuteScalarAsync(CancellationToken.None));
+        }
+
+        await blockerTransaction.RollbackAsync(CancellationToken.None);
+    }
+
+    [RequiresSqlServerFact]
     public async Task Keyset_paging_walks_history_backwards_without_gaps_or_duplicates()
     {
         const int Total = 137;
@@ -176,6 +267,7 @@ public sealed class MessageAppendTests(TalkyDatabaseFixture fixture, ITestOutput
 
             // Newest first inside a page.
             Assert.Equal(page.Select(m => m.Seq).OrderByDescending(s => s), page.Select(m => m.Seq));
+            Assert.All(page, m => Assert.Equal(DateTimeKind.Utc, m.CreatedAt.Kind));
 
             seen.AddRange(page.Select(m => m.Seq));
             before = page[^1].Seq;
@@ -267,5 +359,13 @@ public sealed class MessageAppendTests(TalkyDatabaseFixture fixture, ITestOutput
             CancellationToken.None));
 
         Assert.Contains("does not exist", error.Message, StringComparison.Ordinal);
+    }
+
+    private async Task<SqlConnection> OpenUnpooledAsync()
+    {
+        var connection = new SqlConnection(
+            new SqlConnectionStringBuilder(fixture.ConnectionString) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync(CancellationToken.None);
+        return connection;
     }
 }

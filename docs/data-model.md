@@ -13,7 +13,7 @@ Hedef: **SQL Server 2025** (üretimde Always On AG, geliştirmede `(localdb)\MSS
 | Kural | Değer | Gerekçe |
 |---|---|---|
 | Ad biçimi | `snake_case` tablo ve kolon | `SnakeCaseNaming.UseSnakeCaseNames()` (aşağıda) |
-| Zaman | `datetime2(3)`, daima UTC | 8 yerine 6 bayt; milisaniye zaten saatlerimizin ve tel protokolünün çözünürlüğü |
+| Zaman | `datetime2(3)`, daima UTC | 8 yerine 6 bayt; milisaniye zaten saatlerimizin ve tel protokolünün çözünürlüğü. EF ile okunan her `DateTime` `Kind = Utc` döner (model genelinde `UtcDateTimeConverter`); ham SQL yolları da `Utc` döndürür |
 | Metin | `nvarchar(n)`, gövdeler `nvarchar(max)` | Kurumsal ortamda Türkçe/Unicode zorunlu |
 | Enum | `tinyint`, açık sayısal değerlerle | Sıcak satırlarda alan başına 3 bayt tasarruf; değer haritaları aşağıda |
 | İzolasyon | `READ_COMMITTED_SNAPSHOT ON` | Okuyucu asla yazıcının arkasında beklemez; hiçbir okuma yolunda `NOLOCK` yok |
@@ -114,8 +114,13 @@ Karşılaştırma SQL Server'ın `uniqueidentifier` sıralamasına göredir (son
 **`messages`** — Kümelenmiş PK `(conversation_id, seq)`. Ayrıntılı gerekçe aşağıda.
 - `id uniqueidentifier`: **UUIDv7** (`Guid.CreateVersion7()`), `UQ NONCLUSTERED`. Dışarıya açık
   kimlik; tepkiler, konu başlıkları ve federasyon bunu kullanır, sıralama için asla kullanılmaz.
-- `UQ (sender_id, client_msg_id)`: gönderimi **idempotent** yapar.
+- `UQ (sender_id, client_msg_id)`: gönderimi **idempotent** yapar. Anahtar gönderici başına
+  küreseldir (konuşma başına değil); aynı `client_msg_id` başka bir konuşmada yeniden kullanılırsa
+  bu bir tekrar değil çakışmadır (aşağıda).
 - `IX (parent_id, seq) INCLUDE (conversation_id) WHERE parent_id IS NOT NULL`: konu görünümü.
+  (`INCLUDE (conversation_id)` etkisizdir; bkz. "Neden filtreli indeks".)
+- `created_at`: gönderen düğümün saatidir ve **yalnız bilgi amaçlıdır**. Satır kilidi beklenmeden
+  önce alındığı için `seq` ile monoton olması garanti değildir; sıralama her yerde `seq` iledir.
 - `body nvarchar(max)`, `metadata nvarchar(max)` + `CHECK (metadata IS NULL OR ISJSON(metadata) = 1)`.
 - `deleted_at`: silme yumuşaktır, satır kalır — `seq` boşluksuz kalsın diye.
 - `DATA_COMPRESSION = PAGE` (tüm indeksler).
@@ -147,9 +152,23 @@ başladığı için NULL olabilir), `IX (scan_status, created_at)` (virüs taray
 - `UQ (dedupe_key) WHERE dedupe_key IS NOT NULL AND state < 2`: anahtar başına en fazla bir canlı iş.
 - `IX (completed_at) WHERE completed_at IS NOT NULL`: bitmiş işlerin saklama süpürmesi.
 - `CHECK (attempts >= 0 AND max_attempts >= 1)`.
+- **Çit (fencing) sözleşmesi.** Her talep `attempts`'i bir artırır ve değeri `ClaimedJob.Attempts`
+  ile döndürür. `CompleteAsync(claim)` ve `FailAsync(claim, error)` talebin kendisini alır ve yalnız
+  satır hâlâ `state = 1` **ve** `attempts = claim.Attempts` ise bir şey yapar; aksi halde
+  `CompleteAsync` `false`, `FailAsync` `null` döner ve hiçbir şey değişmez. Böylece talebi bayatlayıp
+  başka bir işçiye (aynı işçi kimliği dahil) geçen bir işi geç kalan işçi bitiremez veya
+  başarısız sayamaz. `FailAsync` tek bir `UPDATE ... OUTPUT`'tur.
+- Bayat talep süpürmesi (`RequeueStaleAsync`) işi `Pending`'e döndürür; kaybedilen talep zaten son
+  izinli deneme idiyse (`attempts >= max_attempts`) işi `Dead` yapar. İşçisini öldüren bir iş bu
+  sayede sonsuza kadar yeniden talep edilmez.
+- Kilit kiralaması yenileme ve iptal API'si yoktur (`JobState.Cancelled` değeri ayrılmıştır, henüz
+  yazan kod yoktur).
 
 **`cluster_nodes`** — PK `node_id` (nvarchar 128) kümelenmiş, `IX (last_seen_at)`. Yalnızca keşif
 amaçlıdır: doğruluk hiçbir zaman bu tabloya dayanmaz. `roles` `NodeRole` bit maskesidir (`int`).
+v0'da `last_seen_at` yazan düğümün saatiyle yazılır ve okuyan düğümün saatiyle karşılaştırılır;
+M2'de mesh bağlanırken canlılık karşılaştırması SQL Server saatine (`SYSUTCDATETIME()`) taşınacak.
+(İş kuyruğunun kilit zaman aşımları dakikalar mertebesinde olduğu için orada saat kayması önemsizdir.)
 
 **`metrics_1m`** — PK `(bucket, node_id, name)` kümelenmiş. Zaman ilk kolondur, böylece hem panonun
 aralık sorgusu hem saklama silmesi kümelenmiş aralık taramasıdır. `IX (name, bucket)`.
@@ -181,13 +200,19 @@ göçün tamamen ekleme (additive) olması için şimdiden vardır. `UQ (domain)
 `id` (UUIDv7) kümelenmiş anahtar **olamaz**: SQL Server `uniqueidentifier`'ı son bayt grubundan
 başlayarak sıralar, UUIDv7'nin zaman damgası ise ilk baytlardadır — yani SQL Server açısından
 rastgeledir ve her ekleme sayfa bölünmesi olurdu. Bu yüzden `id` kümelenmemiş benzersiz indekstedir;
-istemciler ve federasyon için zaman sıralı, motor için maliyetsizdir.
+istemciler ve federasyon için zaman sıralıdır. Motor için **maliyetsiz değildir**: aynı rastgelelik
+`IX_messages_id` yaprağına (ve gönderici başına `IX_messages_sender_id_client_msg_id` yaprağına)
+rastgele konumlu ekleme demektir, yani en büyük tabloda iki indeks sayfa bölünmesi ve düşük sayfa
+doluluğu yaşar. Bu bir ölçüm kalemidir: M2'nin 500M satırlık ölçümünde bu iki indeksin ekleme p99'u
+ve sayfa doluluğu ölçülecek, `id`'nin SQL Server sırasına uygun bayt düzeninde saklanıp
+saklanmayacağına orada karar verilecek.
 
 ### Boşluksuz `seq` tahsisi
 
 `SqlMessageAppender` tek bir parametreli toplu ifade ve tek bir kısa işlem çalıştırır:
 
 ```sql
+SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 UPDATE dbo.conversations
    SET last_seq = last_seq + 1, last_message_at = @created_at, updated_at = @created_at
@@ -203,13 +228,28 @@ COMMIT TRANSACTION;
   alır. Toplam sıra buradan gelir; koordinatör, `SEQUENCE` nesnesi veya küme bus'ı gerekmez.
 - Herhangi bir hata işlemi geri alır, dolayısıyla `last_seq` de geri döner: **taahhüt edilmiş
   numaralar boşluksuzdur.** (`ck_messages_metadata_json` ihlali bunun testidir.)
+- `SET XACT_ABORT ON` toplu ifadenin ilk satırıdır: istemci zaman aşımı veya iptal (attention)
+  TRY/CATCH'e düşmez; bu ayar olmadan işlem açık kalır ve konuşma satırının kilidi havuza dönen
+  bağlantıda, o bağlantı yeniden kullanılana kadar asılı kalırdı. Ayar açıkken sunucu işlemi geri
+  alır. (`MessageAppendTests.A_cancelled_append_does_not_leave_the_conversation_row_locked`.)
 - Numara INSERT'ten önce bilindiği için göndericiye hemen yankılanabilir.
 - Idempotenlik `UQ (sender_id, client_msg_id)` ile sağlanır: yeniden gönderim önce hızlı yolda
   (işlemsiz seek) mevcut satırı bulur; yarışı kaybeden ekleme 2601/2627 alır, geri alınır ve satırı
   yeniden okur. Her iki durumda da aynı `(id, seq)` döner ve `Deduplicated = true` işaretlenir.
+- Her iki arama da bulunan satırın `conversation_id`'sini karşılaştırır. Satır **başka bir
+  konuşmaya** aitse toplu ifade `THROW 50409` yapar ve `SqlMessageAppender` bunu
+  `ClientMsgIdConflictException`'a (`InvalidOperationException`'dan türer) çevirir; hedef konuşmaya
+  hiçbir şey yazılmaz ve `last_seq` değişmez. Konuşma bulunamazsa `THROW 50404` →
+  `InvalidOperationException`.
+- Ekleyici **yalnızca kalıcılaştırır**: yetkilendirme, üyelik veya arşiv (`conversations.archived`)
+  denetimi yapmaz. M2'deki gönderim işleyicisi bunları `AppendAsync`'i çağırmadan önce yapmalıdır.
+  `AND archived = 0` ve göndericinin okuma imlecinin aynı toplu ifadeye alınıp alınmayacağına M2'de,
+  sıcak yol ölçümüyle karar verilecek.
+- Ekleyici asla yeniden denemez; başarısız bir gönderimi istemci aynı `clientMsgId` ile yineler
+  (bkz. `docs/protocol.md`).
 
 Doğrulama: `MessageAppendTests.Sequences_are_gapless_and_unique_under_64_concurrent_appenders`
-(64 işçi × 50 ekleme = tam olarak 1..3200, `last_seq = 3200`, LocalDB'de ~0,95 s).
+(64 işçi × 50 ekleme = tam olarak 1..3200, `last_seq = 3200`, LocalDB'de ~1 s, ~3.000 ekleme/s).
 
 ## Neden sıralı GUID (ve neden `Guid.NewGuid()` değil)
 
@@ -236,14 +276,22 @@ Ham SQL yazan yollar (iş kuyruğu) aynı üreticiyi `Talky.Data.ValueGeneration
 - `IX_messages_parent_id_seq ... WHERE parent_id IS NOT NULL`: mesajların küçük bir azınlığı konu
   yanıtıdır. Filtreli indeks yalnız o satırları taşır — üretimde tam indeksin küçük bir kesri kadar
   yer kaplar, ekleme başına bakım maliyeti yalnız yanıtlarda oluşur ve `parent_id IS NULL` olan
-  milyonlarca satır indekse hiç girmez. `INCLUDE (conversation_id)` konu görünümünün anahtar
-  aramasını (key lookup) ortadan kaldırır.
+  milyonlarca satır indekse hiç girmez. `INCLUDE (conversation_id)` ise **etkisizdir**:
+  `conversation_id` kümelenmiş anahtarın parçası olduğu için zaten her kümelenmemiş indekste
+  bulunur, ve konu görünümü `body`/`sender_id` için yine anahtar araması yapar. Yalnız bunun için
+  göç kesilmez; ilk M1 göçünde kaldırılacak.
 - Aynı gerekçe `jobs` tablosunda daha da belirgindir: `WHERE state = 0` filtresi sayesinde talep
   indeksi yalnızca bekleyen işleri içerir, yani bitmiş milyonlarca iş satırı kuyruk sorgusunu
   yavaşlatmaz.
 - `UQ ... WHERE <kolon> IS NOT NULL` kalıbı (`users.external_id`, `devices.push_token`,
   `jobs.dedupe_key`) SQL Server'ın "NULL da bir değerdir" benzersizlik davranışını aşmak içindir:
   filtre olmadan ikinci NULL satırı reddedilirdi.
+
+## `users.sid` ve `users.upn`
+
+Planın listelediği `users.sid` ve `users.upn` kolonları v0 şemasında yoktur; dizin nesnesi yalnız
+`external_id` ile eşlenir. Negotiate/Kerberos bir objectGUID değil SID verdiği için bu iki kolon M1
+kimlik çalışmasında **ekleme (additive) bir göçle** gelecek.
 
 ## `messages` ve yabancı anahtarlar
 
@@ -361,14 +409,34 @@ Saklama işleri M2'de `jobs` kuyruğunda çalışacaktır; bu belge kalıbı v0'
 
 ## Yapılandırma ve DI
 
-`Talky:Database` bölümü (`DatabaseOptions`, `ValidateDataAnnotations` + `ValidateOnStart`):
+`Talky:Database` bölümü (`DatabaseOptions`, `ValidateDataAnnotations` + `ValidateDatabaseOptions` +
+`ValidateOnStart`). `ValidateDatabaseOptions` bağlantı dizesinin `SqlConnectionStringBuilder` ile
+ayrıştırılabildiğini ve bir veritabanı (`Database`/`Initial Catalog`) adlandırdığını denetler; hata
+iletisi bağlantı dizesini asla yazmaz. Seçenekleri kullanan her yol (`serve`, `doctor`, `migrate`)
+böylece olağan "Configuration is invalid" yolundan düşer:
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
 | `Talky:Database:ConnectionString` | — (**zorunlu**) | SQL Server bağlantı dizesi. Varsayılanı yoktur: üretimde sessizce yerel bir örneğe düşmek, başlamamaktan kötüdür. |
 | `Talky:Database:CommandTimeoutSeconds` | `5` | Her sorgunun zaman aşımı. Bilinçli olarak kısa: sıcak yolda saniyelerce süren sorgu beklenecek bir şey değil, bir arızadır. |
-| `Talky:Database:MaxRetryCount` | `3` | Geçici hatalar (AG yük devretmesi, kilitlenme kurbanı, zaman aşımı) için yeniden deneme. `0` stratejiyi kapatır. |
+| `Talky:Database:MaxRetryCount` | `3` | **Yalnız EF yolları** için geçici hata (AG yük devretmesi, kilitlenme kurbanı, zaman aşımı) yeniden denemesi. `0` stratejiyi kapatır. Aşağıdaki "Geçici hatalar" bölümüne bakın. |
 | `Talky:Database:MigrateOnStartup` | `false` | Açıksa host dinlemeye başlamadan önce göçleri uygular. Üretimde kapalı: yükseltme `talky migrate` ile açık ve denetlenebilir bir adımdır. |
+
+### Geçici hatalar: iki ayrı davranış
+
+- **EF yolları** (`TalkyDbContext`: göçler, `EfMessageReader`, ileride EF ile yazılan iş birimleri)
+  `EnableRetryOnFailure(MaxRetryCount)` ile zaman aşımları dahil yeniden dener. En kötü durum
+  (4 × 5 s + geri çekilme) istemcinin 15 s istek zaman aşımını aşar; sıcak yol okumaları bu
+  stratejiye yaslanmamalıdır (M2'de yeniden değerlendirilecek). Bu strateji kullanıcının açtığı
+  işlemleri (`BeginTransaction`) reddeder: `TalkyDbContext` üzerinde işlem açan her iş birimi
+  `Database.CreateExecutionStrategy().ExecuteAsync(...)` içine sarılmalıdır.
+- **Ham SQL yolları** (`SqlMessageAppender`, `SqlJobQueue`, `SqlClusterNodeRegistry`, sağlık ve
+  doctor kontrolleri) **asla** yeniden denemez; hata çağırana gider.
+- Mesaj ekleme yeniden denemesi **istemcinindir**: gönderim `clientMsgId` sayesinde idempotenttir ve
+  istemci zaman aşımında aynı kimlikle yineler. Sunucu tarafında ekleme yeniden denemesi yoktur.
+
+Data entegrasyon testleri üretimdeki strateji (`MaxRetryCount = 3`) ile çalışır; yalnız komut zaman
+aşımı soğuk LocalDB için 60 s'ye çıkarılır.
 
 `services.AddTalkyData(builder.Configuration)` şunları kaydeder:
 
@@ -383,7 +451,8 @@ Saklama işleri M2'de `jobs` kuyruğunda çalışacaktır; bu belge kalıbı v0'
 | `IDoctorCheck` → `SqlDoctorCheck` | singleton (enumerable) | `talky doctor` kontrolü, adı `sql` |
 | `SqlConnectionSource` | singleton | EF dışı yolların ADO.NET bağlantıları |
 | `TimeProvider` | singleton (`TryAdd`) | testler kendi sağlayıcısını önceden kaydedebilir |
-| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, `SELECT 1`, 2 sn bütçe |
+| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, tek gidiş-dönüş, 2 sn bütçe; `dbo.__EFMigrationsHistory` yoksa (şema oluşturulmamış) `Unhealthy` ve "run 'talky migrate'" |
+| `IValidateOptions<DatabaseOptions>` → `ValidateDatabaseOptions` | singleton (enumerable) | bağlantı dizesi ayrıştırılabilir ve veritabanı adlandırıyor |
 
 Host tarafında yapılması gerekenler: `AddTalkyData(builder.Configuration)` çağrısı, hazır olma uç
 noktasının `ready` etiketiyle eşleştirilmesi (`app.MapHealthChecks("/readyz", new() { Predicate = r
@@ -446,7 +515,16 @@ TALKY_DB='Server=(localdb)\MSSQLLocalDB;Database=talky_scratch;Trusted_Connectio
    üzerindeki iki Talky kurulumu (veya iki test veritabanı) birbirini beklemez.
 2. Veritabanı yoksa oluşturur (`RelationalDatabaseCreator`).
 3. Bekleyen göç yoksa hiçbir şey yapmaz; varsa `Database.MigrateAsync()` çağırır.
-4. Kilidi bırakır.
+4. Kilidi bırakır. Bırakma başarısız olursa yalnız uyarı loglanır (kilit bağlantı kapanınca zaten
+   serbest kalır); göçün kendi sonucunu asla örtmez.
+
+Oluşturma ve göç adımları, sıcak yolun 5 s'lik `CommandTimeoutSeconds`'ı yerine koşucunun kendi
+**30 dakikalık** komut zaman aşımıyla çalışır (dolu bir tabloda indeks yeniden oluşturmak dakikalar
+sürer); `GetStatusAsync` kısa zaman aşımını korur.
+
+`talky doctor`'ın `sql` kontrolü: veritabanı yoksa veya oturuma erişilebilir değilse (SQL hatası
+4060) ve hiç göç uygulanmamışsa **Error** ("run 'talky migrate'"); göçlerin bir kısmı bekliyorsa
+**Warning** (kademeli yükseltmede düğüm uyumlu eski şemayı sunabilir).
 
 Kademeli yükseltmede aynı anda başlayan ikinci düğüm en fazla 60 saniye bekler ve ardından bekleyen
 göç bulamaz.
@@ -455,12 +533,14 @@ göç bulamaz.
 
 ```bash
 cd server
-dotnet test tests/Talky.UnitTests -m:1 -p:NodeReuse=false          # 43 test, veritabanı gerekmez
-dotnet test tests/Talky.IntegrationTests -m:1 -p:NodeReuse=false   # 25 test, LocalDB
+dotnet test tests/Talky.UnitTests -m:1 -p:NodeReuse=false          # veritabanı gerekmez
+dotnet test tests/Talky.IntegrationTests -m:1 -p:NodeReuse=false   # LocalDB
+dotnet test tests/Talky.IntegrationTests -m:1 -p:NodeReuse=false --filter "FullyQualifiedName~IntegrationTests.Data"   # yalnız Data testleri
 ```
 
 Entegrasyon testleri her test sınıfı için `talky_test_<8 hex>` adında bir veritabanı oluşturur,
 gerçek `IMigrationRunner` ile göçleri uygular ve sonunda düşürür.
 
 - `TALKY_TEST_DB_SERVER` sunucuyu değiştirir (varsayılan `(localdb)\MSSQLLocalDB`).
-- `TALKY_SKIP_DB_TESTS=1` veritabanı gerektiren tüm testleri atlar.
+- `TALKY_SKIP_DB_TESTS=1` yalnız **Data** testlerini (`[RequiresSqlServerFact]`) atlar. Host
+  testleri (`IntegrationTests.Host`) her durumda LocalDB ister ve bu anahtarla atlanmaz.

@@ -54,18 +54,27 @@ public interface IJobQueue
         int maxJobs,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Marks a running job as succeeded. Returns false when the job was not running.</summary>
-    Task<bool> CompleteAsync(Guid jobId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Marks a running job as succeeded. The claim is the fencing token: the update applies only while
+    /// the row is still running with the <see cref="ClaimedJob.Attempts"/> value of
+    /// <paramref name="claim"/>, so a worker whose claim went stale and was re-claimed cannot complete
+    /// someone else's attempt. Returns false when the claim is no longer held.
+    /// </summary>
+    Task<bool> CompleteAsync(ClaimedJob claim, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Records a failed attempt. Reschedules with exponential backoff, or moves the job to
-    /// <see cref="JobState.Dead"/> once <c>attempts >= max_attempts</c>. Returns the resulting state.
+    /// <see cref="JobState.Dead"/> once <c>attempts >= max_attempts</c>. Fenced on the claim like
+    /// <see cref="CompleteAsync"/>. Returns the resulting state, or null when the claim is no longer
+    /// held and nothing was changed.
     /// </summary>
-    Task<JobState> FailAsync(Guid jobId, string errorMessage, CancellationToken cancellationToken = default);
+    Task<JobState?> FailAsync(ClaimedJob claim, string errorMessage, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns jobs whose worker died to <see cref="JobState.Pending"/> once their claim is older
-    /// than <paramref name="lockTimeout"/>. Returns the number of jobs requeued.
+    /// Releases jobs whose worker died once their claim is older than <paramref name="lockTimeout"/>:
+    /// back to <see cref="JobState.Pending"/>, or to <see cref="JobState.Dead"/> when the lost claim
+    /// was already the last allowed attempt, so a job that kills its worker is not retried forever.
+    /// Returns the number of jobs released.
     /// </summary>
     Task<int> RequeueStaleAsync(TimeSpan lockTimeout, CancellationToken cancellationToken = default);
 }

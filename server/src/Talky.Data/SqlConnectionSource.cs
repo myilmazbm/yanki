@@ -36,25 +36,20 @@ public sealed class SqlConnectionSource
     public int CommandTimeoutSeconds => _options.CommandTimeoutSeconds;
 
     /// <summary>Opens a connection to the Talky database.</summary>
-    public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken)
-    {
-        var connection = new SqlConnection(_options.ConnectionString);
-        try
-        {
-            await connection.OpenAsync(cancellationToken);
-            return connection;
-        }
-        catch
-        {
-            await connection.DisposeAsync();
-            throw;
-        }
-    }
+    public Task<SqlConnection> OpenAsync(CancellationToken cancellationToken) =>
+        OpenAsync(_options.ConnectionString, cancellationToken);
 
     /// <summary>Opens a connection to <c>master</c> on the same server.</summary>
-    public async Task<SqlConnection> OpenMasterAsync(CancellationToken cancellationToken)
+    public Task<SqlConnection> OpenMasterAsync(CancellationToken cancellationToken) =>
+        OpenAsync(MasterConnectionString, cancellationToken);
+
+    /// <summary>A command on <paramref name="connection"/> with the configured command timeout.</summary>
+    internal SqlCommand NewCommand(string sql, SqlConnection connection) =>
+        new(sql, connection) { CommandTimeout = CommandTimeoutSeconds };
+
+    private static async Task<SqlConnection> OpenAsync(string connectionString, CancellationToken cancellationToken)
     {
-        var connection = new SqlConnection(MasterConnectionString);
+        var connection = new SqlConnection(connectionString);
         try
         {
             await connection.OpenAsync(cancellationToken);

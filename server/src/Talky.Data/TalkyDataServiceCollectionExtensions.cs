@@ -36,6 +36,8 @@ public static class TalkyDataServiceCollectionExtensions
             .Bind(configuration.GetSection(DatabaseOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<DatabaseOptions>, ValidateDatabaseOptions>());
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<SqlConnectionSource>();
