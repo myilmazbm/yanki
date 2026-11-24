@@ -28,7 +28,9 @@ internal static class TalkyConfigurationSources
     /// <param name="contentRootPath">Resolved content root, always the directory of talky.exe.</param>
     /// <param name="applicationName">Resolved application (assembly) name.</param>
     /// <param name="arguments">Command line values that participate in configuration.</param>
-    /// <exception cref="TalkyStartupException">The <c>--config</c> file does not exist.</exception>
+    /// <exception cref="TalkyStartupException">
+    /// The <c>--config</c> file does not exist, or one of the JSON files is not valid JSON.
+    /// </exception>
     public static void Apply(
         IConfigurationBuilder configuration,
         string environmentName,
@@ -48,11 +50,11 @@ internal static class TalkyConfigurationSources
         });
 
         var exeDirectory = AppContext.BaseDirectory;
-        configuration.AddJsonFile(Path.Combine(exeDirectory, "appsettings.json"), optional: true, reloadOnChange: false);
-        configuration.AddJsonFile(
+        AddJsonFile(configuration, Path.Combine(exeDirectory, "appsettings.json"), optional: true);
+        AddJsonFile(
+            configuration,
             Path.Combine(exeDirectory, FormattableString.Invariant($"appsettings.{environmentName}.json")),
-            optional: true,
-            reloadOnChange: false);
+            optional: true);
 
         // --data-dir replaces %ProgramData%\Talky as the node's configuration/data root. Its
         // defaults sit below the data directory's own appsettings files, environment variables and
@@ -69,14 +71,8 @@ internal static class TalkyConfigurationSources
 
         configuration.AddInMemoryCollection(dataDirectoryDefaults);
 
-        configuration.AddJsonFile(
-            Path.Combine(dataDirectory, "appsettings.json"),
-            optional: true,
-            reloadOnChange: false);
-        configuration.AddJsonFile(
-            Path.Combine(dataDirectory, "appsettings.Local.json"),
-            optional: true,
-            reloadOnChange: false);
+        AddJsonFile(configuration, Path.Combine(dataDirectory, "appsettings.json"), optional: true);
+        AddJsonFile(configuration, Path.Combine(dataDirectory, "appsettings.Local.json"), optional: true);
 
         if (!string.IsNullOrWhiteSpace(arguments.ConfigFile))
         {
@@ -86,7 +82,7 @@ internal static class TalkyConfigurationSources
                 throw new TalkyStartupException($"Configuration file '{path}' passed to --config does not exist.");
             }
 
-            configuration.AddJsonFile(path, optional: false, reloadOnChange: false);
+            AddJsonFile(configuration, path, optional: false);
         }
 
         configuration.AddEnvironmentVariables();
@@ -100,16 +96,53 @@ internal static class TalkyConfigurationSources
     }
 
     /// <summary>
+    /// Adds one JSON file. A required file that is missing, or a file that does not parse, becomes a
+    /// <see cref="TalkyStartupException"/> naming the file, so every command reports it as a
+    /// configuration error instead of a stack trace.
+    /// </summary>
+    private static void AddJsonFile(IConfigurationBuilder configuration, string path, bool optional) =>
+        configuration.AddJsonFile(source =>
+        {
+            source.Path = path;
+            source.Optional = optional;
+            source.ReloadOnChange = false;
+            source.ResolveFileProvider();
+            source.OnLoadException = context =>
+            {
+                if (context.Exception is FileNotFoundException)
+                {
+                    throw new TalkyStartupException($"Configuration file '{path}' does not exist.", context.Exception);
+                }
+
+                var cause = context.Exception;
+                while (cause.InnerException is not null)
+                {
+                    cause = cause.InnerException;
+                }
+
+                throw new TalkyStartupException(
+                    $"Configuration file '{path}' is not valid JSON: {cause.Message}",
+                    context.Exception);
+            };
+        });
+
+    /// <summary>
     /// The node's data directory: <c>--data-dir</c> as an absolute path when given, otherwise
-    /// <see cref="ProgramDataDirectory"/>.
+    /// <see cref="ProgramDataDirectory"/>. Trailing quotes and directory separators are dropped: a
+    /// service command line such as <c>--data-dir "C:\ProgramData\Talky\"</c> reaches the
+    /// process as <c>C:\ProgramData\Talky"</c>.
     /// </summary>
     public static string ResolveDataDirectory(HostStartupArguments arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
-        return string.IsNullOrWhiteSpace(arguments.DataDirectory)
-            ? ProgramDataDirectory
-            : Path.GetFullPath(Environment.ExpandEnvironmentVariables(arguments.DataDirectory));
+        if (string.IsNullOrWhiteSpace(arguments.DataDirectory))
+        {
+            return ProgramDataDirectory;
+        }
+
+        var value = Environment.ExpandEnvironmentVariables(arguments.DataDirectory.Trim().TrimEnd('"'));
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(value));
     }
 
     /// <summary>Turns the parsed command line into configuration keys.</summary>
