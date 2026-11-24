@@ -183,16 +183,22 @@ public sealed class HandshakeTests
     }
 
     [Fact]
-    public async Task FrameWithNoKnownBody_IsRejectedWith1003()
+    public async Task FrameWithNoKnownBodyAfterWelcome_IsRejectedButTheConnectionStaysOpen()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
         await using RealtimeTestHost host = await RealtimeTestHost.StartAsync();
         await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+        await client.HandshakeAsync(DevToken, cts.Token);
 
         await client.SendTextAsync("""{"rid":"r1","somethingFromTheFuture":{"x":1}}""", cts.Token);
 
         ServerFrame error = await client.ExpectFrameAsync(cts.Token);
         Assert.Equal(ErrorCode.InvalidFrame, error.Error.Code);
+        Assert.Equal("r1", error.Error.Rid);
+
+        await client.SendAsync(new ClientFrame { Ping = new Ping { Ts = 9 } }, cts.Token);
+        ServerFrame pong = await client.ExpectFrameAsync(cts.Token);
+        Assert.Equal(9L, pong.Pong.Ts);
     }
 
     [Fact]

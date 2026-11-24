@@ -54,7 +54,8 @@ gerçek bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProv
         │ Ping  ────────────────────────────── ┤ Pong
         │ Hello (ikinci) ────────────────────  ┤ Error{ALREADY_AUTHENTICATED} (açık kalır)
         │ Bye   ──────────────────────────────►│ kapatma 1000
-        │ bozuk/ikili çerçeve ────────────────►│ Error{INVALID_FRAME} + 1003
+        │ bilinmeyen/boş gövde ───────────────  ┤ Error{INVALID_FRAME, rid} (açık kalır)
+        │ bozuk JSON/ikili çerçeve ───────────►│ Error{INVALID_FRAME} + 1003
         │ büyük çerçeve ──────────────────────►│ Error{INVALID_FRAME} + 1009
         ▼                                      ▼
   registry'den çıkarılır ◄──────────── kuyruk boşaltılır, CloseOutputAsync
@@ -252,7 +253,10 @@ M0 yalnızca oturum katmanıdır; taşınan tek uygulama trafiği `Ping`/`Pong`'
   başına kota M2 ile gelecek.
 
 Kablo biçiminde kırıcı değişiklik beklenmiyor: `ClientFrame`/`ServerFrame` `oneof` gövdeleri yalnız
-eklemeli büyür ve bilinmeyen alanlar bugün de yok sayılır.
+eklemeli büyür ve bilinmeyen alanlar bugün de yok sayılır. Daha yeni bir istemcinin eski bir düğüme
+gönderdiği bilinmeyen gövde, `Welcome`'dan sonra yalnızca o isteği `Error{INVALID_FRAME, rid}` ile
+düşürür; bağlantı açık kalır. `Welcome`'dan önce ise her Hello-dışı çerçeve gibi
+`Error{HELLO_REQUIRED}` + 1008 alır.
 
 ## Testler
 

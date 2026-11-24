@@ -108,11 +108,11 @@ public sealed class FrameCodecTests
     [InlineData("{}")]
     [InlineData("""{"rid":"r1"}""")]
     [InlineData("""{"unknownBody":{"x":1}}""")]
-    public void TryParseClientFrame_RejectsFramesWithoutAKnownBody(string json)
+    public void TryParseClientFrame_AcceptsFramesWithoutAKnownBody(string json)
     {
-        Assert.False(FrameCodec.TryParseClientFrame(Encoding.UTF8.GetBytes(json), MaxBytes, out ClientFrame? parsed, out string? error));
-        Assert.Null(parsed);
-        Assert.Equal(FrameCodec.UnknownBodyMessage, error);
+        Assert.True(FrameCodec.TryParseClientFrame(Encoding.UTF8.GetBytes(json), MaxBytes, out ClientFrame? parsed, out string? error));
+        Assert.Null(error);
+        Assert.Equal(ClientFrame.BodyOneofCase.None, parsed.BodyCase);
     }
 
     [Theory]

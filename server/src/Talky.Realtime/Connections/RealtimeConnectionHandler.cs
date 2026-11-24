@@ -216,8 +216,12 @@ internal sealed class RealtimeConnectionHandler(
                 return false;
 
             default:
-                Reject(connection, ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage, RealtimeCloseCodes.UnsupportedData, frame.Rid);
-                return false;
+                // Empty or unknown body (a newer client on an older node): fail this request only
+                // and keep the connection open, so additive protocol changes stay compatible.
+                metrics.ErrorRaised(ErrorCode.InvalidFrame);
+                RealtimeLog.ProtocolError(logger, connection.ConnectionId, ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage);
+                connection.Enqueue(ServerFrames.Error(ErrorCode.InvalidFrame, FrameCodec.UnknownBodyMessage, frame.Rid));
+                return true;
         }
     }
 
