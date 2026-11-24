@@ -8,7 +8,7 @@
 //   * "with deps"  — the whole subtree, for an app that has no other protobuf-es user.
 //
 // A third number checks tree-shaking: an app that only imports `createWsClient` must not drag
-// in `MemoryStorage`, the deduper or the codec helpers it never calls.
+// in `MemoryStorage`, which it never calls.
 
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';

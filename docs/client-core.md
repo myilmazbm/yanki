@@ -2,7 +2,7 @@
 
 `@talky/core`, Talky istemcilerinin ortak çekirdeğidir: React web, Tauri masaüstü ve React Native
 uygulamalarının **tamamı** aynı paketi değiştirmeden kullanır. M0'da içeriği gerçek zamanlı
-WebSocket istemcisi, kalıcılık/platform sözleşmeleri ve yardımcı ilkellerdir.
+WebSocket istemcisi, taslak kalıcılık/platform sözleşmeleri ve yardımcı ilkellerdir.
 
 Normatif davranış `docs/protocol.md`'dedir; bu belge o kuralların TypeScript tarafındaki
 karşılığını, genel API'yi ve test/entegrasyon rehberini anlatır.
@@ -28,7 +28,7 @@ karşılığını, genel API'yi ve test/entegrasyon rehberini anlatır.
 import { createWsClient } from '@talky/core';
 
 const client = createWsClient({
-  url: 'wss://talky.local/api/v1/ws',
+  url: 'wss://talky.local/ws',
   getToken: async () => session.accessToken, // her bağlantı denemesinde yeniden okunur
   deviceId, // kurulum başına sabit UUID
   client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },
@@ -51,7 +51,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 
 | Seçenek | Varsayılan | Anlamı |
 | --- | --- | --- |
-| `url` | — | `ws://` / `wss://` uç noktası. |
+| `url` | — | `ws://` / `wss://` uç noktası; sunucuda yol `/ws`'dir (`Talky:Realtime:Path`), sorgu parametresi yoktur — sürüm `Hello.protoVersion` ile gider. |
 | `getToken()` | — | `Hello.token`. **Her** denemede çağrılır; yenilenen token otomatik kullanılır. |
 | `deviceId` | — | Kurulum başına sabit UUID. |
 | `client` | — | `{ platform, appVersion, os, locale }` → `Hello.client`. |
@@ -74,7 +74,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 | `state` | `'idle' \| 'connecting' \| 'authenticating' \| 'open' \| 'reconnecting' \| 'closed'` |
 | `rttMs` | Son RTT örneği (ms) ya da `null`. |
 | `welcome` | Açık oturumun `Welcome`'ı ya da `null`. |
-| `connect()` | Bağlanmaya başlar; `close()` sonrası yeniden bağlanmayı tekrar etkinleştirir. |
+| `connect()` | Bağlanmaya başlar; `close()` sonrası yeniden bağlanmayı tekrar etkinleştirir. Planlanmış bir yeniden bağlanma sırasında (bir `reconnectScheduled` dinleyicisinin içinden bile) zamanlayıcıyı iptal edip hemen dener. |
 | `close(reason?)` | `Bye` gönderir, 1000 ile kapatır, yeniden bağlanmayı kapatır. |
 | `send(body)` | Boş `rid` ile ateşle-unut. Oturum açık değilse `TalkyWsError` fırlatır. |
 | `request(body, opts?)` | UUIDv7 `rid` atar, eşleşen `Ack` ile çözülür. |
@@ -89,7 +89,7 @@ import { PingSchema } from '@talky/protocol/v1';
 client.send({ case: 'ping', value: create(PingSchema, { ts: 1n }) });
 ```
 
-> M0'da protokolde yanıt bekleyen bir gövde henüz yoktur (`SendMessage` M1'de gelir);
+> M0'da protokolde yanıt bekleyen bir gövde henüz yoktur (`SendMessage` M2'de gelir);
 > `request()` bugün sahte sunucudaki senaryolarla doğrulanır, mekanizma hazırdır.
 
 ### Olaylar
@@ -102,7 +102,8 @@ client.send({ case: 'ping', value: create(PingSchema, { ts: 1n }) });
 | `stateChange` | `(state, previous)` | Her geçişte. |
 | `error` | `TalkyWsError` | Belirli bir isteğe ait olmayan her hata. |
 | `resyncRequired` | `ResyncRequired` | Sunucu boşluğu dolduramadı → `GET /api/v1/sync`. |
-| `reconnectScheduled` | `{ attempt, delayMs, reason, closeCode }` | Yeniden bağlanma zamanlayıcısı kuruldu. |
+| `reconnectScheduled` | `{ attempt, delayMs, reason, closeCode }` | Yeniden bağlanma zamanlayıcısı kuruldu. `reason`: `close` · `transport` · `server-reconnect` · `token`; `attempt` sunucu güdümlü yeniden bağlanmada `0`'dır. |
+| `evicted` | `string` (`Reconnect.reason`) | Sunucu bu bağlantıyı düşürdü, çünkü aynı kullanıcının daha yeni bir bağlantısı canlı (`Reconnect{reason:"too_many_connections"}`). İstemci `closed`'dır ve **yeniden denemez**; uygulama karar verir ("başka cihazda oturum açıldı"). |
 | `rtt` | `number` | Yeni RTT örneği. |
 
 ### `TalkyWsError`
@@ -111,7 +112,8 @@ Tek hata tipi. `reason` alanı üzerinden dallanın, metne bakmayın:
 
 `protocol` (sunucu `Error` çerçevesi ya da çerçeve sözleşmesi ihlali) · `timeout` · `disconnected`
 · `closed` · `transport` · `decode` · `heartbeat` (Pong zaman aşımı) · `handler` (uygulama
-dinleyicisi fırlattı). Ek alanlar: `code` (`talky.v1.ErrorCode`), `rid`, `retryAfterMs`,
+dinleyicisi fırlattı) · `evicted` (bağlantı daha yeni bir bağlantı lehine düşürüldü; `evicted`
+olayıyla birlikte gelir, yeniden deneme yok). Ek alanlar: `code` (`talky.v1.ErrorCode`), `rid`, `retryAfterMs`,
 `closeCode`, `cause`.
 
 ## Durum makinesi
@@ -125,8 +127,9 @@ stateDiagram-v2
     authenticating --> open: Welcome
     authenticating --> reconnecting: 15 sn içinde Welcome yok
     authenticating --> closed: PROTOCOL_VERSION_UNSUPPORTED / UNAUTHENTICATED + kapanış
+    authenticating --> reconnecting: Reconnect (drain reddi, geri çekilmeyle)
     open --> reconnecting: kopuş · Pong zaman aşımı · Reconnect{delayMs}
-    open --> closed: close()
+    open --> closed: close() · Reconnect{too_many_connections} (evicted)
     reconnecting --> connecting: geri çekilme süresi doldu
     reconnecting --> closed: close()
     closed --> connecting: connect()
@@ -143,11 +146,13 @@ stateDiagram-v2
 
 ## Canlılık
 
-- İstemci `Welcome.heartbeatIntervalMs` aralığında `Ping{ts}` gönderir; `ts`, `TimerHost.now()`
-  değeridir ve `Pong` içinde **aynen** geri beklenir — RTT buradan ölçülür.
-- Pencere içinde başka bir çerçeve gönderilmişse `Ping` atlanır (protokol bunu ping sayar).
+- İstemci `Welcome.heartbeatIntervalMs` aralığında **her zaman** `Ping{ts}` gönderir; arada
+  başka çerçeve gönderilmiş olsa bile `Ping` atlanmaz. `ts`, `TimerHost.now()` değeridir ve
+  `Pong` içinde **aynen** geri beklenir — RTT buradan ölçülür.
 - `Ping` sonrası `pongTimeoutMs` içinde `Pong` gelmezse bağlantı ölü sayılır: `heartbeat` hatası
   yayınlanır, soket `1000 / "pong-timeout"` ile kapatılır ve geri çekilmeyle yeniden bağlanılır.
+  Kurulmuş bir `Pong` süresi sonraki `Ping`'lerle **yeniden kurulmaz**; böylece
+  `heartbeatIntervalMs < pongTimeoutMs` olduğunda da ölü bağlantı fark edilir.
 - WebSocket protokol ping/pong'u tarayıcı/çalışma zamanı tarafından otomatik yanıtlanır; istemci
   kodu ona dokunmaz.
 
@@ -157,20 +162,29 @@ Geri çekilme: `500 ms → ×2 → 30 s`, ±%20 jitter, `random()` ile üretilir
 başarılı bir `Welcome` ile sıfırlanır — soket açılması yeterli değildir, çünkü hasta bir düğüm
 bağlantıyı kabul edip el sıkışmayı bitirmeyebilir.
 
-`Reconnect{delayMs}` alındığında geri çekilme atlanır: istemci soketi kendisi kapatır ve
-`[0, delayMs]` aralığında düzgün dağılımlı bir gecikmeyle tek seferlik yeniden bağlanır.
+Drain: sunucu açık bağlantılara `Reconnect{delayMs, reason:"draining"}` gönderir (`delayMs` bir
+üst sınırdır, herkese aynı değer; sunucu yaklaşık 2 sn sonra 1001 ile kapatır). Çerçeve **`open`
+durumunda** geldiyse geri çekilme atlanır: istemci soketi kendisi kapatır ve `[0, delayMs]`
+aralığında düzgün dağılımlı bir gecikmeyle tek seferlik yeniden bağlanır
+(`reconnectScheduled.reason === 'server-reconnect'`). Drain sırasında gelen **yeni** bağlantılar
+`Reconnect` çerçevesi olmadan 1013 ile kapatılır ve istemci normal geri çekilmeyi uygular.
+`open` dışındaki bir durumda gelen `Reconnect`'in gecikmesi de yok sayılır: normal geri çekilme
+uygulanır ve sayaç büyür, böylece drain eden düğüme sıfır gecikmeli bir yeniden bağlanma döngüsü
+oluşmaz.
 
-**Sunucu tarafının aynalaması gereken kapanış kodu politikası:**
+`Reconnect{reason:"too_many_connections"}` ise düşürmedir: istemci `closed` olur, `evicted` olayı ve
+`reason: 'evicted'` hatası yayınlanır, yeniden bağlanılmaz.
 
-| Kapanış kodu | Kaynak | İstemci davranışı |
-| --- | --- | --- |
-| `1000` | **istemci** | İstemci **yalnızca 1000 gönderir**; ayrımı `reason` dizesi taşır: `client-close`, `pong-timeout`, `server-reconnect`, `protocol-error`, `handshake-timeout`, `hello-failed`. |
-| `1000`, `1001`, `1011`, `1012`, `1013` | sunucu | Geri çekilmeyle yeniden bağlan. |
-| `1002`, `1003` | sunucu | **Kalıcı.** `closed`, bir daha asla deneme (sürüm uyuşmazlığı yeniden denemeyle çözülmez). |
-| `1008` | sunucu | `retryOnAuthFailure: false` (varsayılan) → `closed`; `true` → geri çekilme. |
-| `1006` | taşıma | Geri çekilme; `reconnectScheduled.reason === 'transport'`. |
-| `1009` | sunucu | Geri çekilme (çerçeve çok büyüktü, oturum yeniden kurulabilir). |
-| `4000`–`4999` | sunucu | Geri çekilme. |
+Kapanış kodlarının normatif politikası `docs/protocol.md` → "Kapatma kodları ve `Reconnect.reason`"
+bölümündedir; istemci onu uygular (1002 ve 1003 kalıcı; 1008 `retryOnAuthFailure`'a göre; diğer
+her kod, 1006 dahil, geri çekilme). İstemciye özgü ek kurallar:
+
+- İstemci **yalnızca 1000 gönderir**; ayrımı `reason` dizesi taşır: `client-close` (veya
+  `close(reason)` ile verilen), `pong-timeout`, `server-reconnect`, `protocol-error`,
+  `handshake-timeout`, `hello-failed`, `evicted`.
+- İstemcinin kendi `Bye`'ı (yani `close()`) olmadan görülen 1000 **yeniden denenebilir**: bu,
+  çoğunlukla istemcinin kendi `pong-timeout` / `server-reconnect` kapanışının yankısıdır, geri
+  çekilmeyle (ya da drain gecikmesiyle) yeniden bağlanılır.
 
 Ek olarak, ölümcül bir `Error` çerçevesi (`PROTOCOL_VERSION_UNSUPPORTED`, `UNAUTHENTICATED`,
 `HELLO_REQUIRED`) geldiğinde istemci sunucunun kapatmasını **bekler** (yarışa girmez) ama 5 sn
@@ -214,12 +228,15 @@ aynı anahtara düşerler.
 | `Storage` | IndexedDB | SQLite eklentisi | op-sqlite / expo-sqlite |
 
 `platform/Platform.ts` bunları tek bir arayüzde toplar (`info`, `deviceId`, `storage`, `timers`,
-`logger`, `createWebSocket`, isteğe bağlı `network` ve `notifications`). M0'da bu arayüzler
-yalnızca sözleşmedir; somut uygulayıcılar uygulama paketlerinde yaşar.
+`logger`, `createWebSocket`, isteğe bağlı `network` ve `notifications`).
 
 `storage/Storage.ts` kalıcılık yüzeyini tanımlar: `kv`, `conversations`, `messages(convId,
-seqRange)`, `outbox`, `drafts`. `MemoryStorage` referans uygulamadır ve testlerde kullanılır;
-gerçek adaptörler ona karşı doğrulanır. Tüm `seq` değerleri `bigint`'tir — hassasiyet kaybı yok.
+seqRange)`, `outbox`, `drafts`. Tüm `seq` değerleri `bigint`'tir — hassasiyet kaybı yok.
+
+> **Taslak.** `Storage` ve `Platform` sözleşmeleri ile `MemoryStorage` (taslak referans
+> uygulama) M2 senkronizasyon motoruyla kesinleşecektir; motorun "bir olay sayfasını uygula ve
+> imleci ilerlet" işlemini **atomik** yapabilmesi gerekir, bugünkü şekil bunu sunmaz. Henüz hiçbir
+> platform adaptörü (IndexedDB, SQLite) yoktur; yukarıdaki tablo plandır.
 
 ## Test rehberi
 
@@ -231,7 +248,7 @@ aynalanır ve `packages/core/test/contracts.test.ts` iki tanımı derleme zaman�
 | --- | --- |
 | `createFakeClock()` | Sanal `TimerHost`. Vitest'in global sahte zamanlayıcıları yerine bu kullanılır: gerçek soket G/Ç'si çalışmaya devam ederken saatler süren geri çekilme mikrosaniyede geçer. |
 | `startMemoryServer()` | Süreç içi taşıma + betiklenebilir protokol. Varsayılan tercih: port yok, G/Ç yok, tam belirlenimci. |
-| `startMockServer()` | Aynı protokol, gerçek `ws` soketleri ve gerçek port. Gerçek `WebSocket`/kapanış kodlarını doğrulayan bir avuç test için. |
+| `startMockServer()` | Aynı protokol, gerçek `ws` soketleri ve gerçek port (varsayılan yol `/ws`). Gerçek `WebSocket`/kapanış kodlarını doğrulayan bir avuç test için. |
 | `loadWsFixtures()` / `replayFixture()` | `api/fixtures/ws/*.json` altın akış koşucusu. |
 | `welcomeFrame`, `pongFrame`, `ackFrame`, `errorFrame`, `reconnectFrame`, `resyncRequiredFrame` | Çerçeve fabrikaları (proto3 JSON). |
 
@@ -239,6 +256,12 @@ Sahte sunucu düğmeleri: `autoWelcome`, `autoPong`, `autoAck`, `authenticate`, 
 `heartbeatIntervalMs`, `welcome`, `echoHelloRid`; çalışma zamanında `expectFrame(matcher)`,
 `send(frame)`, `dropConnection()`, `sendReconnect(delayMs)`, `simulateSilence()`,
 `onRequest(matcher, responder)`.
+
+Sahte sunucu hata yollarında gerçek sunucuyla aynı davranır: ayrıştırılamayan JSON ve binary
+çerçeve → `Error{INVALID_FRAME}` + 1003; `Hello`'dan önce bilinmeyen/boş gövde (her `Hello` dışı
+çerçeve gibi) → `Error{HELLO_REQUIRED}` + 1008; `Welcome`'dan sonra bilinmeyen/boş gövde →
+çerçevenin `rid`'iyle `Error{INVALID_FRAME}`, bağlantı **açık kalır**. Drain reddi betikle
+oynatılır: `autoWelcome: false` + `onRequest('hello', (_f, c) => { c.sendReconnect(0); c.close(1013); })`.
 
 ```ts
 const clock = createFakeClock();
@@ -264,8 +287,9 @@ await clock.advanceAsync(1_000); // geri çekilme penceresi sanal olarak geçer
 - Kabul edilen uzantı: bir `s2c` girdisi `json` yerine `{"close": {"code": 1001}}` taşıyarak
   bağlantıyı kapatabilir — yeniden bağlanma akışları böyle ifade edilir.
 
-Klasör boşken `packages/core/test/fixtures.test.ts` açıkça "fixture yok" bildirir ve geçer; ilk
-dosya düştüğü anda kendiliğinden zorlayıcı hale gelir. Mekanizmanın kendisi
+Klasör bulunamazsa ya da boşsa `packages/core/test/fixtures.test.ts` **başarısız olur**; boş geçiş
+yoktur. `api/fixtures/**` turbo `test` görevinin girdisidir, yani bir fixture değişince önbellekteki
+test sonucu geçersiz olur. Mekanizmanın kendisi
 `packages/core/test/fixture-replayer.test.ts` içinde kendi ürettiği fixture'larla test edilir.
 
 ## Komutlar
@@ -280,8 +304,14 @@ pnpm lint        # ESLint 9 flat config, typescript-eslint strictTypeChecked
 pnpm test        # Vitest (turbo ile paket başına)
 pnpm test:watch  # kök vitest projects kurulumu
 pnpm format      # Prettier (tek tırnak, 100 sütun, sondaki virgüller)
+pnpm format:check
 pnpm size        # esbuild --bundle --minify boyut ölçümü
+pnpm --filter @talky/protocol run lint:proto      # buf lint api/proto
+pnpm --filter @talky/protocol run breaking:proto  # buf breaking, main dalına karşı
 ```
+
+`pnpm gen` yalnızca istemci sözleşmesini (`api/proto/talky/v1`) üretir; küme içi mesh sözleşmesi
+(`talky/cluster`) sunucuya özeldir ve `@talky/protocol`'de yer almaz.
 
 ## Paket boyutu
 
@@ -289,9 +319,9 @@ pnpm size        # esbuild --bundle --minify boyut ölçümü
 
 | Giriş | ham | gzip | brotli |
 | --- | --- | --- | --- |
-| tüm genel API, yalnızca çekirdek | 16,58 kB | **5,44 kB** | 4,90 kB |
-| tüm genel API, bağımlılıklar dahil | 116,93 kB | 33,03 kB | 28,68 kB |
-| yalnızca `createWsClient` | 13,53 kB | 4,55 kB | 4,09 kB |
+| tüm genel API, yalnızca çekirdek | 17,00 kB | **5,55 kB** | 5,00 kB |
+| tüm genel API, bağımlılıklar dahil | 117,35 kB | 33,13 kB | 28,76 kB |
+| yalnızca `createWsClient` | 14,05 kB | 4,67 kB | 4,20 kB |
 
 Bütçe "yalnızca çekirdek" için 15 kB gzip'tir; `pnpm size` aşıldığında sıfırdan farklı kodla
 çıkar. "Bağımlılıklar dahil" satırındaki fark protobuf-es çalışma zamanıdır ve uygulamada
