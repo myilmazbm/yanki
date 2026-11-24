@@ -280,6 +280,19 @@ public sealed class HandshakeTests
     }
 
     [Fact]
+    public async Task PlainConnectRequest_IsAnsweredWith400NotMethodNotAllowed()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync();
+        using HttpClient http = host.CreateHttpClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Connect, new Uri("http://localhost/ws"));
+        using HttpResponseMessage response = await http.SendAsync(request, cts.Token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ClosedConnections_AreRemovedFromTheRegistry()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
