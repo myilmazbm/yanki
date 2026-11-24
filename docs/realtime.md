@@ -90,7 +90,9 @@ değildir.
 **Bağlantı başına zamanlayıcı yoktur.** Tüm zamana bağlı işleri tek bir `PeriodicTimer` süpürmesi
 yapar (`RealtimeSweepService`):
 
-- `Hello` göndermeyen bağlantıları `Error{HELLO_REQUIRED}` + 1008 ile kapatır;
+- `Hello` göndermeyen bağlantıları `Error{HELLO_REQUIRED}` + 1008 ile kapatır. Zaman aşımı yalnızca
+  `Hello` çerçevesinin **alınmasını** kapsar: `Hello` gelmişse kimlik doğrulama sürerken bağlantı
+  süpürülmez; süreyi sınırlamak `ISessionAuthenticator` uygulamasının sorumluluğudur;
 - kapatma isteği üzerinden `CloseGrace` (2 sn) geçmiş, hâlâ kapanmamış soketleri `Abort()` eder.
 
 Süpürme aralığı `min(HelloTimeoutMs, 5 sn)`'dir: varsayılanda tam 5 saniye, testler veya sıkı bir

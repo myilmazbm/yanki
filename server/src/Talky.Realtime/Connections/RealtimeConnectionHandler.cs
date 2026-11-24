@@ -231,6 +231,7 @@ internal sealed class RealtimeConnectionHandler(
         long startTimestamp,
         CancellationToken cancellationToken)
     {
+        connection.MarkHelloReceived();
         Hello hello = frame.Hello;
 
         if (hello.ProtoVersion != RealtimeProtocol.Version)

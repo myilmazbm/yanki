@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Talky.Core.Sessions;
 using Talky.Protocol.V1;
 using Talky.Realtime.Protocol;
+using Talky.Realtime.Sessions;
 using Talky.Testing.Realtime;
 
 namespace Talky.IntegrationTests.Realtime;
@@ -274,6 +275,20 @@ public sealed class HandshakeTests
     }
 
     [Fact]
+    public async Task SlowAuthentication_PastTheHelloTimeout_StillEndsInWelcome()
+    {
+        using CancellationTokenSource cts = TestTimeouts.Cts();
+        await using RealtimeTestHost host = await RealtimeTestHost.StartAsync(
+            o => o.HelloTimeoutMs = 200,
+            services => services.AddSingleton<ISessionAuthenticator>(new SlowSessionAuthenticator(TimeSpan.FromMilliseconds(600))));
+        await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
+
+        Welcome welcome = await client.HandshakeAsync(DevToken, cts.Token);
+
+        Assert.True(Guid.TryParse(welcome.UserId, out _));
+    }
+
+    [Fact]
     public async Task PlainHttpRequest_IsAnsweredWith400()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
@@ -314,5 +329,17 @@ public sealed class HandshakeTests
 
         await host.WaitForRegistryAsync(0, cts.Token);
         Assert.Equal(0, host.Registry.Count);
+    }
+
+    /// <summary>Accepts development tokens, but only after a fixed delay.</summary>
+    private sealed class SlowSessionAuthenticator(TimeSpan delay) : ISessionAuthenticator
+    {
+        private readonly DevTokenSessionAuthenticator _inner = new();
+
+        public async ValueTask<SessionPrincipal?> AuthenticateAsync(string token, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return await _inner.AuthenticateAsync(token, cancellationToken);
+        }
     }
 }

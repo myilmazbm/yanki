@@ -65,7 +65,8 @@ internal sealed class RealtimeSweepService(
                 continue;
             }
 
-            if (!connection.IsAuthenticated && now - connection.ConnectedAt > _options.HelloTimeout)
+            // A connection whose Hello has arrived is not swept while authentication runs.
+            if (!connection.HelloReceived && !connection.IsAuthenticated && now - connection.ConnectedAt > _options.HelloTimeout)
             {
                 RealtimeLog.HelloTimedOut(logger, connection.ConnectionId, _options.HelloTimeoutMs);
                 metrics.ErrorRaised(ErrorCode.HelloRequired);

@@ -33,6 +33,7 @@ public sealed class ClientConnection
 
     private int _closeSignalled;
     private int _aborted;
+    private int _helloReceived;
     private volatile SessionPrincipal? _principal;
     private long _closeRequestedTicks;
     private WebSocketCloseStatus _closeStatus = RealtimeCloseCodes.Normal;
@@ -84,6 +85,12 @@ public sealed class ClientConnection
 
     /// <summary>True once <c>Welcome</c> has been queued.</summary>
     public bool IsAuthenticated => _principal is not null;
+
+    /// <summary>
+    /// True once a <c>Hello</c> frame has been received, even while authentication is still
+    /// running. The Hello timeout covers receiving the frame only.
+    /// </summary>
+    public bool HelloReceived => Volatile.Read(ref _helloReceived) != 0;
 
     /// <summary>Per-install device id supplied in <c>Hello</c>; empty when the client sent none.</summary>
     public string DeviceId { get; private set; } = string.Empty;
@@ -181,6 +188,8 @@ public sealed class ClientConnection
             AbortCore();
         }
     }
+
+    internal void MarkHelloReceived() => Volatile.Write(ref _helloReceived, 1);
 
     internal void AttachPrincipal(SessionPrincipal principal, string deviceId, string platform)
     {
