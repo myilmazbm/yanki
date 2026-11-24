@@ -163,6 +163,9 @@ try {
     Test-Ping -NodeId 'smoke-msi'
     Assert-Step 'MSI'
 
+    # The MSI's own service stop waits at most 30 s, less than the node's drain
+    # (DrainSeconds, 30 by default, plus shutdown); Stop-Service waits it out.
+    Stop-Service -Name Talky
     $code = Invoke-Msiexec @('/x', "`"$MsiPath`"", '/qn')
     Write-Check ($code -eq 0) "msiexec /x /qn exits 0 (got $code)"
     Write-Check ($null -eq (Get-Service -Name Talky -ErrorAction SilentlyContinue)) 'msiexec /x removed the service'
