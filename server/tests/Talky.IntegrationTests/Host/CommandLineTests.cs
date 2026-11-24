@@ -73,6 +73,16 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public async Task Invalid_module_options_are_reported_by_config_validate()
+    {
+        Assert.Equal(
+            ExitCode.InvalidConfiguration,
+            await TalkyCommandLine.RunAsync(
+                ["config", "validate", "--set", "Talky:Database:ConnectionString="],
+                CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Missing_config_file_is_reported_as_a_configuration_error()
     {
         Assert.Equal(

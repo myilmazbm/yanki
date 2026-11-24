@@ -4,8 +4,8 @@ namespace Talky.Server;
 
 /// <summary>
 /// Entry point of talky.exe. Everything the process can do is a command in
-/// <see cref="TalkyCommandLine"/>; running the bare executable (as the Windows service does)
-/// is the same as running <c>talky serve</c>.
+/// <see cref="TalkyCommandLine"/>; running it without a command (as the Windows service does,
+/// with options only) is the same as running <c>talky serve</c>.
 /// </summary>
 public sealed partial class Program
 {

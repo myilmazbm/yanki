@@ -24,15 +24,7 @@ internal sealed class CertificateDoctorCheck(
     /// <inheritdoc />
     public Task<DoctorResult> RunAsync(CancellationToken cancellationToken)
     {
-        ServerOptions options;
-        try
-        {
-            options = server.Value;
-        }
-        catch (OptionsValidationException ex)
-        {
-            return Task.FromResult(DoctorResult.Error($"Server configuration is invalid: {ex.Message}"));
-        }
+        var options = server.Value;
 
         try
         {

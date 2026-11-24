@@ -23,10 +23,6 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
         {
             directory = TalkyLogging.ExpandDirectory(logging.Value.Directory);
         }
-        catch (OptionsValidationException ex)
-        {
-            return DoctorResult.Error($"Logging configuration is invalid: {ex.Message}");
-        }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
             return DoctorResult.Error($"Talky:Logging:Directory is not a usable path: {ex.Message}");

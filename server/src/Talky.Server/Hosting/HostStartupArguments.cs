@@ -24,12 +24,12 @@ internal sealed record HostStartupArguments(
     /// Value of <c>--data-dir</c>: the node's data directory. Its <c>appsettings.json</c> and
     /// <c>appsettings.Local.json</c> replace the <c>%ProgramData%\Talky</c> pair as configuration
     /// sources, <c>Talky:Logging:Directory</c> defaults to <c>&lt;dir&gt;\logs</c>, and the resolved
-    /// path is published as <c>Talky:DataDirectory</c> for other modules (search index, previews).
+    /// path is published as <c>Talky:DataDirectory</c> (reserved; no module reads it yet).
     /// This is what the Windows service (MSI / Install-Talky.ps1) passes.
     /// </summary>
     public string? DataDirectory { get; init; }
 
-    /// <summary>Arguments as passed by the Windows service, which runs the bare executable.</summary>
+    /// <summary>No command line values at all; used by tests as a starting point.</summary>
     public static HostStartupArguments Empty { get; } = new(null, null, [], [], []);
 
     /// <summary>Names of the generic host settings recognised on the command line.</summary>

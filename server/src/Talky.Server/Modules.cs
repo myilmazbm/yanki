@@ -4,12 +4,10 @@ using Talky.Realtime;
 namespace Talky.Server;
 
 /// <summary>
-/// The single place where feature modules are wired into the host.
-/// <para>
-/// Work package A owns the host itself and cannot compile against the module assemblies while they
-/// are being written in parallel. Every module gets exactly two lines here — one registration and
-/// one endpoint mapping — so the lead can enable them by deleting a comment marker.
-/// </para>
+/// The single place where feature modules are wired into the host. Each module gets one
+/// registration line in <see cref="AddModules"/> and, when it has endpoints, one mapping line in
+/// <see cref="MapModules"/>. Today Talky.Data and Talky.Realtime are wired; the other module
+/// projects are referenced but have no code yet.
 /// </summary>
 public static class Modules
 {
@@ -23,14 +21,8 @@ public static class Modules
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddTalkyData(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyIdentity(builder.Configuration);
         builder.Services.AddTalkyRealtime(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyMedia(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyFiles(builder.Configuration);
-        // LEAD: builder.Services.AddTalkySearch(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyPush(builder.Configuration);
-        // LEAD: builder.Services.AddTalkyFederation(builder.Configuration);
-        //
+
         // Contract each module must honour:
         //   - readiness probes register health checks tagged "ready";
         //   - environment checks register IDoctorCheck singletons;
@@ -51,8 +43,5 @@ public static class Modules
         // middleware after everything added here, so this is early enough.
         app.UseWebSockets();
         app.MapTalkyRealtime();
-        // LEAD: app.MapTalkyIdentity();
-        // LEAD: app.MapTalkyFiles();
-        // LEAD: app.MapTalkySearch();
     }
 }

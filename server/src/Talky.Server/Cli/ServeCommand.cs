@@ -3,8 +3,8 @@ using Talky.Server.Hosting;
 namespace Talky.Server.Cli;
 
 /// <summary>
-/// <c>talky serve</c> — and the default command, so the Windows service can start the bare
-/// executable with no arguments at all.
+/// <c>talky serve</c> — and the default command, so the Windows service command line carries only
+/// options (<c>--role</c>, <c>--data-dir</c>) and no command.
 /// </summary>
 internal static class ServeCommand
 {
@@ -18,11 +18,11 @@ internal static class ServeCommand
 
         Modules.AddModules(builder);
 
-        // Registered last on purpose: hosted services stop in reverse registration order, so this
-        // one's StopAsync runs first and the node drains before anything else is torn down.
+        // The drain runs in StoppingAsync, which the host awaits on every hosted service before any
+        // StopAsync (Kestrel's included), so the node drains while it still serves.
         builder.Services.AddHostedService<DrainHostedService>();
 
-        var app = builder.Build();
+        await using var app = builder.Build();
 
         TalkyHostFactory.ValidateStartup(app);
         TalkyHostFactory.ConfigureApplication(app);

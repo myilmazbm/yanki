@@ -35,6 +35,15 @@ internal sealed class IdentityDoctorCheck(IHostEnvironment environment) : IDocto
             details["authenticationType"] = identity.AuthenticationType ?? "unknown";
         }
 
+        if (!isService)
+        {
+            // `talky doctor` is run by an operator, usually elevated; what matters is the service
+            // account, which this process is not running as.
+            return Task.FromResult(DoctorResult.Ok(
+                $"checked as {userName}; the service account itself was not tested",
+                details));
+        }
+
         if (!environment.IsDevelopment() && isAdministrator == true)
         {
             return Task.FromResult(DoctorResult.Warning(
@@ -43,9 +52,7 @@ internal sealed class IdentityDoctorCheck(IHostEnvironment environment) : IDocto
         }
 
         return Task.FromResult(DoctorResult.Ok(
-            isService
-                ? $"Running as the Windows service account '{userName}'."
-                : $"Running interactively as '{userName}'.",
+            $"Running as the Windows service account '{userName}'.",
             details));
     }
 }
