@@ -200,8 +200,11 @@ public sealed class ClientConnection
 
     /// <summary>
     /// The single writer loop. Drains the outbound queue onto the socket and, once the queue is
-    /// completed, sends the close frame. Exits on transport failure or cancellation.
+    /// completed, sends the close frame. Exits on transport failure or cancellation; any other
+    /// failure is logged and aborts the socket so the reader unblocks.
     /// </summary>
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "A faulted writer must not leave a registered connection with a dead writer; the failure is logged and the socket aborted.")]
     internal async Task RunOutboundAsync(CancellationToken cancellationToken)
     {
         try
@@ -226,6 +229,12 @@ public sealed class ClientConnection
         }
         catch (ObjectDisposedException)
         {
+            return;
+        }
+        catch (Exception ex)
+        {
+            RealtimeLog.UnhandledConnectionFailure(_logger, ConnectionId, ex);
+            Abort();
             return;
         }
 

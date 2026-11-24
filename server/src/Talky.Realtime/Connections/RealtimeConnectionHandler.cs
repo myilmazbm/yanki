@@ -89,18 +89,26 @@ internal sealed class RealtimeConnectionHandler(
         }
         finally
         {
-            registry.Remove(connection);
+            // Stay registered until the writer is done: the sweep can then abort a writer that is
+            // stuck in the close path once CloseGrace has passed.
             connection.RequestClose(RealtimeCloseCodes.Normal, string.Empty);
-            await outboundLoop;
-            metrics.ConnectionClosed();
+            try
+            {
+                await outboundLoop;
+            }
+            finally
+            {
+                registry.Remove(connection);
+                metrics.ConnectionClosed();
 
-            double lifetimeMs = (timeProvider.GetUtcNow() - connection.ConnectedAt).TotalMilliseconds;
-            RealtimeLog.ConnectionClosed(
-                logger,
-                connection.ConnectionId,
-                (int)connection.CloseStatus,
-                connection.CloseDescription,
-                lifetimeMs);
+                double lifetimeMs = (timeProvider.GetUtcNow() - connection.ConnectedAt).TotalMilliseconds;
+                RealtimeLog.ConnectionClosed(
+                    logger,
+                    connection.ConnectionId,
+                    (int)connection.CloseStatus,
+                    connection.CloseDescription,
+                    lifetimeMs);
+            }
         }
     }
 
