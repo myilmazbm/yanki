@@ -88,16 +88,21 @@ doğrudan host builder'a geçer; dağıtım betikleri ve ASP.NET Core test host'
 | 2 | **Ayrılmış** (eskiden "gerekli servis kayıtlı değil"; artık üretilmez, başka anlamda kullanılmaz). |
 | 3 | Yapılandırma geçersiz; host başlamayı reddetti (doğrulama hatası, geçersiz JSON, eksik `--config` dosyası, sertifika veya özel anahtar sorunu, başlangıç koruması). |
 
-Süreci bitiren her hata stderr'e yazılır; ayrıca en iyi çabayla Windows olay günlüğüne (kaynak
-`Talky`, Error) ve `<veri-dizini>\logs\talky-startup.log` dosyasına zaman damgalı bir satır olarak
-eklenir. Servis olarak çalışırken stderr görünmediği için ilk bakılacak yer bu ikisidir.
+Süreci bitiren her hata stderr'e yazılır. Süreç Windows servisi olarak çalışıyorsa (stderr görünmez)
+aynı metin ayrıca en iyi çabayla Windows olay günlüğüne (kaynak `Talky`, Error) ve
+`<veri-dizini>\logs\talky-startup.log` dosyasına zaman damgalı bir satır olarak eklenir; servis için
+ilk bakılacak yer bu ikisidir. Elle çalıştırılan komutlar (`doctor`, `config validate`, `migrate` …)
+bu ikisine yazmaz. Servis komut satırındaki hatalar (bilinmeyen seçenek, değeri eksik seçenek) da
+aynı yoldan raporlanır.
 
 `talky doctor` şu yerleşik kontrolleri çalıştırır (modüller kendi `IDoctorCheck`'lerini ekler;
 bugün Talky.Data `sql` kontrolünü ekler): `config`, `certificate`, `identity`, `log-directory`,
 `os`, `runtime`. Her kontrol paralel çalışır ve 10 saniye ile sınırlıdır. `doctor` onu çalıştıran
-hesapla çalışır: servis olarak çalışmıyorsa `identity` satırı yalnızca hangi hesapla denetlendiğini
-bildirir, servis hesabının izinleri (log dizini, özel anahtar) ancak servisin kendisi başlarken
-sınanır.
+hesapla çalışır: `identity` satırı yalnızca hangi hesapla denetlendiğini bildirir, servis hesabının
+izinleri (log dizini, özel anahtar) ancak servisin kendisi başlarken sınanır; servis, log dizinine
+yazamıyorsa başlangıçta bir uyarı loglar. `config` satırı `serve`'ün uyguladığı geliştirme token'ı
+korumasını da uygular. Geçersiz host bölümleri ve geçersiz `Talky:Database` seçenekleri `doctor`'ı
+hiçbir satır yazılmadan çıkış kodu 3 ile bitirir.
 
 ---
 

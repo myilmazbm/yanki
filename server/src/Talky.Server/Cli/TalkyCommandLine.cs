@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.Globalization;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using Talky.Core.Configuration;
 using Talky.Core.Hosting;
@@ -15,7 +16,7 @@ namespace Talky.Server.Cli;
 /// </summary>
 internal static class TalkyCommandLine
 {
-    /// <summary>File in <c>&lt;data-dir&gt;\logs</c> that records failures which ended the process.</summary>
+    /// <summary>File in <c>&lt;data-dir&gt;\logs</c> that records failures which ended the service process.</summary>
     public const string StartupLogFileName = "talky-startup.log";
 
     /// <summary>Parses <paramref name="args"/> and runs the selected command.</summary>
@@ -51,10 +52,22 @@ internal static class TalkyCommandLine
                 .FirstOrDefault(token => !hostSettings.Contains(token, StringComparer.Ordinal));
             if (unexpected is not null)
             {
-                await Console.Error.WriteLineAsync(unexpected.StartsWith('-')
-                    ? $"Unknown option '{unexpected}'. Run 'talky --help' to see the available options."
-                    : $"Unknown command '{unexpected}'. Run 'talky --help' to see the available commands.");
+                await ReportFailureAsync(
+                    [unexpected.StartsWith('-')
+                        ? $"Unknown option '{unexpected}'. Run 'talky --help' to see the available options."
+                        : $"Unknown command '{unexpected}'. Run 'talky --help' to see the available commands."],
+                    parseResult);
                 return ExitCode.Failure;
+            }
+
+            if (parseResult.Errors.Count > 0)
+            {
+                // System.CommandLine prints these itself, with help, when the result is invoked below;
+                // only the sinks that a service's invisible stderr needs are written here.
+                await ReportFailureAsync(
+                    [.. parseResult.Errors.Select(error => error.Message)],
+                    parseResult,
+                    writeToStandardError: false);
             }
 
             return await parseResult.InvokeAsync(configuration, cancellationToken);
@@ -91,20 +104,35 @@ internal static class TalkyCommandLine
         ["Configuration is invalid:", .. failures.Select(failure => $"  - {failure}")];
 
     /// <summary>
-    /// Reports a failure that ends the process. stderr is invisible when the service control manager
-    /// starts the process, so the same text also goes, best effort, to the Windows event log (source
-    /// <c>Talky</c>) and to <c>&lt;data-dir&gt;\logs\talky-startup.log</c>. Neither needs the host or
-    /// its logger, which usually do not exist yet when this runs.
+    /// Reports a failure that ends the process on stderr. Only when the process runs as a Windows
+    /// service, whose stderr nobody sees, the same text also goes, best effort, to the Windows event
+    /// log (source <c>Talky</c>) and to <c>&lt;data-dir&gt;\logs\talky-startup.log</c>; an interactive
+    /// command or a test run writes neither. Neither needs the host or its logger, which usually do
+    /// not exist yet when this runs.
     /// </summary>
+    /// <param name="lines">The failure text, one entry per line.</param>
+    /// <param name="parseResult">The parsed command line, for <c>--data-dir</c>; null if parsing failed.</param>
+    /// <param name="writeToStandardError">False when the text reaches stderr another way.</param>
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
         Justification = "Reporting a failure must never replace it with a second one.")]
-    private static async Task ReportFailureAsync(IReadOnlyList<string> lines, ParseResult? parseResult)
+    private static async Task ReportFailureAsync(
+        IReadOnlyList<string> lines,
+        ParseResult? parseResult,
+        bool writeToStandardError = true)
     {
-        foreach (var line in lines)
+        if (writeToStandardError)
         {
-            await Console.Error.WriteLineAsync(line);
+            foreach (var line in lines)
+            {
+                await Console.Error.WriteLineAsync(line);
+            }
+        }
+
+        if (!WindowsServiceHelpers.IsWindowsService())
+        {
+            return;
         }
 
         var text = string.Join(Environment.NewLine, lines);
