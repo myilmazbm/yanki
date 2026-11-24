@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using Microsoft.Data.SqlClient;
+
 namespace Talky.IntegrationTests.Host;
 
 /// <summary>
@@ -18,8 +21,12 @@ internal static class TalkyTestEnvironment
     public static string LogDirectory { get; } =
         Path.Combine(Path.GetTempPath(), "talky-tests", Guid.NewGuid().ToString("N"));
 
-    /// <summary>Name of the LocalDB database the host tests migrate into and read from.</summary>
-    public const string DatabaseName = "talky_hosttest";
+    /// <summary>
+    /// Name of the database the host tests migrate into and read from; unique per test run and
+    /// dropped when the test process exits.
+    /// </summary>
+    public static string DatabaseName { get; } =
+        "talky_hosttest_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
 
     static TalkyTestEnvironment()
     {
@@ -27,12 +34,12 @@ internal static class TalkyTestEnvironment
 
         // The host wires Talky.Data, so readiness depends on a reachable, migrated database. Reuse
         // the Data tests' server selection (TALKY_TEST_DB_SERVER, LocalDB by default) with a
-        // dedicated database that the host migrates on startup; migrations are idempotent, so the
-        // database can persist between runs.
+        // database of this run that the host creates and migrates on startup, and that is dropped
+        // the same way TalkyDatabaseFixture drops its databases once the test process exits.
         var server = Environment.GetEnvironmentVariable(Data.TalkyDatabaseFixture.ServerVariable);
-        var connection = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
+        var connection = new SqlConnectionStringBuilder
         {
-            DataSource = string.IsNullOrWhiteSpace(server) ? @"(localdb)\MSSQLLocalDB" : server,
+            DataSource = string.IsNullOrWhiteSpace(server) ? Data.TalkyDatabaseFixture.DefaultServer : server,
             InitialCatalog = DatabaseName,
             IntegratedSecurity = true,
             TrustServerCertificate = true,
@@ -40,6 +47,10 @@ internal static class TalkyTestEnvironment
         };
         Environment.SetEnvironmentVariable("TALKY_Database__ConnectionString", connection.ConnectionString);
         Environment.SetEnvironmentVariable("TALKY_Database__MigrateOnStartup", "true");
+
+        connection.InitialCatalog = "master";
+        var master = connection.ConnectionString;
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DropDatabase(master);
 
         // Realtime handshake tests authenticate with dev:<user> tokens.
         Environment.SetEnvironmentVariable("TALKY_Realtime__AllowDevTokens", "true");
@@ -49,11 +60,42 @@ internal static class TalkyTestEnvironment
             "TALKY_Server__DrainSeconds",
             DrainSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-        // Keep the tests off %ProgramData% and out of the Windows event log.
+        // Keep the log files off %ProgramData% (configuration from %ProgramData%\Talky is still
+        // read, because no --data-dir is passed) and out of the Windows event log.
         Environment.SetEnvironmentVariable("TALKY_Logging__Directory", LogDirectory);
         Environment.SetEnvironmentVariable("TALKY_Logging__Console", "false");
         Environment.SetEnvironmentVariable("TALKY_Logging__EventLog", "false");
         Environment.SetEnvironmentVariable("TALKY_Logging__MinimumLevel", "Warning");
+    }
+
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Cleanup at process exit must never fail the test run.")]
+    private static void DropDatabase(string masterConnectionString)
+    {
+        try
+        {
+            SqlConnection.ClearAllPools();
+
+            using var connection = new SqlConnection(masterConnectionString);
+            connection.Open();
+            using var command = connection.CreateCommand();
+
+            // Same statement as TalkyDatabaseFixture: the name is generated hex, QUOTENAME escapes it.
+            command.CommandText = """
+                DECLARE @sql nvarchar(max) =
+                    N'ALTER DATABASE ' + QUOTENAME(@name) + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE;' +
+                    N'DROP DATABASE ' + QUOTENAME(@name) + N';';
+                IF DB_ID(@name) IS NOT NULL EXEC sp_executesql @sql;
+                """;
+            command.Parameters.AddWithValue("@name", DatabaseName);
+            command.ExecuteNonQuery();
+        }
+        catch (Exception)
+        {
+            // Best effort; a leftover talky_hosttest_* database is harmless and easy to spot.
+        }
     }
 
     /// <summary>Forces the static initializer to run before a host is built.</summary>
