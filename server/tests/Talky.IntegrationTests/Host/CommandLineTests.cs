@@ -83,6 +83,16 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public async Task Malformed_connection_string_is_reported_by_doctor_as_a_configuration_error()
+    {
+        Assert.Equal(
+            ExitCode.InvalidConfiguration,
+            await TalkyCommandLine.RunAsync(
+                ["doctor", "--set", "Talky:Database:ConnectionString=Databse=x"],
+                CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Missing_config_file_is_reported_as_a_configuration_error()
     {
         Assert.Equal(

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Win32;
 using Talky.Core.Diagnostics;
 
 namespace Talky.Server.Diagnostics;
@@ -11,6 +12,8 @@ internal sealed class OperatingSystemDoctorCheck(IHostEnvironment environment) :
 {
     /// <summary>Windows 10 / Server 2016 build; older builds lack the TLS and HTTP/2 stack we rely on.</summary>
     private static readonly Version MinimumWindowsVersion = new(10, 0, 14393);
+
+    private const string ProductOptionsKey = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ProductOptions";
 
     /// <inheritdoc />
     public string Name => "os";
@@ -40,9 +43,21 @@ internal sealed class OperatingSystemDoctorCheck(IHostEnvironment environment) :
                 details));
         }
 
-        var severity = environment.IsDevelopment() ? "development machine" : "server";
-        return Task.FromResult(DoctorResult.Ok(
-            $"{System.Runtime.InteropServices.RuntimeInformation.OSDescription} ({severity}).",
-            details));
+        var description = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+        var productType = Registry.GetValue(ProductOptionsKey, "ProductType", null) as string;
+        details["productType"] = productType ?? "unknown";
+
+        // "WinNT" is a client edition (Windows 10/11); "ServerNT" and "LanmanNT" are Windows Server.
+        var isClientEdition = string.Equals(productType, "WinNT", StringComparison.OrdinalIgnoreCase);
+        if (!isClientEdition)
+        {
+            return Task.FromResult(DoctorResult.Ok($"{description} (Windows Server).", details));
+        }
+
+        return Task.FromResult(environment.IsDevelopment()
+            ? DoctorResult.Ok($"{description} (client edition, development machine).", details)
+            : DoctorResult.Warning(
+                $"{description}: client Windows edition, lab use only; production is Windows Server.",
+                details));
     }
 }
