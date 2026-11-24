@@ -1,7 +1,12 @@
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Talky.Core.Data;
 using Talky.Core.Diagnostics;
+using Talky.Data;
+using Talky.Data.Diagnostics;
 
 namespace Talky.IntegrationTests.Data;
 
@@ -100,6 +105,38 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
     }
 
     [RequiresSqlServerFact]
+    public async Task The_doctor_check_reports_a_database_without_migrations_as_an_error()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTalkyData(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Talky:Database:ConnectionString"] = TempDbConnectionString(),
+            })
+            .Build());
+        await using var provider = services.BuildServiceProvider();
+        var check = provider.GetRequiredService<IEnumerable<IDoctorCheck>>().Single(c => c.Name == "sql");
+
+        var result = await check.RunAsync(CancellationToken.None);
+
+        Assert.Equal(DoctorSeverity.Error, result.Severity);
+        Assert.Equal("0", result.Details!["appliedMigrations"]);
+    }
+
+    [RequiresSqlServerFact]
+    public async Task The_sql_health_check_is_unhealthy_when_the_schema_is_missing()
+    {
+        var check = new SqlHealthCheck(new SqlConnectionSource(
+            Options.Create(new DatabaseOptions { ConnectionString = TempDbConnectionString() })));
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Contains("talky migrate", result.Description, StringComparison.Ordinal);
+    }
+
+    [RequiresSqlServerFact]
     public async Task The_sql_health_check_is_healthy_and_tagged_ready()
     {
         var healthChecks = fixture.Resolve<HealthCheckService>();
@@ -112,4 +149,8 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
         Assert.True(report.Entries.ContainsKey("sql"));
         Assert.Equal(HealthStatus.Healthy, report.Entries["sql"].Status);
     }
+
+    /// <summary>The fixture's server, pointed at tempdb: reachable, but without a Talky schema.</summary>
+    private string TempDbConnectionString() =>
+        new SqlConnectionStringBuilder(fixture.ConnectionString) { InitialCatalog = "tempdb" }.ConnectionString;
 }
