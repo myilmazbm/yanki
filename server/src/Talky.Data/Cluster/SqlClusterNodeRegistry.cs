@@ -1,6 +1,5 @@
 using System.Data;
 using System.Globalization;
-using Microsoft.Data.SqlClient;
 using Talky.Core.Data;
 using Talky.Core.Hosting;
 
@@ -77,14 +76,14 @@ public sealed class SqlClusterNodeRegistry(SqlConnectionSource connections, Time
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(HeartbeatSql, connection);
+        await using var command = connections.NewCommand(HeartbeatSql, connection);
 
         command.Parameters.Add("@node_id", SqlDbType.NVarChar, 128).Value = nodeId;
         command.Parameters.Add("@host_name", SqlDbType.NVarChar, 255).Value = hostName;
         command.Parameters.Add("@grpc_port", SqlDbType.Int).Value = grpcPort;
         command.Parameters.Add("@version", SqlDbType.NVarChar, 64).Value = version;
         command.Parameters.Add("@roles", SqlDbType.Int).Value = (int)roles;
-        AddTimestamp(command, "@now", SqlTime.UtcNow(timeProvider));
+        SqlTime.AddTimestamp(command, "@now", SqlTime.UtcNow(timeProvider));
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -98,8 +97,8 @@ public sealed class SqlClusterNodeRegistry(SqlConnectionSource connections, Time
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(age, TimeSpan.Zero);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(ListAliveSql, connection);
-        AddTimestamp(command, "@cutoff", SqlTime.UtcNow(timeProvider) - age);
+        await using var command = connections.NewCommand(ListAliveSql, connection);
+        SqlTime.AddTimestamp(command, "@cutoff", SqlTime.UtcNow(timeProvider) - age);
 
         var nodes = new List<ClusterNodeInfo>();
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleResult, cancellationToken);
@@ -124,20 +123,10 @@ public sealed class SqlClusterNodeRegistry(SqlConnectionSource connections, Time
         ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(RemoveSql, connection);
+        await using var command = connections.NewCommand(RemoveSql, connection);
         command.Parameters.Add("@node_id", SqlDbType.NVarChar, 128).Value = nodeId;
 
         var affected = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(affected, CultureInfo.InvariantCulture) > 0;
-    }
-
-    private SqlCommand NewCommand(string sql, SqlConnection connection) =>
-        new(sql, connection) { CommandTimeout = connections.CommandTimeoutSeconds };
-
-    private static void AddTimestamp(SqlCommand command, string name, DateTime value)
-    {
-        var parameter = command.Parameters.Add(name, SqlDbType.DateTime2);
-        parameter.Scale = 3;
-        parameter.Value = value;
     }
 }

@@ -20,7 +20,4 @@
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
   </ItemGroup>
 
-  <PropertyGroup>
-  </PropertyGroup>
-
 </Project>

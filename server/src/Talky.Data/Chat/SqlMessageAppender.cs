@@ -135,10 +135,7 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
         var createdAt = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = new SqlCommand(AppendSql, connection)
-        {
-            CommandTimeout = connections.CommandTimeoutSeconds,
-        };
+        await using var command = connections.NewCommand(AppendSql, connection);
 
         command.Parameters.Add("@conversation_id", SqlDbType.UniqueIdentifier).Value = request.ConversationId;
         command.Parameters.Add("@sender_id", SqlDbType.UniqueIdentifier).Value = request.SenderId;
@@ -149,10 +146,7 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
             request.ParentId.HasValue ? request.ParentId.Value : DBNull.Value;
         command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = (object?)request.Body ?? DBNull.Value;
         command.Parameters.Add("@metadata", SqlDbType.NVarChar, -1).Value = (object?)request.Metadata ?? DBNull.Value;
-
-        var createdAtParameter = command.Parameters.Add("@created_at", SqlDbType.DateTime2);
-        createdAtParameter.Scale = 3;
-        createdAtParameter.Value = createdAt;
+        SqlTime.AddTimestamp(command, "@created_at", createdAt);
 
         try
         {

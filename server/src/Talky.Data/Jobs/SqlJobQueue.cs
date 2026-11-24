@@ -1,6 +1,5 @@
 using System.Data;
 using System.Globalization;
-using Microsoft.Data.SqlClient;
 using Talky.Core.Data;
 using Talky.Core.Domain;
 using Talky.Data.ValueGeneration;
@@ -146,7 +145,7 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(EnqueueSql, connection);
+        await using var command = connections.NewCommand(EnqueueSql, connection);
 
         command.Parameters.Add("@new_id", SqlDbType.UniqueIdentifier).Value = SequentialGuid.Next();
         command.Parameters.Add("@type", SqlDbType.NVarChar, 64).Value = jobType;
@@ -154,8 +153,8 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         command.Parameters.Add("@max_attempts", SqlDbType.Int).Value = maxAttempts;
         command.Parameters.Add("@dedupe_key", SqlDbType.NVarChar, 200).Value =
             (object?)dedupeKey ?? DBNull.Value;
-        AddTimestamp(command, "@run_at", runAt?.UtcDateTime ?? now);
-        AddTimestamp(command, "@now", now);
+        SqlTime.AddTimestamp(command, "@run_at", runAt?.UtcDateTime ?? now);
+        SqlTime.AddTimestamp(command, "@now", now);
 
         var id = await command.ExecuteScalarAsync(cancellationToken);
         if (id is not Guid jobId)
@@ -180,11 +179,11 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(BuildClaimSql(jobTypes.Count), connection);
+        await using var command = connections.NewCommand(BuildClaimSql(jobTypes.Count), connection);
 
         command.Parameters.Add("@max", SqlDbType.Int).Value = maxJobs;
         command.Parameters.Add("@worker", SqlDbType.NVarChar, 128).Value = workerId;
-        AddTimestamp(command, "@now", now);
+        SqlTime.AddTimestamp(command, "@now", now);
 
         var index = 0;
         foreach (var jobType in jobTypes)
@@ -215,10 +214,10 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(CompleteSql, connection);
+        await using var command = connections.NewCommand(CompleteSql, connection);
         command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = claim.Id;
         command.Parameters.Add("@attempts", SqlDbType.Int).Value = claim.Attempts;
-        AddTimestamp(command, "@now", now);
+        SqlTime.AddTimestamp(command, "@now", now);
 
         var affected = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(affected, CultureInfo.InvariantCulture) == 1;
@@ -236,11 +235,11 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(FailSql, connection);
+        await using var command = connections.NewCommand(FailSql, connection);
         command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = claim.Id;
         command.Parameters.Add("@attempts", SqlDbType.Int).Value = claim.Attempts;
         command.Parameters.Add("@error", SqlDbType.NVarChar, -1).Value = errorMessage;
-        AddTimestamp(command, "@now", now);
+        SqlTime.AddTimestamp(command, "@now", now);
 
         var state = await command.ExecuteScalarAsync(cancellationToken);
         return state is null or DBNull ? null : (JobState)Convert.ToInt32(state, CultureInfo.InvariantCulture);
@@ -254,9 +253,9 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
         var now = SqlTime.UtcNow(timeProvider);
 
         await using var connection = await connections.OpenAsync(cancellationToken);
-        await using var command = NewCommand(RequeueStaleSql, connection);
-        AddTimestamp(command, "@now", now);
-        AddTimestamp(command, "@cutoff", now - lockTimeout);
+        await using var command = connections.NewCommand(RequeueStaleSql, connection);
+        SqlTime.AddTimestamp(command, "@now", now);
+        SqlTime.AddTimestamp(command, "@cutoff", now - lockTimeout);
 
         var affected = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(affected, CultureInfo.InvariantCulture);
@@ -301,15 +300,5 @@ public sealed class SqlJobQueue(SqlConnectionSource connections, TimeProvider ti
                    updated_at = @now
             OUTPUT inserted.id, inserted.type, inserted.payload, inserted.attempts, inserted.max_attempts;
             """;
-    }
-
-    private SqlCommand NewCommand(string sql, SqlConnection connection) =>
-        new(sql, connection) { CommandTimeout = connections.CommandTimeoutSeconds };
-
-    private static void AddTimestamp(SqlCommand command, string name, DateTime value)
-    {
-        var parameter = command.Parameters.Add(name, SqlDbType.DateTime2);
-        parameter.Scale = 3;
-        parameter.Value = value;
     }
 }

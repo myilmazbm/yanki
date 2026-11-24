@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Talky.Core.Data;
 using Talky.Core.Domain;
 using Talky.Data;
@@ -46,7 +47,7 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
     public string ConnectionString { get; private set; } = string.Empty;
 
     /// <summary>Clock every Talky.Data service uses in these tests, so backoff and expiry are testable.</summary>
-    public TestTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
+    public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
     /// <summary>Identity source every seeded user belongs to.</summary>
     public Guid IdentitySourceId { get; private set; }

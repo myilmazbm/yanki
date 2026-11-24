@@ -1,3 +1,6 @@
+using System.Data;
+using Microsoft.Data.SqlClient;
+
 namespace Talky.Data;
 
 /// <summary>
@@ -14,5 +17,13 @@ internal static class SqlTime
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         return new DateTime(now.Ticks - (now.Ticks % TimeSpan.TicksPerMillisecond), DateTimeKind.Utc);
+    }
+
+    /// <summary>Adds a <c>datetime2(3)</c> parameter, matching the column type of every timestamp.</summary>
+    public static void AddTimestamp(SqlCommand command, string name, DateTime value)
+    {
+        var parameter = command.Parameters.Add(name, SqlDbType.DateTime2);
+        parameter.Scale = 3;
+        parameter.Value = value;
     }
 }
