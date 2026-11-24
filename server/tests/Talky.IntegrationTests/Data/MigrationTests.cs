@@ -137,6 +137,40 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
     }
 
     [RequiresSqlServerFact]
+    public async Task The_sql_health_check_is_unhealthy_when_no_migration_was_applied()
+    {
+        // A first migration that failed leaves EF's history table behind, empty.
+        var connectionString = TempDbConnectionString();
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var create = new SqlCommand(
+                "IF OBJECT_ID(N'dbo.__EFMigrationsHistory') IS NULL " +
+                "CREATE TABLE dbo.__EFMigrationsHistory (MigrationId nvarchar(150) NOT NULL PRIMARY KEY, ProductVersion nvarchar(32) NOT NULL);",
+                connection);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            var check = new SqlHealthCheck(new SqlConnectionSource(
+                Options.Create(new DatabaseOptions { ConnectionString = connectionString })));
+
+            var result = await check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+
+            Assert.Equal(HealthStatus.Unhealthy, result.Status);
+            Assert.Contains("run 'talky migrate'", result.Description, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var drop = new SqlCommand("DROP TABLE IF EXISTS dbo.__EFMigrationsHistory;", connection);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    [RequiresSqlServerFact]
     public async Task The_sql_health_check_is_healthy_and_tagged_ready()
     {
         var healthChecks = fixture.Resolve<HealthCheckService>();
