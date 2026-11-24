@@ -4,7 +4,7 @@ namespace Talky.Server.Cli;
 
 /// <summary>
 /// <c>talky serve</c> — and the default command, so the Windows service command line carries only
-/// options (<c>--role</c>, <c>--data-dir</c>) and no command.
+/// options (<c>--data-dir</c>) and no command.
 /// </summary>
 internal static class ServeCommand
 {

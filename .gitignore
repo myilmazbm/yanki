@@ -9,6 +9,7 @@ TestResults/
 *.trx
 *.coverage
 *.coveragexml
+*.binlog
 artifacts/
 publish/
 *.nupkg
@@ -38,6 +39,8 @@ clients/apps/mobile/android/
 *.jks
 *.p8
 *.p12
+*.pfx
+*.pem
 *.key
 *.mobileprovision
 
