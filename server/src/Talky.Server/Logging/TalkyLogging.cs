@@ -97,7 +97,7 @@ internal static class TalkyLogging
     /// <returns>Null when the directory is writable, otherwise the reason it is not.</returns>
     public static string? ProbeWritable(string directory)
     {
-        var probe = Path.Combine(directory, $".talky-probe-{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}");
+        var probe = Path.Combine(directory, ".talky-probe-" + Guid.NewGuid().ToString("N"));
         try
         {
             System.IO.Directory.CreateDirectory(directory);
