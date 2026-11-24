@@ -38,13 +38,3 @@ export function encodeClientFrame(frame: ClientFrame): string {
 export function decodeServerFrame(text: string): ServerFrame {
   return fromJsonString(ServerFrameSchema, text, READ_OPTIONS);
 }
-
-/** Decode a client frame. Used by mock servers and the golden-fixture replayer. */
-export function decodeClientFrame(text: string): ClientFrame {
-  return fromJsonString(ClientFrameSchema, text, READ_OPTIONS);
-}
-
-/** Encode a server frame. Used by mock servers and the golden-fixture replayer. */
-export function encodeServerFrame(frame: ServerFrame): string {
-  return toJsonString(ServerFrameSchema, frame);
-}

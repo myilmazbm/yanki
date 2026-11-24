@@ -33,8 +33,7 @@ export interface ClientDescriptor {
 }
 
 /** Why a reconnect was scheduled. */
-export type ReconnectReason =
-  'close' | 'transport' | 'heartbeat' | 'server-reconnect' | 'token' | 'handshake-timeout';
+export type ReconnectReason = 'close' | 'transport' | 'server-reconnect' | 'token';
 
 /** Payload of the `reconnectScheduled` event. */
 export interface ReconnectScheduled {
@@ -75,7 +74,7 @@ export interface WsClientEvents extends Record<string, unknown[]> {
 
 /** Options for {@link createWsClient}. */
 export interface WsClientOptions {
-  /** Absolute `ws://` / `wss://` endpoint, e.g. `wss://talky.local/api/v1/ws`. */
+  /** Absolute `ws://` / `wss://` endpoint, e.g. `wss://talky.local/ws`. */
   url: string;
   /**
    * Resolves the session token for `Hello.token`. Called before **every** connection attempt,
