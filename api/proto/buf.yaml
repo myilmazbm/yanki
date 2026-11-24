@@ -14,3 +14,6 @@ lint:
 breaking:
   use:
     - WIRE_JSON
+  # The cluster mesh is not implemented yet; remove this exclusion when the mesh ships in M2.
+  ignore:
+    - talky/cluster

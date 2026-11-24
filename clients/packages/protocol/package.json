@@ -9,8 +9,9 @@
     "./v1": "./src/gen/talky/v1/frames_pb.ts"
   },
   "scripts": {
-    "gen": "buf generate ../../../api/proto",
+    "gen": "buf generate ../../../api/proto --path ../../../api/proto/talky/v1",
     "lint:proto": "buf lint ../../../api/proto",
+    "breaking:proto": "buf breaking ../../../api/proto --against ../../../.git#branch=main,subdir=api/proto",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
