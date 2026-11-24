@@ -11,8 +11,9 @@ namespace Talky.Data.Diagnostics;
 /// It runs one query with a hard two second budget. A readiness probe answers "should the load
 /// balancer send this node traffic", and a node that cannot reach SQL Server within two seconds
 /// cannot serve a single message, so the probe fails fast instead of holding the probe request open.
-/// The same round trip checks that the EF migrations history table exists: a reachable database
-/// without the schema is not ready either. Pending migrations are deliberately not checked here (a
+/// The same round trip checks that at least one migration has been applied: a reachable database
+/// without the schema is not ready either, including one whose first migration failed after EF had
+/// created the (still empty) history table. Pending migrations are deliberately not checked here (a
 /// node may serve a compatible older schema during a rolling upgrade); <c>talky doctor</c> reports
 /// them.
 /// </remarks>
@@ -20,7 +21,10 @@ public sealed class SqlHealthCheck(SqlConnectionSource connections) : IHealthChe
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(2);
 
-    private const string ProbeSql = "SELECT CASE WHEN OBJECT_ID(N'dbo.__EFMigrationsHistory') IS NULL THEN 0 ELSE 1 END;";
+    // Deferred name resolution keeps the ELSE branch from compiling when the table does not exist.
+    private const string ProbeSql =
+        "IF OBJECT_ID(N'dbo.__EFMigrationsHistory') IS NULL SELECT 0 " +
+        "ELSE SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.__EFMigrationsHistory) THEN 1 ELSE 0 END;";
 
     /// <inheritdoc />
     public async Task<HealthCheckResult> CheckHealthAsync(
@@ -41,7 +45,9 @@ public sealed class SqlHealthCheck(SqlConnectionSource connections) : IHealthChe
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy($"SQL Server did not answer within {Budget.TotalSeconds:0} s.");
+            return HealthCheckResult.Unhealthy(
+                $"SQL Server did not answer within {Budget.TotalSeconds:0} s; if the database has not been created " +
+                "yet, run 'talky migrate'; 'talky doctor' shows the cause.");
         }
         catch (SqlException ex)
         {

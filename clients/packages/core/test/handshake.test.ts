@@ -143,6 +143,29 @@ describe('handshake', () => {
     }
   });
 
+  it('reconnects with backoff after HELLO_REQUIRED + 1008 (the Hello arrived too late)', async () => {
+    let attempt = 0;
+    const harness = createHarness({
+      server: {
+        authenticate: () => {
+          attempt += 1;
+          return attempt === 1 ? { ok: false, code: 'ERROR_CODE_HELLO_REQUIRED' } : true;
+        },
+      },
+    });
+    try {
+      harness.client.connect();
+      await harness.waitUntil(() => harness.client.state === 'open', { maxMs: 60_000 });
+
+      expect(harness.errors.map((error) => error.code)).toEqual([ErrorCode.HELLO_REQUIRED]);
+      expect(harness.reconnects).toHaveLength(1);
+      expect(harness.reconnects[0]).toMatchObject({ attempt: 1, reason: 'close', closeCode: 1008 });
+      expect(harness.server.connections).toHaveLength(2);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it('emits an error and reconnects when Welcome never arrives', async () => {
     const harness = createHarness({ server: { autoWelcome: false } });
     try {
@@ -171,6 +194,25 @@ describe('handshake', () => {
       await harness.waitUntil(() => harness.client.state === 'open', { maxMs: 60_000 });
       expect(harness.errors[0]?.reason).toBe('transport');
       expect(harness.reconnects[0]?.reason).toBe('token');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('stays closed when an error listener calls close() during a failed open', async () => {
+    const harness = createHarness({
+      client: { getToken: () => Promise.reject(new Error('signed out')) },
+    });
+    try {
+      harness.client.on('error', () => {
+        harness.client.close();
+      });
+      harness.client.connect();
+      await harness.waitUntil(() => harness.errors.length > 0);
+
+      expect(harness.client.state).toBe('closed');
+      expect(harness.reconnects).toEqual([]);
+      expect(harness.clock.pending).toBe(0);
     } finally {
       await harness.dispose();
     }

@@ -42,11 +42,27 @@ internal static class TalkyHostFactory
         // A Windows service starts with C:\Windows\System32 as its working directory, so the
         // content root is pinned to the directory holding talky.exe unless the command line pins
         // one itself (the ASP.NET Core test host does).
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        WebApplicationBuilder builder;
+        try
         {
-            Args = [.. arguments.HostSettings],
-            ContentRootPath = arguments.HasContentRoot ? null : AppContext.BaseDirectory,
-        });
+            builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                Args = [.. arguments.HostSettings],
+                ContentRootPath = arguments.HasContentRoot ? null : AppContext.BaseDirectory,
+            });
+        }
+        catch (InvalidDataException ex)
+        {
+            // The default builder loads appsettings.json and appsettings.{Environment}.json from the
+            // content root itself, before TalkyConfigurationSources can wrap their load errors.
+            Exception cause = ex;
+            while (cause.InnerException is not null)
+            {
+                cause = cause.InnerException;
+            }
+
+            throw new TalkyStartupException($"{ex.Message} {cause.Message}", ex);
+        }
 
         TalkyConfigurationSources.Apply(
             builder.Configuration,
@@ -264,10 +280,11 @@ internal static class TalkyHostFactory
 
         var logging = app.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
         var logDirectory = TalkyLogging.ExpandDirectory(logging.Directory);
-        if (!Directory.Exists(logDirectory))
+        if (TalkyLogging.ProbeWritable(logDirectory) is not null)
         {
-            // The file sink is dropped when its directory cannot be created; say so in the sinks
-            // that do work. `talky doctor` (log-directory) reports the reason.
+            // The file sink is dropped when its directory cannot be created, and writes nothing when
+            // this account cannot write there; say so in the sinks that do work. `talky doctor`
+            // (log-directory) reports the reason.
             app.Logger.LogWarning(
                 "Log directory {LogDirectory} is not usable, so the file log is disabled. Run 'talky doctor' for the reason.",
                 logDirectory);

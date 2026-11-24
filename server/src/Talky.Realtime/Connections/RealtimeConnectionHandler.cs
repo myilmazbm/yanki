@@ -255,8 +255,10 @@ internal sealed class RealtimeConnectionHandler(
         {
             principal = await authenticator.AuthenticateAsync(hello.Token, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // The client went away. An authenticator's own timeout is not caught here: it is a
+            // failure of the authenticator and ends in the read loop's catch-all (logged, 1001).
             return false;
         }
 

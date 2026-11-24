@@ -27,8 +27,8 @@ public sealed class DatabaseOptions
     public int CommandTimeoutSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Retries for transient failures (Always On failover, deadlock victim, timeout). 0 disables the
-    /// retrying execution strategy.
+    /// Retries for transient failures on EF paths (Always On failover, connection loss, deadlock
+    /// victim); command timeouts are not retried. 0 disables the retrying execution strategy.
     /// </summary>
     [Range(0, 20)]
     public int MaxRetryCount { get; set; } = 3;

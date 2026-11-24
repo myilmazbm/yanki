@@ -106,9 +106,11 @@ export interface WsClientOptions {
   /** Reconnect backoff. Defaults to the protocol values (0.5 s → ×2 → 30 s, ±20 %). */
   backoff?: Partial<BackoffOptions>;
   /**
-   * Keep retrying after the server rejected the handshake with close code 1008
-   * (`UNAUTHENTICATED` / `HELLO_REQUIRED`). Default `false`: a bad token is not something a
-   * retry loop can fix, so the client stops and lets the app re-authenticate.
+   * Keep retrying after the server rejected the handshake with `Error{UNAUTHENTICATED}` or a bare
+   * close code 1008. Default `false`: a bad token is not something a retry loop can fix, so the
+   * client stops and lets the app re-authenticate. `Error{HELLO_REQUIRED}` + 1008 does not depend
+   * on this option: it means the Hello arrived after the server's timeout, and the client always
+   * reconnects with backoff.
    */
   retryOnAuthFailure?: boolean;
   /** LRU capacity of the built-in `id` de-duplicator. Default 2048. */

@@ -17,14 +17,13 @@ namespace Talky.Realtime.Hosting;
 /// </summary>
 internal sealed class RealtimeDrainService(
     IOptions<RealtimeOptions> options,
-    IOptions<HostOptions> hostOptions,
     IDrainCoordinator drainCoordinator,
     ConnectionRegistry registry,
     TimeProvider timeProvider,
     ILogger<RealtimeDrainService> logger) : BackgroundService
 {
-    /// <summary>Upper bound of the reconnect spread, per <c>docs/protocol.md</c>.</summary>
-    private const int MaxReconnectDelayMs = 10_000;
+    /// <summary>Upper bound of the reconnect spread sent to every client, per <c>docs/protocol.md</c>.</summary>
+    private const uint ReconnectDelayMs = 10_000;
 
     private readonly RealtimeOptions _options = options.Value;
 
@@ -50,15 +49,11 @@ internal sealed class RealtimeDrainService(
 
     private async Task DrainAsync()
     {
-        int graceMs = (int)Math.Clamp(hostOptions.Value.ShutdownTimeout.TotalMilliseconds, 0, int.MaxValue);
-        int maxDelayMs = Math.Min(MaxReconnectDelayMs, graceMs);
-
-        RealtimeLog.DrainStarted(logger, registry.Count, maxDelayMs);
+        RealtimeLog.DrainStarted(logger, registry.Count, (int)ReconnectDelayMs);
 
         // Everyone gets the same bound; the client draws the actual delay (jitter on one side only).
-        uint delayMs = (uint)maxDelayMs;
         await registry.BroadcastAsync(
-            _ => ServerFrames.Reconnect(delayMs, ReconnectReasons.Draining),
+            _ => ServerFrames.Reconnect(ReconnectDelayMs, ReconnectReasons.Draining),
             ephemeral: false,
             CancellationToken.None);
 

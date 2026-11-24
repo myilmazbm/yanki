@@ -419,15 +419,16 @@ böylece olağan "Configuration is invalid" yolundan düşer:
 |---|---|---|
 | `Talky:Database:ConnectionString` | — (**zorunlu**) | SQL Server bağlantı dizesi. Varsayılanı yoktur: üretimde sessizce yerel bir örneğe düşmek, başlamamaktan kötüdür. |
 | `Talky:Database:CommandTimeoutSeconds` | `5` | Her sorgunun zaman aşımı. Bilinçli olarak kısa: sıcak yolda saniyelerce süren sorgu beklenecek bir şey değil, bir arızadır. |
-| `Talky:Database:MaxRetryCount` | `3` | **Yalnız EF yolları** için geçici hata (AG yük devretmesi, kilitlenme kurbanı, zaman aşımı) yeniden denemesi. `0` stratejiyi kapatır. Aşağıdaki "Geçici hatalar" bölümüne bakın. |
+| `Talky:Database:MaxRetryCount` | `3` | **Yalnız EF yolları** için geçici hata (AG yük devretmesi, bağlantı kopması, kilitlenme kurbanı) yeniden denemesi; komut zaman aşımı yeniden denenmez. `0` stratejiyi kapatır. Aşağıdaki "Geçici hatalar" bölümüne bakın. |
 | `Talky:Database:MigrateOnStartup` | `false` | Açıksa host dinlemeye başlamadan önce göçleri uygular. Üretimde kapalı: yükseltme `talky migrate` ile açık ve denetlenebilir bir adımdır. |
 
 ### Geçici hatalar: iki ayrı davranış
 
 - **EF yolları** (`TalkyDbContext`: göçler, `EfMessageReader`, ileride EF ile yazılan iş birimleri)
-  `EnableRetryOnFailure(MaxRetryCount)` ile zaman aşımları dahil yeniden dener. En kötü durum
-  (4 × 5 s + geri çekilme) istemcinin 15 s istek zaman aşımını aşar; sıcak yol okumaları bu
-  stratejiye yaslanmamalıdır (M2'de yeniden değerlendirilecek). Bu strateji kullanıcının açtığı
+  `EnableRetryOnFailure(MaxRetryCount)` ile AG yük devretmesi, bağlantı kopması ve kilitlenme kurbanı
+  (1205) sınıfı hataları yeniden dener. Komut zaman aşımını (SqlException -2) yeniden **denemez**:
+  `CommandTimeoutSeconds`'ı aşan bir sorgu tek denemeden sonra hata verir (EF bunu bilerek dışarıda
+  bırakır; zaman aşımına uğrayan komut sunucuda tamamlanmış olabilir). Bu strateji kullanıcının açtığı
   işlemleri (`BeginTransaction`) reddeder: `TalkyDbContext` üzerinde işlem açan her iş birimi
   `Database.CreateExecutionStrategy().ExecuteAsync(...)` içine sarılmalıdır.
 - **Ham SQL yolları** (`SqlMessageAppender`, `SqlJobQueue`, `SqlClusterNodeRegistry`, sağlık ve
@@ -451,7 +452,7 @@ aşımı soğuk LocalDB için 60 s'ye çıkarılır.
 | `IDoctorCheck` → `SqlDoctorCheck` | singleton (enumerable) | `talky doctor` kontrolü, adı `sql` |
 | `SqlConnectionSource` | singleton | EF dışı yolların ADO.NET bağlantıları |
 | `TimeProvider` | singleton (`TryAdd`) | testler kendi sağlayıcısını önceden kaydedebilir |
-| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, tek gidiş-dönüş, 2 sn bütçe; `dbo.__EFMigrationsHistory` yoksa (şema oluşturulmamış) `Unhealthy` ve "run 'talky migrate'" |
+| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, tek gidiş-dönüş, 2 sn bütçe; en az bir göç uygulanmamışsa (`dbo.__EFMigrationsHistory` yok ya da boş: şema oluşturulmamış) `Unhealthy` ve "run 'talky migrate'"; 2 sn içinde yanıt yoksa ileti `talky migrate` ve `talky doctor`'a yönlendirir |
 | `IValidateOptions<DatabaseOptions>` → `ValidateDatabaseOptions` | singleton (enumerable) | bağlantı dizesi ayrıştırılabilir ve veritabanı adlandırıyor |
 
 Host tarafında yapılması gerekenler: `AddTalkyData(builder.Configuration)` çağrısı, hazır olma uç

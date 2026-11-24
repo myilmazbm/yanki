@@ -16,7 +16,7 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
     public string Name => "log-directory";
 
     /// <inheritdoc />
-    public async Task<DoctorResult> RunAsync(CancellationToken cancellationToken)
+    public Task<DoctorResult> RunAsync(CancellationToken cancellationToken)
     {
         string directory;
         try
@@ -25,7 +25,7 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return DoctorResult.Error($"Talky:Logging:Directory is not a usable path: {ex.Message}");
+            return Task.FromResult(DoctorResult.Error($"Talky:Logging:Directory is not a usable path: {ex.Message}"));
         }
 
         var details = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -34,21 +34,15 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
             ["retainedFiles"] = logging.Value.RetainedFileCount.ToString(CultureInfo.InvariantCulture),
         };
 
-        var probe = Path.Combine(directory, $".talky-doctor-{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}");
-        try
+        var error = TalkyLogging.ProbeWritable(directory);
+        if (error is not null)
         {
-            Directory.CreateDirectory(directory);
-            await File.WriteAllTextAsync(probe, "ok", cancellationToken);
-            File.Delete(probe);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            details["error"] = ex.Message;
-            return DoctorResult.Error(
+            details["error"] = error;
+            return Task.FromResult(DoctorResult.Error(
                 $"Log directory '{directory}' is not writable by this account.",
-                details);
+                details));
         }
 
-        return DoctorResult.Ok($"Log directory '{directory}' is writable.", details);
+        return Task.FromResult(DoctorResult.Ok($"Log directory '{directory}' is writable.", details));
     }
 }

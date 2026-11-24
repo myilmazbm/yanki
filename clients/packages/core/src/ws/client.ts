@@ -48,8 +48,8 @@ const CLOSE_NORMAL = 1000;
  * Close codes after which reconnecting cannot possibly help.
  *
  * 1002 (`PROTOCOL_VERSION_UNSUPPORTED`) and 1003 are permanent disagreements about the
- * contract; 1008 (`UNAUTHENTICATED` / `HELLO_REQUIRED`) is handled separately because
- * `retryOnAuthFailure` can turn it back into a retryable condition.
+ * contract; 1008 is handled separately: after `Error{HELLO_REQUIRED}` it is a timing failure
+ * and always retried with backoff, otherwise `retryOnAuthFailure` decides.
  */
 const PERMANENT_CLOSE_CODES: ReadonlySet<number> = new Set([1002, 1003]);
 const AUTH_CLOSE_CODE = 1008;
@@ -115,6 +115,11 @@ class TalkyWsClient implements WsClient {
   private serverReconnectDelayMs: number | null = null;
   /** Set when a fatal `Error` frame arrived and we are waiting for the server to close. */
   private fatalPending = false;
+  /**
+   * Set when that fatal `Error` was `HELLO_REQUIRED`: the Hello reached the server after its Hello
+   * timeout (suspended app, frozen tab). The close that follows is retried with backoff.
+   */
+  private helloLate = false;
   /** Set when the server evicted this connection in favour of a newer one of the same user. */
   private evictionReason: string | null = null;
 
@@ -251,6 +256,8 @@ class TalkyWsClient implements WsClient {
       this.emitError(
         new TalkyWsError({ reason: 'transport', message: 'getToken() rejected', cause: error }),
       );
+      // An error listener may have called close() (or close() and connect()).
+      if (this.isSuperseded(id)) return;
       this.scheduleBackoffReconnect('token', undefined);
       return;
     }
@@ -263,6 +270,7 @@ class TalkyWsClient implements WsClient {
       this.emitError(
         new TalkyWsError({ reason: 'transport', message: 'could not open a socket', cause: error }),
       );
+      if (this.isSuperseded(id)) return;
       this.scheduleBackoffReconnect('transport', undefined);
       return;
     }
@@ -461,6 +469,7 @@ class TalkyWsClient implements WsClient {
     // racing it, but arm a grace timer in case it never arrives.
     if (this.isFatalErrorCode(frame.code)) {
       this.fatalPending = true;
+      this.helloLate = frame.code === ErrorCode.HELLO_REQUIRED;
       this.setTimer(
         'fatalGrace',
         () => {
@@ -497,9 +506,10 @@ class TalkyWsClient implements WsClient {
 
   private isFatalErrorCode(code: ErrorCode): boolean {
     if (code === ErrorCode.PROTOCOL_VERSION_UNSUPPORTED) return true;
-    if (code === ErrorCode.UNAUTHENTICATED || code === ErrorCode.HELLO_REQUIRED) {
-      return !this.options.retryOnAuthFailure;
-    }
+    // `docs/protocol.md` P7: this client always sends Hello first, so HELLO_REQUIRED only means the
+    // Hello arrived after the server's Hello timeout. The server still closes; handleClose retries.
+    if (code === ErrorCode.HELLO_REQUIRED) return true;
+    if (code === ErrorCode.UNAUTHENTICATED) return !this.options.retryOnAuthFailure;
     return false;
   }
 
@@ -526,6 +536,8 @@ class TalkyWsClient implements WsClient {
 
     const wasFatalFrame = this.fatalPending;
     this.fatalPending = false;
+    const helloLate = this.helloLate;
+    this.helloLate = false;
 
     this.rejectPending(
       new TalkyWsError({
@@ -553,6 +565,14 @@ class TalkyWsClient implements WsClient {
           closeCode: code,
         }),
       );
+      return;
+    }
+
+    if (wasFatalFrame && helloLate) {
+      this.options.logger.info('Hello reached the server after its timeout; reconnecting', {
+        code,
+      });
+      this.scheduleBackoffReconnect('close', code);
       return;
     }
 
