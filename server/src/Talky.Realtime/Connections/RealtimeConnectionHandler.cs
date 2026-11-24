@@ -77,11 +77,10 @@ internal sealed class RealtimeConnectionHandler(
         {
             if (drainCoordinator.IsDraining)
             {
+                // No Reconnect frame: a bare 1013 makes the client fall back to its exponential
+                // backoff instead of retrying the draining node immediately.
                 RealtimeLog.RefusedWhileDraining(logger, connection.ConnectionId);
-                connection.SendThenClose(
-                    ServerFrames.Reconnect(0, ReconnectReasons.Draining),
-                    RealtimeCloseCodes.TryAgainLater,
-                    ReconnectReasons.Draining);
+                connection.RequestClose(RealtimeCloseCodes.TryAgainLater, ReconnectReasons.Draining);
             }
             else
             {

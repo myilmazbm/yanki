@@ -25,7 +25,8 @@ public sealed class DrainTests
             ServerFrame reconnect = await client.ExpectFrameAsync(cts.Token);
             Assert.Equal(ServerFrame.BodyOneofCase.Reconnect, reconnect.BodyCase);
             Assert.Equal(ReconnectReasons.Draining, reconnect.Reconnect.Reason);
-            Assert.InRange(reconnect.Reconnect.DelayMs, 0u, 10_000u);
+            // The bound, identical for everyone: min(10 s, drain grace). The client draws the delay.
+            Assert.Equal(10_000u, reconnect.Reconnect.DelayMs);
 
             ServerMessage close = await client.ExpectCloseAsync(cts.Token);
             Assert.Equal(WebSocketCloseStatus.EndpointUnavailable, close.CloseStatus);
@@ -33,7 +34,7 @@ public sealed class DrainTests
     }
 
     [Fact]
-    public async Task NewConnectionsDuringDrain_AreRefusedWithReconnectAnd1013()
+    public async Task NewConnectionsDuringDrain_AreRefusedWith1013AndNoReconnectFrame()
     {
         using CancellationTokenSource cts = TestTimeouts.Cts();
         await using RealtimeTestHost host = await RealtimeTestHost.StartAsync();
@@ -42,10 +43,7 @@ public sealed class DrainTests
 
         await using RealtimeTestClient client = await host.ConnectAsync(cts.Token);
 
-        ServerFrame reconnect = await client.ExpectFrameAsync(cts.Token);
-        Assert.Equal(ServerFrame.BodyOneofCase.Reconnect, reconnect.BodyCase);
-        Assert.Equal(ReconnectReasons.Draining, reconnect.Reconnect.Reason);
-
+        // The very first thing the client sees is the close, so its backoff applies.
         ServerMessage close = await client.ExpectCloseAsync(cts.Token);
         Assert.Equal(1013, (int)close.CloseStatus!.Value);
     }

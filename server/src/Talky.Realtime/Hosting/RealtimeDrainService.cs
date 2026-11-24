@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,8 +11,9 @@ namespace Talky.Realtime.Hosting;
 
 /// <summary>
 /// Watches <see cref="IDrainCoordinator.DrainToken"/> and empties the node gracefully during a
-/// rolling upgrade: every connection is told to reconnect after its own random delay, so 15k
-/// clients do not stampede the next node at the same millisecond, and is then closed with 1001.
+/// rolling upgrade: every connection is told to reconnect within the same upper bound, the client
+/// draws its own random delay in [0, delayMs] so 15k clients do not stampede the next node at the
+/// same millisecond, and the connection is then closed with 1001.
 /// </summary>
 internal sealed class RealtimeDrainService(
     IOptions<RealtimeOptions> options,
@@ -55,9 +55,10 @@ internal sealed class RealtimeDrainService(
 
         RealtimeLog.DrainStarted(logger, registry.Count, maxDelayMs);
 
-        // A per-connection delay, not a shared one: the point is to spread the reconnect storm.
+        // Everyone gets the same bound; the client draws the actual delay (jitter on one side only).
+        uint delayMs = (uint)maxDelayMs;
         await registry.BroadcastAsync(
-            _ => ServerFrames.Reconnect(NextDelayMs(maxDelayMs), ReconnectReasons.Draining),
+            _ => ServerFrames.Reconnect(delayMs, ReconnectReasons.Draining),
             ephemeral: false,
             CancellationToken.None);
 
@@ -70,7 +71,4 @@ internal sealed class RealtimeDrainService(
             connection.RequestClose(RealtimeCloseCodes.GoingAway, ReconnectReasons.Draining);
         }
     }
-
-    private static uint NextDelayMs(int maxDelayMs) =>
-        maxDelayMs <= 0 ? 0u : (uint)RandomNumberGenerator.GetInt32(0, maxDelayMs + 1);
 }

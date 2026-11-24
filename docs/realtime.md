@@ -40,7 +40,7 @@ gerçek bir `ISessionAuthenticator`. `TimeProvider` kayıtlı değilse `TimeProv
 ```
   HTTP GET /ws (Upgrade)
         │
-        ├─ düğüm drain ediyorsa → Reconnect{reason:"draining"} + kapatma 1013
+        ├─ düğüm drain ediyorsa → yalnızca kapatma 1013 (Reconnect çerçevesi yok)
         │
         ▼
   AcceptWebSocketAsync(KeepAliveInterval, KeepAliveTimeout)
@@ -119,13 +119,14 @@ sessizce yutmak yerine `false` döndürmesidir. Politika tek bir yerde, `HandleO
 
 `RealtimeDrainService`, `IDrainCoordinator.DrainToken`'ı izler. Token iptal edildiğinde:
 
-1. Her bağlantıya **kendi** rastgele gecikmesiyle `Reconnect{delayMs, reason:"draining"}` yollanır.
-   `delayMs = random(0, min(10 sn, grace))`; `grace` olarak `HostOptions.ShutdownTimeout` okunur.
-   Gecikme bağlantı başına çekilir — amaç 15 bin istemcinin aynı milisaniyede bir sonraki düğüme
-   yığılmasını engellemektir. Rastgelelik `RandomNumberGenerator` ile üretilir.
+1. Her bağlantıya **aynı üst sınırla** `Reconnect{delayMs, reason:"draining"}` yollanır:
+   `delayMs = min(10 sn, grace)`; `grace` olarak `HostOptions.ShutdownTimeout` okunur. Rastgele
+   gecikmeyi **istemci** `[0, delayMs]` aralığında çeker — jitter yalnızca bir tarafta uygulanır.
+   Amaç 15 bin istemcinin aynı milisaniyede bir sonraki düğüme yığılmasını engellemektir.
 2. `CloseGrace` (2 sn) sonra tüm bağlantılar **1001** ile kapatılır.
-3. Drain sırasında gelen **yeni** bağlantılar `Reconnect{reason:"draining"}` + **1013**
-   (“try again later”) ile reddedilir.
+3. Drain sırasında gelen **yeni** bağlantılar `Reconnect` çerçevesi **olmadan** yalnızca **1013**
+   (“try again later”) ile kapatılır; istemci normal üstel geri çekilmesini uygular. İstemci
+   `Reconnect` gecikmesine yalnızca bağlantı `open` durumundayken uyar.
 
 ## Kullanıcı başına bağlantı bütçesi
 
