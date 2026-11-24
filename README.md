@@ -12,15 +12,15 @@ Ayrıntılı mimari ve kilometre taşları için `docs/` klasörüne bakın.
 
 ```
 server/     .NET 10 çözümü (Talky.slnx). Tek binary talky.exe; roller: api | worker | search | push-relay | all
-api/        Sözleşmeler: proto (WS çerçeveleri, küme mesh'i), OpenAPI (üretilir), altın fixture'lar
-clients/    pnpm + Turborepo. packages/{protocol,core,...}, apps/{web,desktop,mobile}
+api/        Sözleşmeler: proto (WS çerçeveleri, küme mesh'i), altın fixture'lar; OpenAPI üretimi M1'de başlar
+clients/    pnpm + Turborepo. packages/{protocol,core,...}; apps/{web,desktop,mobile} planlı (M3/M4/M6)
 deploy/     Windows kurulum (MSI, PowerShell), LiveKit yapılandırması
 docs/       Mimari, protokol, işletim
 ```
 
 ## Geliştirme ortamı (Windows 11)
 
-Gerekenler: .NET 10 SDK (`global.json` sürümü sabitler), Node ≥ 22, pnpm 11, SQL Server 2025 LocalDB (`sqllocaldb start MSSQLLocalDB`).
+Gerekenler: .NET SDK en az 10.0.400 (`global.json` alt sınırdır, `rollForward: latestMajor` ile daha yeni ana sürüme geçer; hedef çerçeve `net10.0` kalır), Node ≥ 22, pnpm 11, SQL Server 2025 LocalDB (`sqllocaldb start MSSQLLocalDB`).
 Rust yalnızca masaüstü (Tauri) için, `clients/apps/desktop` üzerinde çalışırken gerekir.
 
 ```bash

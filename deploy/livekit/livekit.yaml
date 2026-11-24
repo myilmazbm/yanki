@@ -14,7 +14,7 @@
 # livekit-server.exe and the service is started with --config on that copy.
 
 # Signalling / HTTP. YARP inside talky.exe reverse-proxies this under
-# https://talky.corp/media/{node}/rtc, so 7880 never needs to face clients directly.
+# https://talky.corp/media/{node}/rtc (planned, M5), so 7880 never needs to face clients directly.
 port: 7880
 
 rtc:
@@ -51,13 +51,13 @@ turn:
   relay_range_start: 30000
   relay_range_end: 40000
 
-# API credentials. The same pair goes into Talky:Media:LiveKit:ApiKey / ApiSecret on every
+# API credentials. The same pair goes into Talky:Media:LiveKit:ApiKey / ApiSecret (planned, M5) on every
 # Talky node; talky.exe mints the room tokens. Rotate with `lk` or by editing both sides.
 keys:
   "<talky>": "<api-secret-at-least-32-chars>"
 
 # Room lifecycle events (participant joined/left, room finished, track published) are
-# posted to the Talky API, which is how the backend learns a room is empty and frees the
+# posted to the Talky API (endpoint planned, M5), which is how the backend learns a room is empty and frees the
 # node for the next meeting.
 webhook:
   # Must be one of the keys above; LiveKit signs the webhook with it.
