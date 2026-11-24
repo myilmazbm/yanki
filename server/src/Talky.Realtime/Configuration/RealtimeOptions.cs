@@ -27,13 +27,6 @@ public sealed class RealtimeOptions
     [Range(100, 120_000)]
     public int HelloTimeoutMs { get; set; } = 5_000;
 
-    /// <summary>
-    /// Client-side hint only: how long a client should wait for an application <c>Pong</c>
-    /// before treating the connection as dead. The server never enforces it.
-    /// </summary>
-    [Range(500, 300_000)]
-    public int PongTimeoutMs { get; set; } = 10_000;
-
     /// <summary>Largest accepted inbound frame. Larger frames are rejected with close code 1009.</summary>
     [Range(1_024, 4 * 1_024 * 1_024)]
     public int MaxFrameBytes { get; set; } = 65_536;

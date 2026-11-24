@@ -13,7 +13,6 @@ public sealed class RealtimeOptionsTests
         Assert.Equal("/ws", options.Path);
         Assert.Equal(25_000, options.HeartbeatIntervalMs);
         Assert.Equal(5_000, options.HelloTimeoutMs);
-        Assert.Equal(10_000, options.PongTimeoutMs);
         Assert.Equal(65_536, options.MaxFrameBytes);
         Assert.Equal(256, options.OutboundQueueCapacity);
         Assert.False(options.AllowDevTokens);

@@ -86,7 +86,7 @@ değildir.
 | Yön | Mekanizma | Uygulama |
 |---|---|---|
 | Sunucu → istemci ölü mü? | RFC 6455 protokol ping/pong | `WebSocketAcceptContext.KeepAliveInterval = HeartbeatInterval`, `KeepAliveTimeout = 2 × HeartbeatInterval` (.NET 9+). Taşıma katmanı ölü eşi kendi kapatır; uygulama kodu çalışmaz, tarayıcı istemcisi hiçbir şey yazmaz. |
-| İstemci → sunucu ölü mü? | Uygulama `Ping`/`Pong` | İstemci `Welcome.heartbeatIntervalMs` aralığıyla `Ping{ts}` yollar; sunucu `Pong{ts, serverTime}` ile `ts`'i **birebir** geri döndürür. `PongTimeoutMs` yalnızca istemci ipucudur, sunucu onu uygulamaz. |
+| İstemci → sunucu ölü mü? | Uygulama `Ping`/`Pong` | İstemci `Welcome.heartbeatIntervalMs` aralığıyla `Ping{ts}` yollar; sunucu `Pong{ts, serverTime}` ile `ts`'i **birebir** geri döndürür. |
 
 **Bağlantı başına zamanlayıcı yoktur.** Tüm zamana bağlı işleri tek bir `PeriodicTimer` süpürmesi
 yapar (`RealtimeSweepService`):
@@ -152,7 +152,6 @@ bu yüzden tekrar tekrar çağrılması güvenlidir.
 | `Path` | `/ws` | Endpoint yolu; `/` ile başlamalı. |
 | `HeartbeatIntervalMs` | `25000` | `Welcome`'da duyurulan aralık **ve** protokol keep-alive ping aralığı. Keep-alive zaman aşımı bunun 2 katıdır. |
 | `HelloTimeoutMs` | `5000` | `Hello` için son tarih. Süpürme aralığını da belirler (`min(bu, 5 sn)`). |
-| `PongTimeoutMs` | `10000` | Yalnızca istemci ipucu; sunucu uygulamaz. |
 | `MaxFrameBytes` | `65536` | Kabul edilen en büyük gelen çerçeve; aşılırsa 1009. |
 | `OutboundQueueCapacity` | `256` | Bağlantı başına giden kuyruk. %75'i geçici çerçeve eşiğidir. |
 | `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır; `Development` ortamı dışında ana hat (`talky.exe`) bunu açılışta reddeder, `Talky:Server:AllowInsecureHttp=true` olan laboratuvar düğümleri hariç. Kapalıyken ve gerçek doğrulayıcı yokken her `Hello` reddedilir. |
@@ -180,7 +179,7 @@ aynı kullanıcıdır — çok cihazlı davranış ve bağlantı bütçesi verit
 | `talky.realtime.errors` | Counter | `code` = `ErrorCode` |
 | `talky.realtime.handshake_duration` | Histogram (ms) | — |
 
-Loglar `[LoggerMessage]` ile üretilir, İngilizcedir, olay id'leri 1000–1016 aralığındadır ve
+Loglar `[LoggerMessage]` ile üretilir, İngilizcedir, olay id'leri 1000–1017 aralığındadır ve
 **hiçbir zaman jeton ya da kullanıcı içeriği taşımaz** (kimliği doğrulanamayan bağlantıda bile
 yalnızca “token was rejected” yazılır).
 
@@ -227,7 +226,18 @@ dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll \
 
 ### Ölçülen değerler (M0, geliştirme makinesi, Windows 11, loopback)
 
-`RealtimeBench` (yalnız `Talky.Realtime` + Kestrel) karşısında, Release:
+Bu sayılar depoya **commit'lenmemiş** bir tezgâh ana hattı (`RealtimeBench`: yalnız `Talky.Realtime` +
+Kestrel, Release) karşısında ölçüldü; depodan birebir yeniden üretilemez. Yeniden ölçmek için
+`talky.exe`'yi `Development` ortamında (geliştirme jetonları açık) başlatıp `talky-wsload`'ı ona
+yöneltin, örneğin:
+
+```bash
+cd server
+dotnet run --project src/Talky.Server -c Release -- serve --environment Development --urls https://localhost:18444
+dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll --url wss://localhost:18444/ws   --connections 1000 --ramp 100/s --duration 30s --token "dev:u{i}" --insecure --target-pid <talky-pid>
+```
+
+Tezgâh sonuçları:
 
 | Senaryo | Sonuç |
 |---|---|
