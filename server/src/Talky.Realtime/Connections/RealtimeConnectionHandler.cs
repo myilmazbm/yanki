@@ -268,7 +268,8 @@ internal sealed class RealtimeConnectionHandler(
         }
 
         connection.AttachPrincipal(principal, hello.DeviceId, hello.Client?.Platform ?? string.Empty);
-        registry.AttachUser(connection, principal.UserId);
+        IReadOnlyList<ClientConnection> evictions =
+            registry.AttachUser(connection, principal.UserId, _options.MaxConnectionsPerUser);
 
         connection.Enqueue(ServerFrames.Welcome(
             sessionId: connection.ConnectionId,
@@ -282,7 +283,7 @@ internal sealed class RealtimeConnectionHandler(
         metrics.HandshakeCompleted(elapsed);
         RealtimeLog.HandshakeCompleted(logger, connection.ConnectionId, principal.UserId, connection.DeviceId, elapsed.TotalMilliseconds);
 
-        EnforceConnectionBudget(connection, principal.UserId);
+        EnforceConnectionBudget(evictions, principal.UserId);
         return true;
     }
 
@@ -291,9 +292,9 @@ internal sealed class RealtimeConnectionHandler(
     /// oldest connections. The evicted client gets <c>Reconnect{reason:"too_many_connections"}</c>
     /// before the 1001 close so it can tell this apart from a drain.
     /// </summary>
-    private void EnforceConnectionBudget(ClientConnection connection, Guid userId)
+    private void EnforceConnectionBudget(IReadOnlyList<ClientConnection> evictions, Guid userId)
     {
-        foreach (ClientConnection victim in registry.SelectEvictions(userId, _options.MaxConnectionsPerUser, connection.ConnectionId))
+        foreach (ClientConnection victim in evictions)
         {
             RealtimeLog.ConnectionBudgetExceeded(logger, userId, _options.MaxConnectionsPerUser, victim.ConnectionId);
             victim.SendThenClose(

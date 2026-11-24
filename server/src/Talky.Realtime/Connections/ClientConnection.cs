@@ -62,7 +62,9 @@ public sealed class ClientConnection
             // Wait (rather than Drop*) so TryWrite reports the overflow instead of silently
             // discarding a frame; the overflow policy lives in HandleOverflow.
             FullMode = BoundedChannelFullMode.Wait,
-            SingleReader = true,
+            // HandleOverflow drains the queue from producer threads, so the writer loop is not
+            // the only reader.
+            SingleReader = false,
             SingleWriter = false,
             AllowSynchronousContinuations = false,
         });

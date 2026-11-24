@@ -42,7 +42,7 @@ public sealed class ConnectionRegistryTests : IDisposable
         {
             ClientConnection connection = CreateAuthenticated(userId);
             _registry.Add(connection);
-            _registry.AttachUser(connection, userId);
+            _registry.AttachUser(connection, userId, limit: 16);
         }
 
         Assert.Equal(5, _registry.CountForUser(userId));
@@ -56,7 +56,7 @@ public sealed class ConnectionRegistryTests : IDisposable
         var userId = Guid.CreateVersion7();
         ClientConnection connection = CreateAuthenticated(userId);
         _registry.Add(connection);
-        _registry.AttachUser(connection, userId);
+        _registry.AttachUser(connection, userId, limit: 16);
 
         _registry.Remove(connection);
         _registry.Remove(connection);
@@ -68,25 +68,27 @@ public sealed class ConnectionRegistryTests : IDisposable
     }
 
     [Fact]
-    public void SelectEvictions_ReturnsNothingWhileWithinTheBudget()
+    public void AttachUser_SelectsNothingWhileWithinTheBudget()
     {
         var userId = Guid.CreateVersion7();
         ClientConnection first = Register(userId);
-        ClientConnection second = Register(userId);
+        ClientConnection second = CreateAuthenticated(userId);
+        _registry.Add(second);
 
-        Assert.Empty(_registry.SelectEvictions(userId, limit: 2, keep: second.ConnectionId));
+        Assert.Empty(_registry.AttachUser(second, userId, limit: 2));
         Assert.NotEqual(first.ConnectionId, second.ConnectionId);
     }
 
     [Fact]
-    public void SelectEvictions_PicksTheOldestConnectionsAndNeverTheNewcomer()
+    public void AttachUser_SelectsTheOldestConnectionsAndNeverTheNewcomer()
     {
         var userId = Guid.CreateVersion7();
         ClientConnection oldest = Register(userId);
         ClientConnection middle = Register(userId);
-        ClientConnection newest = Register(userId);
+        ClientConnection newest = CreateAuthenticated(userId);
+        _registry.Add(newest);
 
-        IReadOnlyList<ClientConnection> evictions = _registry.SelectEvictions(userId, limit: 2, keep: newest.ConnectionId);
+        IReadOnlyList<ClientConnection> evictions = _registry.AttachUser(newest, userId, limit: 2);
 
         ClientConnection victim = Assert.Single(evictions);
         Assert.Same(oldest, victim);
@@ -94,15 +96,16 @@ public sealed class ConnectionRegistryTests : IDisposable
     }
 
     [Fact]
-    public void SelectEvictions_IgnoresConnectionsThatAreAlreadyClosing()
+    public void AttachUser_IgnoresConnectionsThatAreAlreadyClosing()
     {
         var userId = Guid.CreateVersion7();
         ClientConnection oldest = Register(userId);
-        ClientConnection newest = Register(userId);
+        ClientConnection newest = CreateAuthenticated(userId);
+        _registry.Add(newest);
 
         oldest.RequestClose(RealtimeCloseCodes.GoingAway, "evicted");
 
-        Assert.Empty(_registry.SelectEvictions(userId, limit: 1, keep: newest.ConnectionId));
+        Assert.Empty(_registry.AttachUser(newest, userId, limit: 1));
     }
 
     [Fact]
@@ -141,7 +144,7 @@ public sealed class ConnectionRegistryTests : IDisposable
         await Task.WhenAll(connections.Select(connection => Task.Run(() =>
         {
             _registry.Add(connection);
-            _registry.AttachUser(connection, userId);
+            _registry.AttachUser(connection, userId, limit: 1_024);
             _registry.Remove(connection);
         })));
 
@@ -153,7 +156,7 @@ public sealed class ConnectionRegistryTests : IDisposable
     {
         ClientConnection connection = CreateAuthenticated(userId);
         _registry.Add(connection);
-        _registry.AttachUser(connection, userId);
+        _registry.AttachUser(connection, userId, limit: 16);
         return connection;
     }
 
