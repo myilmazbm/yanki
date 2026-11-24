@@ -148,7 +148,9 @@ yeniden üretilir. Dosya korunurken `-Urls`, `-SqlConnectionString`, `-Certifica
 olarak söyler. Var olan servisin oturum hesabı yalnızca `-ServiceAccount` verildiğinde
 değişir. Servis zaten varsa ve `-DataDir` verilmemişse veri klasörü servisin komut
 satırındaki `--data-dir`'den alınır; verilen `-DataDir` ondan farklıysa ya da komut satırı
-okunamazsa betik iki yolu da söyleyerek durur. Şemayı bir DBA uyguluyorsa `-SkipMigrate`
+okunamazsa betik iki yolu da söyleyerek durur. İstisna `-ConfigOnly`'dir: servise dokunmadığı
+için farklı bir `-DataDir` (örneğin bir önizleme klasörü) iki yolu da söyleyen bir uyarıyla
+kabul edilir ve yapılandırma oraya yazılır. Şemayı bir DBA uyguluyorsa `-SkipMigrate`
 verin.
 
 **MSI yolu** (kurumsal dağıtım araçları için). MSI dosyaları kurar, servisi **durmuş**
@@ -205,8 +207,10 @@ Bilinen açıklar:
 - MSI'nin kendi servis durdurması en fazla 30 sn bekler; düğüm ise durmadan önce
   `DrainSeconds` (varsayılan 30 sn) boyunca boşaltır. Bu yüzden MSI yükseltmesi, kaldırması
   ve geri alması her zaman önce `Stop-Service Talky` ile başlar (bölüm 6 ve 10). Çalışan bir
-  düğümde `msiexec`'in gerçekte ne yaptığı (1921/1603 ile geri alma mı, 3010 mu) kabul testi
-  bir VM'de çalışana kadar **doğrulanmamıştır**.
+  düğümde `msiexec`'in gerçekte ne yaptığı (1921/1603 ile geri alma mı, 3010 mu; MSI'nin
+  kendi durdurma eylemine gerek olup olmadığı), bir VM'de çalışan bir düğüme karşı
+  `msiexec /x` ve yükseltme amaçlı `msiexec /i` elle (`/l*v` günlüğüyle) denenene kadar
+  **doğrulanmamıştır**. Kabul testi `msiexec /x`'ten önce servisi durdurduğu için bunu ölçmez.
 
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri). Servis kurup

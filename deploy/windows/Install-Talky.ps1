@@ -39,7 +39,8 @@
 .PARAMETER DataDir
     Data directory holding appsettings.json, logs and the Lucene index.
     Default %ProgramData%\Talky for a new node; when the Talky service already exists, the
-    --data-dir of its command line. A -DataDir that differs from that one is refused.
+    --data-dir of its command line. A -DataDir that differs from that one is refused,
+    except with -ConfigOnly, which only warns and renders into the given directory.
 
 .PARAMETER ServiceAccount
     'LocalSystem' (lab) or a gMSA written as 'CORP\talky$'. Default LocalSystem for a
@@ -186,7 +187,12 @@ if ($installedService) {
             "command line or remove the service (Uninstall-Talky.ps1) and run again.")
     }
     if ($PSBoundParameters.ContainsKey('DataDir')) {
-        if ($DataDir -ne $installedDataDir) {
+        if ($DataDir -ne $installedDataDir -and $ConfigOnly) {
+            # -ConfigOnly never touches the service, so rendering elsewhere (a preview) is allowed.
+            Write-Warning ("-DataDir $DataDir differs from the data directory of the existing $ServiceName " +
+                "service, $installedDataDir. -ConfigOnly renders into $DataDir; the service keeps reading $installedDataDir.")
+        }
+        elseif ($DataDir -ne $installedDataDir) {
             throw ("-DataDir $DataDir differs from the data directory of the existing $ServiceName " +
                 "service, $installedDataDir. Pass -DataDir $installedDataDir, or remove the service first " +
                 "(Uninstall-Talky.ps1) to move the node.")
@@ -595,7 +601,8 @@ else {
     & $FirewallScript @firewallArgs
     # The firewall step opens 8443 (and 8080 with -EnableHttp); it does not read -Urls.
     $closedHttpUrls = @($Urls | Where-Object { $_ -like 'http://*' -and -not ($EnableHttp -and $_ -match ':8080/?$') })
-    if ($httpOnly -and $closedHttpUrls.Count -gt 0) {
+    # Only when -Urls was written: on a kept config the 'not applied' warning covers -Urls.
+    if ($renderConfig -and $httpOnly -and $closedHttpUrls.Count -gt 0) {
         Write-Warning ("-Urls $($closedHttpUrls -join ';') is not opened in the firewall, so other machines cannot " +
             "reach this node. Open it with: & '$FirewallScript' -EnableHttp -HttpPort <port of that URL>")
     }
