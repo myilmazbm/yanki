@@ -12,8 +12,8 @@ public static class ExitCode
     /// <summary>The command ran but reported a failure (doctor found an error, migration failed).</summary>
     public const int Failure = 1;
 
-    /// <summary>A required service is not registered, e.g. no <c>IMigrationRunner</c> for <c>talky migrate</c>.</summary>
-    public const int MissingDependency = 2;
+    // 2 is retired (it was MissingDependency, unreachable since Talky.Data is always wired in).
+    // Reserved: never reuse it for another meaning.
 
     /// <summary>Configuration is invalid; the host refused to start.</summary>
     public const int InvalidConfiguration = 3;

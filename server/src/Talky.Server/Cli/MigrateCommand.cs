@@ -12,10 +12,7 @@ internal static class MigrateCommand
     /// <summary>Resolves <see cref="IMigrationRunner"/> from the host and applies pending migrations.</summary>
     /// <param name="arguments">Parsed command line values.</param>
     /// <param name="cancellationToken">Cancels the migration.</param>
-    /// <returns>
-    /// <see cref="ExitCode.Success"/>, <see cref="ExitCode.Failure"/> when the migration failed, or
-    /// <see cref="ExitCode.MissingDependency"/> when no migration runner is registered.
-    /// </returns>
+    /// <returns><see cref="ExitCode.Success"/>, or <see cref="ExitCode.Failure"/> when the migration failed.</returns>
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
@@ -30,14 +27,7 @@ internal static class MigrateCommand
         // The runner is registered scoped (it owns a DbContext), so it must come from a scope,
         // not from the root provider.
         await using var scope = app.Services.CreateAsyncScope();
-        var runner = scope.ServiceProvider.GetService<IMigrationRunner>();
-        if (runner is null)
-        {
-            await Console.Error.WriteLineAsync(
-                "No IMigrationRunner is registered. The data module is not wired into this build, " +
-                "so there is nothing to migrate.");
-            return ExitCode.MissingDependency;
-        }
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
 
         try
         {

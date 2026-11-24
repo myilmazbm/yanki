@@ -24,30 +24,19 @@ internal static class ConfigValidateCommand
 
         await using var app = builder.Build();
 
-        NodeOptions node;
-        ServerOptions server;
-        LoggingOptions logging;
-        try
-        {
-            node = app.Services.GetRequiredService<IOptions<NodeOptions>>().Value;
-            server = app.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
-            logging = app.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
-        }
-        catch (OptionsValidationException ex)
-        {
-            await Console.Error.WriteLineAsync("Configuration is invalid:");
-            foreach (var failure in ex.Failures)
-            {
-                await Console.Error.WriteLineAsync($"  - {failure}");
-            }
+        // Runs every options validation registered with ValidateOnStart (host and modules), exactly
+        // as serve does before it starts listening. Failures are reported by TalkyCommandLine.
+        app.Services.GetRequiredService<IStartupValidator>().Validate();
 
-            return ExitCode.InvalidConfiguration;
-        }
+        var node = app.Services.GetRequiredService<IOptions<NodeOptions>>().Value;
+        var server = app.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
+        var logging = app.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
 
         var exitCode = ExitCode.Success;
         try
         {
             TalkyHostFactory.GuardInsecureConfiguration(server, app.Environment);
+            TalkyHostFactory.GuardDevTokens(app.Configuration, server, app.Environment);
         }
         catch (TalkyStartupException ex)
         {
@@ -62,7 +51,7 @@ internal static class ConfigValidateCommand
         Console.WriteLine($"Talky:Node:Id               {node.Id ?? "(generated per process)"}");
         Console.WriteLine($"Talky:Node:Roles            {NodeRoles.Format(roles)}");
         Console.WriteLine($"Talky:Server:Urls           {string.Join(", ", server.Urls)}");
-        Console.WriteLine($"Talky:Server:PublicUrl      {server.PublicUrl ?? "(first url)"}");
+        Console.WriteLine($"Talky:Server:PublicUrl      {server.PublicUrl ?? "(not set; reserved)"}");
         Console.WriteLine($"Talky:Server:AllowInsecureHttp {server.AllowInsecureHttp}");
         Console.WriteLine($"Talky:Server:DrainSeconds   {server.DrainSeconds.ToString(CultureInfo.InvariantCulture)}");
         Console.WriteLine($"Talky:Server:KnownProxies   {(server.KnownProxies.Length == 0 ? "(none)" : string.Join(", ", server.KnownProxies))}");

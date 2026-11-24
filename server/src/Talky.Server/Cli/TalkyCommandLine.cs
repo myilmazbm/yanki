@@ -1,21 +1,31 @@
 using System.CommandLine;
+using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Extensions.Options;
+using Talky.Core.Configuration;
 using Talky.Core.Hosting;
 using Talky.Server.Hosting;
 
 namespace Talky.Server.Cli;
 
 /// <summary>
-/// The talky.exe command line. Running the bare executable is identical to <c>talky serve</c>, which
-/// is what the Windows service does — the service control manager starts the binary with no
-/// arguments.
+/// The talky.exe command line. Running the executable without a command is identical to
+/// <c>talky serve</c>, which is what the Windows service does: the installers register it with
+/// options only (<c>--role</c>, <c>--data-dir</c>) and no command.
 /// </summary>
 internal static class TalkyCommandLine
 {
+    /// <summary>File in <c>&lt;data-dir&gt;\logs</c> that records failures which ended the process.</summary>
+    public const string StartupLogFileName = "talky-startup.log";
+
     /// <summary>Parses <paramref name="args"/> and runs the selected command.</summary>
     /// <param name="args">Raw command line arguments.</param>
     /// <param name="cancellationToken">Cancels the command.</param>
     /// <returns>The process exit code.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Any failure must end in a reported message and an exit code, also when the process runs as a service.")]
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(args);
@@ -32,9 +42,10 @@ internal static class TalkyCommandLine
         // builder, not by this parser, so they are pulled out before parsing and allowed through.
         var hostSettings = HostStartupArguments.ExtractHostSettings(args);
 
+        ParseResult? parseResult = null;
         try
         {
-            var parseResult = BuildRootCommand(hostSettings).Parse(args);
+            parseResult = BuildRootCommand(hostSettings).Parse(args);
 
             var unexpected = parseResult.UnmatchedTokens
                 .FirstOrDefault(token => !hostSettings.Contains(token, StringComparer.Ordinal));
@@ -50,22 +61,91 @@ internal static class TalkyCommandLine
         }
         catch (TalkyStartupException ex)
         {
-            await Console.Error.WriteLineAsync(ex.Message);
+            await ReportFailureAsync([ex.Message], parseResult);
             return ExitCode.InvalidConfiguration;
         }
         catch (OptionsValidationException ex)
         {
-            await Console.Error.WriteLineAsync("Configuration is invalid:");
-            foreach (var failure in ex.Failures)
-            {
-                await Console.Error.WriteLineAsync($"  - {failure}");
-            }
-
+            await ReportFailureAsync(DescribeInvalidConfiguration(ex.Failures), parseResult);
+            return ExitCode.InvalidConfiguration;
+        }
+        catch (AggregateException ex) when (ex.Flatten().InnerExceptions.All(inner => inner is OptionsValidationException))
+        {
+            // The startup validator throws one AggregateException when several option types fail.
+            var failures = ex.Flatten().InnerExceptions.Cast<OptionsValidationException>().SelectMany(inner => inner.Failures);
+            await ReportFailureAsync(DescribeInvalidConfiguration(failures), parseResult);
             return ExitCode.InvalidConfiguration;
         }
         catch (OperationCanceledException)
         {
             return ExitCode.Success;
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync([$"talky failed unexpectedly: {ex}"], parseResult);
+            return ExitCode.Failure;
+        }
+    }
+
+    private static string[] DescribeInvalidConfiguration(IEnumerable<string> failures) =>
+        ["Configuration is invalid:", .. failures.Select(failure => $"  - {failure}")];
+
+    /// <summary>
+    /// Reports a failure that ends the process. stderr is invisible when the service control manager
+    /// starts the process, so the same text also goes, best effort, to the Windows event log (source
+    /// <c>Talky</c>) and to <c>&lt;data-dir&gt;\logs\talky-startup.log</c>. Neither needs the host or
+    /// its logger, which usually do not exist yet when this runs.
+    /// </summary>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Reporting a failure must never replace it with a second one.")]
+    private static async Task ReportFailureAsync(IReadOnlyList<string> lines, ParseResult? parseResult)
+    {
+        foreach (var line in lines)
+        {
+            await Console.Error.WriteLineAsync(line);
+        }
+
+        var text = string.Join(Environment.NewLine, lines);
+
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                EventLog.WriteEntry(LoggingOptions.EventLogSourceName, text, EventLogEntryType.Error);
+            }
+            catch (Exception)
+            {
+                // No event source (it is created at install time) or no permission to write.
+            }
+        }
+
+        try
+        {
+            string? dataDirectory = null;
+            try
+            {
+                dataDirectory = parseResult?.GetValue<string?>("--data-dir");
+            }
+            catch (Exception)
+            {
+                // The command line could not be parsed; use the default data directory.
+            }
+
+            var directory = Path.Combine(
+                TalkyConfigurationSources.ResolveDataDirectory(HostStartupArguments.Empty with { DataDirectory = dataDirectory }),
+                "logs");
+            Directory.CreateDirectory(directory);
+
+            var timestamp = TimeProvider.System.GetUtcNow().ToString("O", CultureInfo.InvariantCulture);
+            await File.AppendAllTextAsync(
+                Path.Combine(directory, StartupLogFileName),
+                $"{timestamp} {text.ReplaceLineEndings(" ")}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Best effort: the data directory may not exist or may not be writable.
         }
     }
 
@@ -159,7 +239,7 @@ internal static class TalkyCommandLine
         root.Subcommands.Add(version);
         root.Subcommands.Add(config);
 
-        // No command means serve, so `sc.exe start Talky` works without arguments.
+        // No command means serve, so the service command line needs no command, only options.
         root.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
 
         return root;

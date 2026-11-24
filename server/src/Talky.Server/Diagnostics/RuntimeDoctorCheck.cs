@@ -12,9 +12,6 @@ namespace Talky.Server.Diagnostics;
 /// </summary>
 internal sealed class RuntimeDoctorCheck(INodeInfo node) : IDoctorCheck
 {
-    /// <summary>Runtime versions below this are not supported.</summary>
-    private static readonly Version MinimumRuntimeVersion = new(10, 0);
-
     /// <inheritdoc />
     public string Name => "runtime";
 
@@ -32,15 +29,7 @@ internal sealed class RuntimeDoctorCheck(INodeInfo node) : IDoctorCheck
             ["roles"] = NodeRoles.Format(node.Roles),
         };
 
-        var runtimeVersion = Environment.Version;
-        details["runtimeVersion"] = runtimeVersion.ToString();
-
-        if (runtimeVersion < MinimumRuntimeVersion)
-        {
-            return Task.FromResult(DoctorResult.Error(
-                $".NET {runtimeVersion} is older than the required {MinimumRuntimeVersion}.",
-                details));
-        }
+        details["runtimeVersion"] = Environment.Version.ToString();
 
         if (!GCSettings.IsServerGC)
         {

@@ -40,6 +40,23 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
         Assert.Equal("from-data-dir", configuration["Talky:Node:Id"]);
         Assert.Equal("9", configuration["Talky:Server:DrainSeconds"]);
         Assert.Equal(Path.Combine(_dataDir, "logs"), configuration["Talky:Logging:Directory"]);
+
+        // A quoted service argument ending in a backslash arrives with a trailing quote.
+        Assert.Equal(
+            "from-data-dir",
+            Build(HostStartupArguments.Empty with { DataDirectory = _dataDir + "\"" })["Talky:Node:Id"]);
+    }
+
+    [Fact]
+    public void Invalid_json_in_the_data_dir_appsettings_is_a_startup_error()
+    {
+        var path = Path.Combine(_dataDir, "appsettings.json");
+        File.WriteAllText(path, """{ "Talky": { "Server": { "Urls": [__URLS__] } } }""");
+
+        var error = Assert.Throws<TalkyStartupException>(
+            () => Build(HostStartupArguments.Empty with { DataDirectory = _dataDir }));
+
+        Assert.Contains(path, error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -68,7 +85,7 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
     }
 
     [Fact]
-    public void Missing_data_dir_is_tolerated_so_doctor_can_report_it()
+    public void Missing_data_dir_is_tolerated()
     {
         var missing = Path.Combine(_dataDir, "does-not-exist");
 

@@ -7,10 +7,12 @@ using Talky.Core.Hosting;
 namespace Talky.Server.Diagnostics;
 
 /// <summary>
-/// Resolves every <c>Talky</c> options section so that binding and validation errors surface as a
-/// doctor row instead of a startup crash.
+/// Runs every options validation registered with <c>ValidateOnStart</c>, so that an invalid module
+/// section surfaces as a doctor row. Invalid host sections (<c>Talky:Node</c>, <c>Talky:Server</c>,
+/// <c>Talky:Logging</c>) already stop the host from being built and never reach this check.
 /// </summary>
 internal sealed class ConfigurationDoctorCheck(
+    IStartupValidator startupValidator,
     IOptions<NodeOptions> node,
     IOptions<ServerOptions> server,
     IOptions<LoggingOptions> logging,
@@ -24,6 +26,8 @@ internal sealed class ConfigurationDoctorCheck(
     {
         try
         {
+            startupValidator.Validate();
+
             var nodeOptions = node.Value;
             var serverOptions = server.Value;
             var loggingOptions = logging.Value;
@@ -44,12 +48,19 @@ internal sealed class ConfigurationDoctorCheck(
         }
         catch (OptionsValidationException ex)
         {
-            return Task.FromResult(DoctorResult.Error(
-                "Configuration is invalid.",
-                new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["failures"] = string.Join(" | ", ex.Failures),
-                }));
+            return Task.FromResult(Invalid(ex.Failures));
+        }
+        catch (AggregateException ex) when (ex.Flatten().InnerExceptions.All(inner => inner is OptionsValidationException))
+        {
+            return Task.FromResult(Invalid(
+                ex.Flatten().InnerExceptions.Cast<OptionsValidationException>().SelectMany(inner => inner.Failures)));
         }
     }
+
+    private static DoctorResult Invalid(IEnumerable<string> failures) => DoctorResult.Error(
+        "Configuration is invalid.",
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["failures"] = string.Join(" | ", failures),
+        });
 }

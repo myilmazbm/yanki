@@ -30,6 +30,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Development settings (dev tokens, dev certificate, migrate on startup) stay out of every
+         published or installed node; the build output keeps them for local runs and tests. -->
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Talky.IntegrationTests" />
     <InternalsVisibleTo Include="Talky.UnitTests" />
   </ItemGroup>

@@ -46,10 +46,13 @@ internal static class TalkyEndpoints
             .WithName("Liveness")
             .ExcludeFromDescription();
 
+        // Exception messages can carry SQL logins and host names; anonymous callers only get them
+        // on a development machine. The health check service logs every failure server-side.
+        var includeErrors = app.Environment.IsDevelopment();
         app.MapHealthChecks(ReadinessPath, new HealthCheckOptions
         {
             Predicate = registration => registration.Tags.Contains(ReadyTag),
-            ResponseWriter = WriteReadinessAsync,
+            ResponseWriter = (context, report) => WriteReadinessAsync(context, report, includeErrors),
             AllowCachingResponses = false,
         });
 
@@ -66,7 +69,7 @@ internal static class TalkyEndpoints
         }
     }
 
-    private static async Task WriteReadinessAsync(HttpContext context, HealthReport report)
+    private static async Task WriteReadinessAsync(HttpContext context, HealthReport report, bool includeErrors)
     {
         context.Response.ContentType = "application/json; charset=utf-8";
 
@@ -74,14 +77,22 @@ internal static class TalkyEndpoints
         {
             status = report.Status.ToString(),
             totalDurationMs = Math.Round(report.TotalDuration.TotalMilliseconds, 3),
-            checks = report.Entries.Select(entry => new
-            {
-                name = entry.Key,
-                status = entry.Value.Status.ToString(),
-                description = entry.Value.Description,
-                durationMs = Math.Round(entry.Value.Duration.TotalMilliseconds, 3),
-                error = entry.Value.Exception?.Message,
-            }),
+            checks = report.Entries.Select(entry => includeErrors
+                ? (object)new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    description = entry.Value.Description,
+                    durationMs = Math.Round(entry.Value.Duration.TotalMilliseconds, 3),
+                    error = entry.Value.Exception?.Message,
+                }
+                : new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    description = entry.Value.Description,
+                    durationMs = Math.Round(entry.Value.Duration.TotalMilliseconds, 3),
+                }),
         };
 
         await context.Response.WriteAsync(

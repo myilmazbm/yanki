@@ -26,6 +26,22 @@ internal static class DataAnnotationsValidation
             failures.Add(result.ErrorMessage ?? "Invalid value.");
         }
     }
+
+    /// <summary>
+    /// A path that is not fully qualified after environment-variable expansion (relative, or with an
+    /// undefined <c>%VAR%</c> left in it) would resolve against the working directory, which is
+    /// <c>C:\Windows\System32</c> for a Windows service.
+    /// </summary>
+    public static void RequireFullyQualifiedPath(string? value, string key, List<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            Path.IsPathFullyQualified(Environment.ExpandEnvironmentVariables(value.Trim())))
+        {
+            return;
+        }
+
+        failures.Add($"{key} '{value}' must be a fully qualified path (after environment variables are expanded), e.g. '%ProgramData%\\Talky\\logs'.");
+    }
 }
 
 /// <summary>Validates <c>Talky:Node</c>.</summary>
@@ -174,6 +190,9 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
                     failures.Add("Talky:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
                 }
 
+                DataAnnotationsValidation.RequireFullyQualifiedPath(
+                    certificate.PfxPath, "Talky:Server:Certificate:PfxPath", failures);
+
                 break;
 
             default:
@@ -204,6 +223,7 @@ public sealed class ValidateLoggingOptions : IValidateOptions<LoggingOptions>
 
         var failures = new List<string>();
         DataAnnotationsValidation.Collect(options, failures);
+        DataAnnotationsValidation.RequireFullyQualifiedPath(options.Directory, "Talky:Logging:Directory", failures);
 
         if (!string.IsNullOrWhiteSpace(options.MinimumLevel) &&
             !Levels.Contains(options.MinimumLevel, StringComparer.OrdinalIgnoreCase))
