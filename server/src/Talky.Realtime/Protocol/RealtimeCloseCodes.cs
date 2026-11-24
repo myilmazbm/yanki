@@ -19,12 +19,16 @@ public static class RealtimeCloseCodes
     /// <summary>1003 — unparsable frame or a binary frame in a text-only protocol.</summary>
     public const WebSocketCloseStatus UnsupportedData = WebSocketCloseStatus.InvalidMessageType;
 
-    /// <summary>1008 — policy violation: missing or duplicate handshake, failed authentication.</summary>
+    /// <summary>
+    /// 1008 — policy violation: a non-Hello frame before Welcome, no Hello within the Hello
+    /// timeout, failed authentication. A second Hello after Welcome is not a 1008 case: it gets
+    /// <c>Error{ALREADY_AUTHENTICATED}</c> and the connection stays open.
+    /// </summary>
     public const WebSocketCloseStatus PolicyViolation = WebSocketCloseStatus.PolicyViolation;
 
     /// <summary>1009 — frame larger than <c>Talky:Realtime:MaxFrameBytes</c>.</summary>
     public const WebSocketCloseStatus MessageTooBig = WebSocketCloseStatus.MessageTooBig;
 
-    /// <summary>1013 — "try again later": the node refuses new connections while draining.</summary>
+    /// <summary>1013 — "try again later": the node refuses new connections while draining (no Reconnect frame).</summary>
     public const WebSocketCloseStatus TryAgainLater = (WebSocketCloseStatus)1013;
 }
