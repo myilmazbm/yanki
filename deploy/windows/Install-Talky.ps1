@@ -5,21 +5,25 @@
 
 .DESCRIPTION
     Idempotent. Running it again on an installed node stops the service, refreshes the
-    binaries and service registration and starts it back up; nothing is duplicated.
+    binaries and service registration and starts it back up; nothing is duplicated. An
+    existing DataDir\appsettings.json is kept unless -ConfigOnly or -Force is given, and
+    the logon account of an existing service changes only when -ServiceAccount is passed.
 
     What it does, in order:
 
       1. verifies elevation, the role list and the payload;
       2. creates InstallDir, DataDir, DataDir\logs and DataDir\index;
       3. grants the service account Read & Execute on InstallDir and Modify on DataDir
-         (skipped for LocalSystem, which already has both);
+         (skipped for LocalSystem, which already has both) and creates the Windows
+         Event Log source "Talky" in the Application log;
       4. copies the publish output into InstallDir (service stopped first);
-      5. renders deploy\windows\appsettings.template.json into DataDir\appsettings.json,
-         backing up any existing file;
-      6. registers or updates the "Talky" service: DisplayName "Talky",
+      5. renders deploy\windows\appsettings.template.json into DataDir\appsettings.json
+         when the file does not exist yet (or with -Force), keeping a timestamped backup;
+      6. applies the database schema with `talky migrate` (skip with -SkipMigrate);
+      7. registers or updates the "Talky" service: DisplayName "Talky",
          Automatic (Delayed Start), recovery restart after 5 s / 10 s / 30 s;
-      7. adds the firewall rules through Set-TalkyFirewall.ps1;
-      8. starts the service and runs `talky doctor`.
+      8. adds the firewall rules through Set-TalkyFirewall.ps1;
+      9. starts the service and runs `talky doctor`.
 
     Service identity: use a gMSA (passwordless) in production, LocalSystem in a lab.
     The script deliberately accepts no password: a Talky node must never run under a
@@ -37,20 +41,26 @@
     Default %ProgramData%\Talky.
 
 .PARAMETER ServiceAccount
-    'LocalSystem' (lab) or a gMSA written as 'CORP\talky$'. Default LocalSystem.
+    'LocalSystem' (lab) or a gMSA written as 'CORP\talky$'. Default LocalSystem for a
+    new service; an existing service keeps its account unless this is passed.
 
 .PARAMETER Roles
-    One or more of api, worker, search, push-relay, all. Default all.
+    One or more of api, worker, search, push-relay, all. Default all. Written to the
+    configuration file, which is the single source for roles.
 
 .PARAMETER Urls
-    Kestrel endpoints. Default https://+:8443. Add http://+:8080 only when a load
-    balancer terminates TLS on an isolated back-end network.
+    Kestrel endpoints, separated by ';'. Default https://+:8443, which needs
+    -CertificateThumbprint. A list of http:// URLs only (for example http://+:8080) is a
+    lab node and is rendered with AllowInsecureHttp=true. A mix of http and https is
+    refused: for a TLS-terminating load balancer edit the rendered file by hand
+    (docs/operations.md).
 
 .PARAMETER SqlConnectionString
     Connection string written to Talky:Database:ConnectionString.
 
 .PARAMETER CertificateThumbprint
-    Thumbprint of the TLS certificate in LocalMachine\My that Kestrel binds.
+    Thumbprint of the TLS certificate in LocalMachine\My that Kestrel binds. Required
+    when -Urls contains an https URL.
 
 .PARAMETER SourceDir
     Publish output to install from. Default <repo>\artifacts\publish, i.e. the result of
@@ -59,10 +69,6 @@
 
 .PARAMETER NodeId
     Node identity used in logs and by the cluster mesh. Default: the machine name, lowercased.
-
-.PARAMETER MeshSeeds
-    Host names or addresses of the other nodes for the gRPC full-mesh cluster bus,
-    e.g. talky-01.corp,talky-02.corp. Empty for a single node.
 
 .PARAMETER FileShare
     UNC path of the SMB/DFS share used for file storage.
@@ -76,49 +82,50 @@
 .PARAMETER SkipDoctor
     Do not run `talky doctor` at the end.
 
+.PARAMETER SkipMigrate
+    Do not run `talky migrate`. For sites where a DBA applies the schema.
+
 .PARAMETER NoStart
     Register the service but leave it stopped.
 
 .PARAMETER AclOnly
-    Only (re-)apply the folder ACLs. Useful after an MSI install that registered the
-    service under a gMSA.
+    Only (re-)apply the folder ACLs and create the event log source. Used after an MSI
+    install.
 
 .PARAMETER ConfigOnly
-    Only re-render DataDir\appsettings.json.
+    Only (re-)render DataDir\appsettings.json, keeping a timestamped backup of an
+    existing file.
 
 .PARAMETER Force
-    Overwrite an existing appsettings.json without asking. A timestamped backup is kept
-    either way.
+    Re-render an existing DataDir\appsettings.json during a full install instead of
+    keeping it. A timestamped backup is kept.
 
 .EXAMPLE
-    .\Install-Talky.ps1 -WhatIf
-    Dry run of a default single-node lab install.
+    .\Install-Talky.ps1 -Urls http://+:8080 -WhatIf
+    Dry run of a single-node lab install without a certificate.
 
 .EXAMPLE
     .\Install-Talky.ps1 -ServiceAccount 'CORP\talky$' `
         -Roles api,worker `
         -SqlConnectionString 'Server=sql-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true;TrustServerCertificate=false' `
         -CertificateThumbprint 9A1B2C... `
-        -MeshSeeds talky-01.corp,talky-02.corp,talky-03.corp `
         -FileShare \\corp\dfs\talky\files
 
 .EXAMPLE
     .\Install-Talky.ps1 -AclOnly -ServiceAccount 'CORP\talky$'
-    Re-apply the ACLs after an MSI install.
+    Apply the ACLs and the event log source after an MSI install.
 
 .NOTES
     Requires an elevated session. PowerShell 5.1 compatible.
     Related: Test-TalkyPrerequisites.ps1, Set-TalkyFirewall.ps1, Uninstall-Talky.ps1.
 #>
-# These four are read by Write-TalkyConfig from the script scope, which PSScriptAnalyzer
+# These are read by Write-TalkyConfig from the script scope, which PSScriptAnalyzer
 # cannot follow.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'SqlConnectionString',
     Justification = 'Read from the script scope by Write-TalkyConfig.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'CertificateThumbprint',
     Justification = 'Read from the script scope by Write-TalkyConfig.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'FileShare',
-    Justification = 'Read from the script scope by Write-TalkyConfig.')]
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Force',
     Justification = 'Read from the script scope by Write-TalkyConfig.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -131,10 +138,10 @@ param(
     [string] $CertificateThumbprint = '',
     [string] $SourceDir,
     [string] $NodeId = $env:COMPUTERNAME.ToLowerInvariant(),
-    [string[]] $MeshSeeds = @(),
     [string] $FileShare = '',
     [switch] $EnableHttp,
     [switch] $SkipFirewall,
+    [switch] $SkipMigrate,
     [switch] $SkipDoctor,
     [switch] $NoStart,
     [switch] $AclOnly,
@@ -145,11 +152,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Accept "a,b" / "a;b" as well as real arrays: when the script is launched with -File from
-# cmd/bash, PowerShell passes list parameters as a single string.
-$Urls = @($Urls | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
-$Roles = @($Roles | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
-$MeshSeeds = @($MeshSeeds | ForEach-Object { $_ -split '[,;]' } | Where-Object { $_ -ne '' })
+# A trailing backslash (tab completion adds one) would escape the closing quote of
+# --data-dir "<DataDir>" on the service command line.
+$DataDir = $DataDir.TrimEnd('\')
 
 $ServiceName = 'Talky'
 $ServiceDisplayName = 'Talky'
@@ -158,6 +163,8 @@ $TemplatePath = Join-Path $PSScriptRoot 'appsettings.template.json'
 $FirewallScript = Join-Path $PSScriptRoot 'Set-TalkyFirewall.ps1'
 $LogsDir = Join-Path $DataDir 'logs'
 $IndexDir = Join-Path $DataDir 'index'
+$ConfigPath = Join-Path $DataDir 'appsettings.json'
+$ExeName = 'talky.exe'
 
 # --- helpers --------------------------------------------------------------------------
 
@@ -181,6 +188,25 @@ function Invoke-Sc {
         throw "sc.exe $($Arguments -join ' ') failed with exit code ${LASTEXITCODE}: $output"
     }
     Write-Verbose $output.Trim()
+}
+
+# Changes the service through the SCM (Win32_Service.Change), honouring -WhatIf. Used for
+# values that sc.exe would need embedded quotes or an empty argument for, which Windows
+# PowerShell 5.1 and PowerShell 7 pass to native commands differently.
+function Set-TalkyService {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory)][hashtable] $Change,
+        [Parameter(Mandatory)][string] $Action
+    )
+    if (-not $PSCmdlet.ShouldProcess($ServiceName, $Action)) { return }
+    $result = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" |
+        Invoke-CimMethod -MethodName Change -Arguments $Change
+    if ($null -eq $result -or $result.ReturnValue -ne 0) {
+        $code = if ($null -eq $result) { 'no result' } else { $result.ReturnValue }
+        throw "Win32_Service.Change ($Action) failed: $code."
+    }
+    Write-Host "service  $Action"
 }
 
 function New-TalkyDirectory {
@@ -247,7 +273,6 @@ function Write-TalkyConfig {
         throw "Configuration template not found: $TemplatePath"
     }
 
-    $seedsJson = ($MeshSeeds | ForEach-Object { '"' + (ConvertTo-JsonScalar $_) + '"' }) -join ', '
     # Talky:Server:Urls is a JSON array; the template carries the placeholder between the brackets.
     $urlsJson = ($Urls | ForEach-Object { '"' + (ConvertTo-JsonScalar $_) + '"' }) -join ', '
 
@@ -258,16 +283,17 @@ function Write-TalkyConfig {
     $rendered = $rendered.Replace('__ROLES__', (ConvertTo-JsonScalar ($Roles -join ',')))
     $rendered = $rendered.Replace('__DATA_DIR__', (ConvertTo-JsonScalar $DataDir))
     $rendered = $rendered.Replace('__NODE_ID__', (ConvertTo-JsonScalar $NodeId))
-    $rendered = $rendered -replace '"Seeds":\s*\[\]', ('"Seeds": [' + $seedsJson + ']')
     if ($FileShare) {
         $rendered = $rendered -replace '"ShareUnc":\s*""', ('"ShareUnc": "' + (ConvertTo-JsonScalar $FileShare) + '"')
     }
-    if (-not $CertificateThumbprint) {
-        # Lab mode: no certificate in the store. The ASP.NET Core development certificate is only
-        # accepted with AllowInsecureHttp; production nodes must supply -CertificateThumbprint.
-        Write-Warning 'No -CertificateThumbprint given: rendering Certificate.Source=DevCert with AllowInsecureHttp=true (lab use only).'
-        $rendered = $rendered -replace '"Source":\s*"Store"', '"Source": "DevCert"'
+    if ($httpOnly) {
+        # Lab node without TLS (checked before anything was written). Without a thumbprint the
+        # certificate section is never used, but it must still validate.
+        Write-Warning 'Only http:// URLs: rendering AllowInsecureHttp=true (lab use only).'
         $rendered = $rendered -replace '"AllowInsecureHttp":\s*false', '"AllowInsecureHttp": true'
+        if (-not $CertificateThumbprint) {
+            $rendered = $rendered -replace '"Source":\s*"Store"', '"Source": "DevCert"'
+        }
     }
 
     # Fail before writing rather than leaving a node with unparsable configuration.
@@ -277,7 +303,7 @@ function Write-TalkyConfig {
         throw "Rendered configuration still contains placeholders: $($Matches[0])"
     }
 
-    if ((Test-Path -LiteralPath $Destination) -and -not $Force) {
+    if (Test-Path -LiteralPath $Destination) {
         $backup = "$Destination.$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
         if ($PSCmdlet.ShouldProcess($Destination, "Back up to $(Split-Path -Leaf $backup) and rewrite")) {
             Copy-Item -LiteralPath $Destination -Destination $backup -Force
@@ -292,15 +318,6 @@ function Write-TalkyConfig {
         [IO.File]::WriteAllText($Destination, $rendered, $utf8)
         Write-Host "config   $Destination"
     }
-}
-
-function Get-TalkyExecutable {
-    param([Parameter(Mandatory)][string] $Directory)
-    foreach ($name in @('talky.exe', 'Talky.Server.exe')) {
-        $candidate = Join-Path $Directory $name
-        if (Test-Path -LiteralPath $candidate) { return $candidate }
-    }
-    return $null
 }
 
 # --- preconditions --------------------------------------------------------------------
@@ -333,7 +350,6 @@ function Split-List {
 }
 
 $Roles = Split-List -Value $Roles -Separators ','
-$MeshSeeds = Split-List -Value $MeshSeeds -Separators ','
 $Urls = Split-List -Value $Urls -Separators ';'
 
 $validRoles = @('api', 'worker', 'search', 'push-relay', 'all')
@@ -352,6 +368,27 @@ if ($ServiceAccount -ne 'LocalSystem' -and $ServiceAccount -notmatch '\\') {
 
 $isGmsa = ($ServiceAccount -ne 'LocalSystem')
 
+# An existing appsettings.json is the node's configuration: keep it (hand edits such as
+# KnownProxies or PublicUrl included) unless the operator asks for a re-render.
+$configExists = Test-Path -LiteralPath $ConfigPath
+$renderConfig = (-not $AclOnly) -and ($ConfigOnly -or $Force -or -not $configExists)
+
+$httpsUrls = @($Urls | Where-Object { $_ -like 'https://*' })
+$httpOnly = ($Urls.Count -gt 0) -and ($httpsUrls.Count -eq 0)
+if ($renderConfig) {
+    # Stop before anything is written rather than render a configuration that cannot start.
+    if ($httpsUrls.Count -gt 0 -and -not $CertificateThumbprint) {
+        throw ("-Urls contains an https URL but no -CertificateThumbprint was given. Pass " +
+            "-CertificateThumbprint <thumbprint of a LocalMachine\My certificate>, or use an http-only " +
+            "lab URL list such as -Urls http://+:8080.")
+    }
+    if ($httpsUrls.Count -gt 0 -and $httpsUrls.Count -ne $Urls.Count) {
+        throw ("-Urls mixes http and https. The installer renders AllowInsecureHttp=true only for an " +
+            "http-only lab node; for a TLS-terminating load balancer set Urls, AllowInsecureHttp and " +
+            "KnownProxies in appsettings.json by hand (docs/operations.md).")
+    }
+}
+
 Write-Host "Talky install"
 Write-Host "  InstallDir      $InstallDir"
 Write-Host "  DataDir         $DataDir"
@@ -369,7 +406,7 @@ if (-not $ConfigOnly) {
     }
 }
 
-# --- 2. ACLs --------------------------------------------------------------------------
+# --- 2. ACLs and event log source -----------------------------------------------------
 
 if (-not $ConfigOnly) {
     if ($isGmsa) {
@@ -383,27 +420,36 @@ if (-not $ConfigOnly) {
     else {
         Write-Host 'acl      skipped: LocalSystem already has full access.'
     }
+
+    # The host does not create its event log source (a gMSA cannot), so the installer does.
+    if ($PSCmdlet.ShouldProcess("Application log", "Create event log source $ServiceName if missing")) {
+        if ([System.Diagnostics.EventLog]::SourceExists($ServiceName)) {
+            Write-Host "exists   event log source $ServiceName"
+        }
+        else {
+            [System.Diagnostics.EventLog]::CreateEventSource($ServiceName, 'Application')
+            Write-Host "created  event log source $ServiceName (Application log)"
+        }
+    }
 }
 
 if ($AclOnly) {
     Write-Host ''
-    Write-Host 'ACLs applied (-AclOnly). Nothing else was changed.'
+    Write-Host 'ACLs and event log source applied (-AclOnly). Nothing else was changed.'
     return
 }
 
 # --- 3. payload -----------------------------------------------------------------------
 
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+$exePath = Join-Path $InstallDir $ExeName
 
 if (-not $ConfigOnly) {
     if (-not $SourceDir) {
         $SourceDir = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'artifacts\publish'
     }
-    if (-not (Test-Path -LiteralPath $SourceDir)) {
-        throw "Payload not found: $SourceDir. Publish first, or pass -SourceDir."
-    }
-    if (-not (Get-TalkyExecutable -Directory $SourceDir)) {
-        throw "No talky.exe in $SourceDir."
+    if (-not (Test-Path -LiteralPath (Join-Path $SourceDir $ExeName))) {
+        throw "No $ExeName in $SourceDir. Publish first, or pass -SourceDir."
     }
 
     if ($service -and $service.Status -ne 'Stopped') {
@@ -422,7 +468,12 @@ if (-not $ConfigOnly) {
 
 # --- 4. configuration -----------------------------------------------------------------
 
-Write-TalkyConfig -TemplatePath $TemplatePath -Destination (Join-Path $DataDir 'appsettings.json')
+if ($renderConfig) {
+    Write-TalkyConfig -TemplatePath $TemplatePath -Destination $ConfigPath
+}
+else {
+    Write-Host "config   kept existing $ConfigPath (re-render with -ConfigOnly or -Force)"
+}
 
 if ($ConfigOnly) {
     Write-Host ''
@@ -430,19 +481,26 @@ if ($ConfigOnly) {
     return
 }
 
-# --- 5. service -----------------------------------------------------------------------
+# --- 5. schema ------------------------------------------------------------------------
 
-$exePath = Get-TalkyExecutable -Directory $InstallDir
-if (-not $exePath -and -not $WhatIfPreference) {
-    throw "No talky.exe in $InstallDir after the copy."
+if ($SkipMigrate) {
+    Write-Host 'migrate  skipped (-SkipMigrate).'
 }
-if (-not $exePath) { $exePath = Join-Path $InstallDir 'talky.exe' }
+elseif ($PSCmdlet.ShouldProcess($exePath, 'Run talky migrate (apply the database schema)')) {
+    Write-Host ''
+    Write-Host '--- talky migrate ---'
+    & $exePath migrate --data-dir $DataDir
+    if ($LASTEXITCODE -ne 0) {
+        throw "talky migrate exited with $LASTEXITCODE; the service was not started. See $LogsDir, or pass -SkipMigrate when a DBA applies the schema."
+    }
+}
 
-$binaryPath = '"{0}" --role {1} --data-dir "{2}"' -f $exePath, ($Roles -join ','), $DataDir
+# --- 6. service -----------------------------------------------------------------------
+
+$binaryPath = '"{0}" --data-dir "{1}"' -f $exePath, $DataDir
 
 if ($service) {
-    Invoke-Sc -Target $ServiceName -Action "Update binary path to: $binaryPath" `
-        -Arguments @('config', $ServiceName, "binPath= $binaryPath")
+    Set-TalkyService -Change @{ PathName = $binaryPath } -Action "Update binary path to: $binaryPath"
 }
 else {
     if ($PSCmdlet.ShouldProcess($ServiceName, "Create service running: $binaryPath")) {
@@ -455,26 +513,25 @@ else {
 
 # Automatic (Delayed Start): give AD, DNS and SQL time to come up after a reboot.
 Invoke-Sc -Target $ServiceName -Action 'Set start type to Automatic (Delayed Start)' `
-    -Arguments @('config', $ServiceName, 'start= delayed-auto')
+    -Arguments @('config', $ServiceName, 'start=', 'delayed-auto')
 
 Invoke-Sc -Target $ServiceName -Action 'Set service description' `
     -Arguments @('description', $ServiceName, $ServiceDescription)
 
-if ($isGmsa) {
-    # A gMSA is passwordless: password= must be passed as an empty value.
-    Invoke-Sc -Target $ServiceName -Action "Set logon account to $ServiceAccount (passwordless gMSA)" `
-        -Arguments @('config', $ServiceName, "obj= $ServiceAccount", 'password= ')
+if ($service -and -not $PSBoundParameters.ContainsKey('ServiceAccount')) {
+    Write-Host 'account  unchanged (pass -ServiceAccount to change the logon account)'
 }
 else {
-    Invoke-Sc -Target $ServiceName -Action 'Set logon account to LocalSystem' `
-        -Arguments @('config', $ServiceName, 'obj= LocalSystem')
+    # A gMSA is passwordless and LocalSystem has none: both take an empty password.
+    Set-TalkyService -Change @{ StartName = $ServiceAccount; StartPassword = '' } `
+        -Action "Set logon account to $ServiceAccount"
 }
 
 # Recovery: restart after 5 s, then 10 s, then 30 s; the failure count resets daily.
 Invoke-Sc -Target $ServiceName -Action 'Configure recovery actions (restart 5 s / 10 s / 30 s)' `
-    -Arguments @('failure', $ServiceName, 'reset= 86400', 'actions= restart/5000/restart/10000/restart/30000')
+    -Arguments @('failure', $ServiceName, 'reset=', '86400', 'actions=', 'restart/5000/restart/10000/restart/30000')
 
-# --- 6. firewall ----------------------------------------------------------------------
+# --- 7. firewall ----------------------------------------------------------------------
 
 if ($SkipFirewall) {
     Write-Host 'firewall skipped (-SkipFirewall).'
@@ -485,21 +542,28 @@ elseif (-not (Test-Path -LiteralPath $FirewallScript)) {
 else {
     $firewallArgs = @{}
     if ($EnableHttp) { $firewallArgs['EnableHttp'] = $true }
-    if ($MeshSeeds.Count -eq 0) { $firewallArgs['SkipMesh'] = $true }
     if ($WhatIfPreference) { $firewallArgs['WhatIf'] = $true }
     & $FirewallScript @firewallArgs
 }
 
-# --- 7. start and doctor --------------------------------------------------------------
+# --- 8. start and doctor --------------------------------------------------------------
 
+$startError = $null
 if ($NoStart) {
     Write-Host 'start    skipped (-NoStart).'
 }
 elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
-    Start-Service -Name $ServiceName
-    $started = Get-Service -Name $ServiceName
-    $started.WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
-    Write-Host "started  service $ServiceName ($($started.Status))"
+    try {
+        Start-Service -Name $ServiceName
+        $started = Get-Service -Name $ServiceName
+        $started.WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
+        Write-Host "started  service $ServiceName ($($started.Status))"
+    }
+    catch {
+        # Keep going so doctor can say why; the install still fails below.
+        $startError = $_.Exception.Message
+        Write-Warning "Service $ServiceName did not start: $startError"
+    }
 }
 
 if ($SkipDoctor) {
@@ -512,6 +576,10 @@ elseif ($PSCmdlet.ShouldProcess($exePath, 'Run talky doctor')) {
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "talky doctor exited with $LASTEXITCODE. The node is installed but not healthy; see $LogsDir."
     }
+}
+
+if ($startError) {
+    throw "Service $ServiceName did not start: $startError Logs: $LogsDir (and the Application event log, source $ServiceName)."
 }
 
 Write-Host ''
