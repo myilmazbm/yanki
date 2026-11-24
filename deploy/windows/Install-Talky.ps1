@@ -38,7 +38,8 @@
 
 .PARAMETER DataDir
     Data directory holding appsettings.json, logs and the Lucene index.
-    Default %ProgramData%\Talky.
+    Default %ProgramData%\Talky for a new node; when the Talky service already exists, the
+    --data-dir of its command line. A -DataDir that differs from that one is refused.
 
 .PARAMETER ServiceAccount
     'LocalSystem' (lab) or a gMSA written as 'CORP\talky$'. Default LocalSystem for a
@@ -159,6 +160,43 @@ $DataDir = $DataDir.TrimEnd('\')
 $ServiceName = 'Talky'
 $ServiceDisplayName = 'Talky'
 $ServiceDescription = 'Talky server node (chat, calls, meetings, files).'
+
+# Returns the --data-dir value of a service command line, or $null when there is none.
+# Both writers quote it: this script ("<DataDir>") and the MSI ("<DATADIR>\.", the trailing
+# dot keeps the backslash from escaping the closing quote).
+function Get-TalkyDataDirFromCommandLine {
+    param([AllowEmptyString()][AllowNull()][string] $CommandLine)
+    if ("$CommandLine" -notmatch '--data-dir\s+"([^"]+)"') { return $null }
+    $value = $Matches[1]
+    if ($value.EndsWith('\.')) { $value = $value.Substring(0, $value.Length - 2) }
+    $value = $value.TrimEnd('\')
+    if (-not $value) { return $null }
+    return $value
+}
+
+# An installed node keeps its data directory: without -DataDir it is taken from the existing
+# service, and a -DataDir that points elsewhere is refused instead of silently installing a
+# second configuration next to the real one.
+$installedService = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'"
+if ($installedService) {
+    $installedDataDir = Get-TalkyDataDirFromCommandLine $installedService.PathName
+    if (-not $installedDataDir) {
+        throw ("Cannot read --data-dir ""..."" from the existing $ServiceName service command line: " +
+            "$($installedService.PathName). This run would use DataDir $DataDir. Fix the service " +
+            "command line or remove the service (Uninstall-Talky.ps1) and run again.")
+    }
+    if ($PSBoundParameters.ContainsKey('DataDir')) {
+        if ($DataDir -ne $installedDataDir) {
+            throw ("-DataDir $DataDir differs from the data directory of the existing $ServiceName " +
+                "service, $installedDataDir. Pass -DataDir $installedDataDir, or remove the service first " +
+                "(Uninstall-Talky.ps1) to move the node.")
+        }
+    }
+    else {
+        $DataDir = $installedDataDir
+    }
+}
+
 $TemplatePath = Join-Path $PSScriptRoot 'appsettings.template.json'
 $FirewallScript = Join-Path $PSScriptRoot 'Set-TalkyFirewall.ps1'
 $LogsDir = Join-Path $DataDir 'logs'
@@ -393,9 +431,12 @@ Write-Host "Talky install"
 Write-Host "  InstallDir      $InstallDir"
 Write-Host "  DataDir         $DataDir"
 Write-Host "  ServiceAccount  $ServiceAccount"
-Write-Host "  Roles           $($Roles -join ',')"
-Write-Host "  Urls            $($Urls -join ';')"
-Write-Host "  NodeId          $NodeId"
+# These come from the parameters, so they are shown only when they are going to be written.
+if ($renderConfig) {
+    Write-Host "  Roles           $($Roles -join ',')"
+    Write-Host "  Urls            $($Urls -join ';')"
+    Write-Host "  NodeId          $NodeId"
+}
 Write-Host ''
 
 # --- 1. folders -----------------------------------------------------------------------
@@ -473,6 +514,14 @@ if ($renderConfig) {
 }
 else {
     Write-Host "config   kept existing $ConfigPath (re-render with -ConfigOnly or -Force)"
+    # Captured first: inside the Where-Object script block $PSBoundParameters is its own.
+    $bound = $PSBoundParameters
+    $notApplied = @('Urls', 'SqlConnectionString', 'CertificateThumbprint', 'Roles', 'NodeId', 'FileShare' |
+        Where-Object { $bound.ContainsKey($_) })
+    if ($notApplied.Count -gt 0) {
+        Write-Warning ("Not applied, because the existing $ConfigPath was kept: " +
+            "$(($notApplied | ForEach-Object { "-$_" }) -join ', '). Add -Force to re-render it from these parameters (a backup is kept).")
+    }
 }
 
 if ($ConfigOnly) {
@@ -544,6 +593,12 @@ else {
     if ($EnableHttp) { $firewallArgs['EnableHttp'] = $true }
     if ($WhatIfPreference) { $firewallArgs['WhatIf'] = $true }
     & $FirewallScript @firewallArgs
+    # The firewall step opens 8443 (and 8080 with -EnableHttp); it does not read -Urls.
+    $closedHttpUrls = @($Urls | Where-Object { $_ -like 'http://*' -and -not ($EnableHttp -and $_ -match ':8080/?$') })
+    if ($httpOnly -and $closedHttpUrls.Count -gt 0) {
+        Write-Warning ("-Urls $($closedHttpUrls -join ';') is not opened in the firewall, so other machines cannot " +
+            "reach this node. Open it with: & '$FirewallScript' -EnableHttp -HttpPort <port of that URL>")
+    }
 }
 
 # --- 8. start and doctor --------------------------------------------------------------
@@ -557,6 +612,17 @@ elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
         Start-Service -Name $ServiceName
         $started = Get-Service -Name $ServiceName
         $started.WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
+        # Running is reported when the host starts, before Kestrel binds and the module
+        # options are validated; a node that fails there exits a moment later. Require the
+        # same process to be still running after a short settle (a recovery restart would
+        # be a new process).
+        $processId = (Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'").ProcessId
+        Start-Sleep -Seconds 5
+        $started.Refresh()
+        $processIdNow = (Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'").ProcessId
+        if ($started.Status -ne 'Running' -or $processIdNow -ne $processId) {
+            throw "it reported Running but did not stay up (status $($started.Status) 5 s later)."
+        }
         Write-Host "started  service $ServiceName ($($started.Status))"
     }
     catch {
