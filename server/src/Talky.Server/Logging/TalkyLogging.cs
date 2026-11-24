@@ -88,6 +88,29 @@ internal static class TalkyLogging
             : Path.GetFullPath(expanded);
     }
 
+    /// <summary>
+    /// Proves that this account can write to <paramref name="directory"/>: creates it if needed, then
+    /// creates and deletes a small file. An existing directory is not enough; a gMSA without Modify on
+    /// a pre-created directory gets a file sink that silently writes nothing.
+    /// </summary>
+    /// <param name="directory">Absolute directory path, as returned by <see cref="ExpandDirectory"/>.</param>
+    /// <returns>Null when the directory is writable, otherwise the reason it is not.</returns>
+    public static string? ProbeWritable(string directory)
+    {
+        var probe = Path.Combine(directory, $".talky-probe-{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}");
+        try
+        {
+            System.IO.Directory.CreateDirectory(directory);
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return ex.Message;
+        }
+    }
+
     /// <summary>Parses a Serilog level name, falling back to Information.</summary>
     public static LogEventLevel ParseLevel(string? value) =>
         Enum.TryParse<LogEventLevel>(value, ignoreCase: true, out var level) ? level : LogEventLevel.Information;

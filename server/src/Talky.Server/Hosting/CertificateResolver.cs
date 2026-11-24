@@ -138,7 +138,7 @@ internal static class CertificateResolver
             throw new TalkyStartupException("Talky:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
         }
 
-        var path = Path.GetFullPath(options.PfxPath);
+        var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(options.PfxPath.Trim()));
         if (!File.Exists(path))
         {
             throw new TalkyStartupException($"Certificate file '{path}' does not exist.");
