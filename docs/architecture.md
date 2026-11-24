@@ -1,5 +1,11 @@
 # Talky mimarisi
 
+> **Durum (2026-11-24):** Bu belge **hedef v1 mimarisini** anlatır; çoğu bölüm henüz kodda yoktur. M0'da
+> gerçekten çalışan: `talky.exe` host'u ve CLI (`serve`, `migrate`, `doctor`, `config validate`, `version`),
+> `/healthz`, `/readyz`, `/api/v1/ping`, SQL şeması v0 (`talky migrate`), `/ws` el sıkışması (`Hello`/`Welcome`,
+> `Ping`/`Pong`, drain, bağlantı bütçesi), MSI ve kurulum betikleri. Mesh, arama, dosyalar, medya, push, kimlik ve
+> yönetim paneli `docs/plan-v1.md` §9 kilometre taşlarıyla gelir. Çelişki olursa **`docs/plan-v1.md` esastır**.
+
 Kurumsal, tamamen on-prem, Teams/Skype for Business tarzı iletişim platformu: mesajlaşma,
 1:1 arama, grup toplantısı + ekran paylaşımı, dosya paylaşımı. Hedef ölçek **10.000–50.000
 kullanıcı**. Üretim yalnızca **Windows Server 2022/2025** üzerinde çalışır.
@@ -89,8 +95,14 @@ Rol yalnızca hangi hosted service'lerin başlatıldığını belirler; kod taba
 müşteri tek sunucuda `--role all` ile başlar, büyüdüğünde aynı binary'yi farklı rollerle
 dağıtır. Yeni ürün yok, yeni yapılandırma biçimi yok.
 
-`talky doctor` her düğümde çalışır: yapılandırma yer tutucuları, SQL erişimi ve şema
-sürümü, sertifika, dosya payı, LiveKit erişilebilirliği, mesh eşleri, disk ve saat.
+**M2'ye kadar roller bilgi amaçlıdır:** ayrıştırılır, doğrulanır ve raporlanır (`/api/v1/ping`, `talky doctor`,
+`talky config validate`) ama hiçbir şeyi kapılamaz; her düğüm bağlanmış tüm modülleri (bugün Data ve Realtime,
+`/ws` dahil) çalıştırır. Her modül geldiğinde kendi rol koşulunu ekler.
+
+`talky doctor` her düğümde çalışır. Bugünkü yedi kontrol: `config` (seçenek bölümleri), `certificate`, `identity`
+(süreç hesabı), `log-directory`, `os`, `runtime` ve `sql` (erişim, `READ_COMMITTED_SNAPSHOT`, şema/göç durumu).
+AD, dosya payı, LiveKit ve mesh kontrolleri ilgili modüllerle gelir; disk, saat senkronu ve pay erişimi kurulum
+öncesinde `Test-TalkyPrerequisites.ps1` ile denetlenir.
 
 ## 3. Küme: gRPC full-mesh bus
 
@@ -109,8 +121,9 @@ açmaz:
    dolduramazsa `ResyncRequired` gönderir ve istemci `GET /api/v1/sync` çağırır.
 
 Yani bus **en iyi çaba**dır ve bilinçli olarak öyle tasarlanmıştır. Bir düğüm düşerse
-diğerleri bağlantıyı yeniden kurar; mesh üyeliği yapılandırmadaki `Talky:Cluster:Seeds`
-listesinden gelir.
+diğerleri bağlantıyı yeniden kurar. Düğüm keşfi SQL'deki `cluster_nodes` kaydıyla yapılır
+(`docs/plan-v1.md` §3.2): her düğüm periyodik heartbeat yazar, canlı eşleri oradan okur; yapılandırmada
+statik bir eş listesi yoktur. Mesh M2'de gelir; bugün tablo ve `IClusterNodeRegistry` vardır, çağıran kod yoktur.
 
 ## 4. Gerçek zamanlı protokol (özet)
 
@@ -135,8 +148,8 @@ belirleyen kararlar özetlenir.
 - **Sıralamanın tek kaynağı**: her konuşmanın kendi `seq` sayacı vardır ve mesajlar
   `(conversation_id, seq)` ile benzersizdir. Global bir sayaç yoktur — konuşma başına sayaç,
   fan-out ve resync'i düğümden bağımsız kılar.
-- Ana tablolar: `users`, `devices`, `conversations`, `conversation_members`, `messages`,
-  `message_attachments`, `receipts` (teslim/okundu), `presence`, `jobs`, `nodes`.
+- Tablolar ve indeksler: `docs/data-model.md` (şema v0'ın tek açıklaması). Okundu durumu ayrı bir tabloda değil,
+  `conversation_members.last_read_seq` içindedir.
 - **`jobs`**: kuyruk ürünü yerine SQL tablosu. `worker` rolü satırları `UPDATE … OUTPUT` ile
   kilitleyip işler; yeniden deneme sayacı ve görünürlük zaman damgası satırdadır. İş türleri:
   push bildirimi, arama indeksleme, saklama süresi dolmuş içeriğin temizliği, virüs tarama
@@ -157,8 +170,9 @@ ve güven ilişkisi vardır. v1'de üç yol desteklenir:
 | ADFS / OIDC | Web ve mobil, ormanlar arası | Yetkilendirme kodu + PKCE |
 | LDAP bind | Kerberos'un ulaşamadığı orman veya hizmet hesapları | Yalnızca gerektiğinde |
 
-Kullanıcı dizini periyodik olarak senkronlanır (orman başına bir bağlayıcı); `objectSid` +
-orman kimliği birincil eşleştirme anahtarıdır, UPN değil — UPN değişebilir.
+Kullanıcı dizini periyodik olarak senkronlanır (orman başına bir bağlayıcı); eşleştirme anahtarı
+`objectGUID`'dir (`users.external_id`), `objectSid` ayrıca saklanır; UPN asla anahtar değildir — UPN değişebilir
+(`docs/plan-v1.md` §3.6).
 
 SAML ve **kuruluşlar arası federasyon** (iki ayrı Talky kurulumunun birbiriyle mesajlaşması)
 v1.1'e bırakılmıştır; `Talky.Federation` bugün yalnızca sınır arayüzlerini tutar.
@@ -184,9 +198,8 @@ v1.1'e bırakılmıştır; `Talky.Federation` bugün yalnızca sınır arayüzle
 
 ## 8. Dosyalar: SMB / DFS
 
-- `IBlobStore` arkasında tek uygulama: SMB/DFS payı. Yol şeması içerik adresli
-  (`\\pay\talky\files\<yıl>\<ay>\<hash-önek>\<blobId>`), böylece dizin başına dosya sayısı
-  kontrollüdür ve aynı dosyanın iki kopyası tek blob olur.
+- `IBlobStore` arkasında tek uygulama: SMB/DFS payı. Anahtar şeması `org/{cid}/{uuid}/{name}`
+  (`docs/plan-v1.md` §3.8).
 - Yükleme parçalıdır ve doğrudan `api` düğümünden paya yazılır; SQL yalnızca meta veriyi
   tutar. Büyük dosya veritabanına hiç girmez.
 - **Virüs taraması Windows Defender AMSI ile** yapılır: `worker` rolü yüklenen bloğu AMSI'ye
@@ -224,7 +237,7 @@ Mobil bildirim FCM ve APNs'e gitmek zorundadır, yani internete çıkış gereki
   `jobs` gecikmesi, mesh eş durumu, SQL gecikmesi, LiveKit düğüm durumu) ve son 24 saatin
   özetini gösterir.
 - Yapılandırılmış loglar `%ProgramData%\Talky\logs` altına Serilog ile JSON olarak yazılır;
-  uyarı ve üzeri ayrıca Windows Olay Günlüğü'ne gider. Müşterinin bir log toplayıcısı varsa
+  servis olarak çalışırken uyarı ve üzeri ayrıca Windows Olay Günlüğü'ne (kaynak `Talky`) gider. Müşterinin bir log toplayıcısı varsa
   bu dosyaları okur — zorunlu değildir.
 - `/readyz` yük dengeleyici probudur ve boşaltma sırasında bilinçli olarak 503 döner
   (bkz. `docs/operations.md`, yuvarlanan yükseltme).
@@ -241,20 +254,12 @@ Mobil bildirim FCM ve APNs'e gitmek zorundadır, yani internete çıkış gereki
 | LiveKit düğümü | 2–6 | 16 vCPU / 32 GB / 10 GbE |
 | `push-relay` | 1–2 | DMZ, küçük |
 
-Performans bütçesi. Bunlar **hedeftir** ve M1'den itibaren `Talky.WsLoad` ile sürekli
-ölçülür; aşan bir değişiklik birleştirilmez.
+Performans bütçesi tek yerde tutulur: `docs/plan-v1.md` §6 (p99 hedefleri, düğüm başına 15k WebSocket). Burada
+ikinci bir bütçe yoktur. Yük testleri M2'de gecelik koşuya girer (`docs/plan-v1.md` §7).
 
-| Yol | Bütçe (p95) | Not |
-|---|---|---|
-| Mesaj gönderimi (`Ack` dönene kadar, sunucu tarafı) | < 150 ms | SQL yazma + `seq` tahsisi dahil |
-| Aynı düğümdeki alıcıya fan-out | < 50 ms | |
-| Başka düğümdeki alıcıya fan-out (mesh) | < 200 ms | Bus en iyi çaba; bütçe aşılırsa mesaj yine de kaybolmaz |
-| Geçmiş sayfası (50 mesaj) | < 100 ms | Keyset sayfalama |
-| `GET /api/v1/sync` | < 300 ms | 50 konuşmaya kadar |
-| Arama sorgusu | < 500 ms | Nihai tutarlı indeks |
-| Toplantıya katılma (token → ilk medya) | < 2 sn | TURN'e düşen istemcide < 3 sn |
-| Düğüm başına eşzamanlı WebSocket | 3.000–5.000 | 8 vCPU / 16 GB düğümde |
-| Yeniden başlatmada yeniden bağlanma dalgası | 30 sn'ye yayılır | `Reconnect{delayMs}` jitter'ı |
+Yeniden başlatmada yeniden bağlanma dalgası en çok 10 sn'ye yayılır: drain eden düğüm herkese
+`Reconnect{delayMs = min(10000, …)}` gönderir, istemci `[0, delayMs]` aralığında rastgele bekler
+(`docs/protocol.md`).
 
 ## 13. Riskler
 
@@ -262,9 +267,9 @@ Performans bütçesi. Bunlar **hedeftir** ve M1'den itibaren `Talky.WsLoad` ile 
 |---|---|---|
 | LiveKit Windows'ta hedef yükü kaldırmaz | Ayak izi dört ürüne çıkar | Spike A ölçütleri ve Hyper-V Linux cihaz yedeği hazır (`docs/livekit-windows-spike.md`) |
 | gRPC mesh N² bağlantı, düğüm sayısı büyürse | Bağlantı ve CPU maliyeti | 6 düğümde 15 bağlantı; sınır aşılırsa bus'ı hub düğümlere indirgemek mümkün — doğruluk SQL'de olduğu için bu bir veri riski değil |
-| Çok ormanlı AD'de senkronizasyon karmaşıklığı | Yanlış kullanıcı eşleşmesi | `objectSid` + orman kimliği anahtar; UPN asla anahtar değil |
+| Çok ormanlı AD'de senkronizasyon karmaşıklığı | Yanlış kullanıcı eşleşmesi | `objectGUID` anahtar, `objectSid` saklanır; UPN asla anahtar değil |
 | Lucene.NET indeksinin Türkçe kalitesi | Kötü arama sonuçları | Ayrı Türkçe analiz zinciri; altın sorgu kümesiyle regresyon testi |
-| SMB payı gecikmesi veya DFS yönlendirmesi | Yavaş yükleme/indirme | `IBlobStore` soyutlaması; pay gecikmesi `talky doctor` ve panelde ölçülür |
+| SMB payı gecikmesi veya DFS yönlendirmesi | Yavaş yükleme/indirme | `IBlobStore` soyutlaması; pay gecikmesi panelde ve dosya modülüyle gelecek `talky doctor` kontrolünde ölçülür (M4) |
 | Tek binary'nin dağıtım boyutu (~120 MB) | Yükseltme süresi | MSI ~49 MB; yuvarlanan yükseltmede düğüm başına birkaç dakika |
 | AMSI taramasının büyük dosyalarda maliyeti | Yükleme gecikmesi | Tarama asenkron, `jobs` üzerinden; blob temiz sonuç gelene kadar karantinada |
 | Yönetim paneli, olgun bir izleme yığınının yerini tutmaz | Operasyon körlüğü | Loglar dosya olarak dışa açık; müşteri isterse kendi toplayıcısını bağlar |

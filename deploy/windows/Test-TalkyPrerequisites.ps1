@@ -12,7 +12,8 @@
       ServiceAccount  gMSA resolvable with Test-ADServiceAccount (needs RSAT AD module)
       LogonAsService  the service account holds SeServiceLogonRight
       Sql             reachable with System.Data.SqlClient, version and edition reported
-      Ports           8443 / 9443 (and 8080 with -EnableHttp) are free
+      Ports           8443 (and 8080 with -EnableHttp) are free. The cluster mesh
+                      port (9443) is not checked until the mesh exists (M2).
       Certificate     thumbprint present in LocalMachine\My, has a private key, not expired
       FileShare       the SMB/DFS share is reachable and writable
       TimeSync        w32tm reports a synchronised, non-local time source
@@ -39,9 +40,6 @@
 
 .PARAMETER HttpsPort
     Client/API port that must be free. Default 8443.
-
-.PARAMETER MeshPort
-    Cluster mesh port that must be free. Default 9443.
 
 .PARAMETER HttpPort
     Plain HTTP port; only checked with -EnableHttp. Default 8080.
@@ -71,7 +69,6 @@ param(
     [string] $FileShare,
     [string] $DataDir = (Join-Path $env:ProgramData 'Talky'),
     [ValidateRange(1, 65535)][int] $HttpsPort = 8443,
-    [ValidateRange(1, 65535)][int] $MeshPort = 9443,
     [ValidateRange(1, 65535)][int] $HttpPort = 8080,
     [switch] $EnableHttp,
     [switch] $Json
@@ -253,7 +250,6 @@ else {
 
 $portsToCheck = @(
     @{ Port = $HttpsPort; Purpose = 'clients and API' }
-    @{ Port = $MeshPort; Purpose = 'cluster mesh' }
 )
 if ($EnableHttp) { $portsToCheck += @{ Port = $HttpPort; Purpose = 'plain HTTP' } }
 

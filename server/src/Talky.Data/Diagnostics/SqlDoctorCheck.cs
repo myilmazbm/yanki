@@ -50,7 +50,7 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
         bool readCommittedSnapshot;
         try
         {
-            await using var connection = await connections.OpenAsync(cancellationToken);
+            await using var connection = await connections.OpenProbeAsync(cancellationToken);
             await using var command = new SqlCommand(ProbeSql, connection)
             {
                 CommandTimeout = connections.CommandTimeoutSeconds,

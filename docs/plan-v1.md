@@ -289,6 +289,27 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
 | **M7 Sertleştirme + GA** (3 hf) | Ağ bozulma matrisi, AG failover tatbikatı, rolling upgrade tatbikatı, 24 s soak, yedek/geri yükleme, runbook'lar, çoklu sekme, 50k sentetik yük | Tüm SLO'lar staging'de; RC 1.0 imzalı MSI + istemci paketleri |
 | **v1.1** | Federasyon (mTLS gRPC, allowlist, ayna), SAML, mobil ekran paylaşımı, Egress kayıt, VP9 SVC, E2EE opsiyonu, misafir/lobi | — |
 
+**M0 durumu (2026-11-24).** M0 kapsamı teslim edildi, çıkış kriterleri henüz karşılanmadı; taş **açık**.
+- Teslim edilenler: repo; `talky.exe` host'u ve CLI (`serve`, `migrate`, `doctor` — 7 kontrol, `config validate`);
+  EF şema v0 (`docs/data-model.md`); `/ws` el sıkışması (Hello/Welcome, Ping/Pong, drain, bağlantı bütçesi;
+  `docs/protocol.md`); proto→C#/TS üretimi ve drift kontrolü; MSI + Windows servis kaydı ve kurulum betikleri;
+  `@talky/core` WS istemcisi ve fixture oynatıcısı; iki CI tanımı (GitHub Actions ve Azure DevOps).
+- Açık — çıkış kriteri 1 (`msiexec` ile kurulan servis `/api/v1/ping` döner): `deploy/windows/Test-TalkyInstall.ps1`
+  yükseltilmiş oturumda atılabilir bir VM'de çalıştırılana kadar açık; hiç çalıştırılmadı.
+- Açık — Spike A: yalnızca geliştirici makinesinde ön kontrol yapıldı (`docs/livekit-windows-spike.md`); gerçek
+  Windows Server donanımında ölçüm bekliyor, kal / Hyper-V kararı M1 başında.
+- Açık — Spike B: çalıştırılmadı; iki forest'lı lab'de M1'in ilk işi.
+- Açık — Spike C: çalıştırılmadı; M3 açılışına alınması önerildi, sahibinin kararı bekleniyor.
+- Açık — CI hiç çalışmadı: repo'nun uzak deposu yok. Barındırma (GitHub mı Azure DevOps Server mı) sahibin kararı;
+  karar sonrası tek tanım kalır.
+- Bilerek sonraya bırakılanlar: servis çıkış kodu / SCM kurtarma davranışı (gerçek servis kurulumu ister), rol
+  kapılama (M2; roller bugün yalnızca raporlanır), encode-once fan-out (M2), SQL'e göre saat kayması `doctor`
+  kontrolü (M2), OpenAPI üretimi (M1, ilk gerçek REST uç noktalarıyla). §5'teki AD/GC, pay ve LiveKit `doctor`
+  kontrolleri ilgili modüllerle gelir.
+- Plan metnine notlar: §3.3'teki `?v=1` geçersizdir — uç nokta `/ws`'dir, sürüm `Hello.protoVersion` ile taşınır.
+  §3.5: UUIDv7 yalnızca `messages.id` içindir, diğer PK'ler EF sıralı GUID'dir; `users.sid`/`upn` şema v0'da yoktur,
+  M1'de ek göçle gelir (`docs/data-model.md`).
+
 ---
 
 ## 10. Riskler ve Karşı Önlemler

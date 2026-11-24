@@ -11,7 +11,7 @@ namespace Talky.Server.Cli;
 /// <summary>
 /// The talky.exe command line. Running the executable without a command is identical to
 /// <c>talky serve</c>, which is what the Windows service does: the installers register it with
-/// options only (<c>--role</c>, <c>--data-dir</c>) and no command.
+/// options only (<c>--data-dir</c>) and no command.
 /// </summary>
 internal static class TalkyCommandLine
 {

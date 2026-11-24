@@ -21,7 +21,7 @@ Sonraki kaynak öncekini ezer:
 |---|---|---|
 | 1 | `appsettings.json` (talky.exe'nin yanında) | Ürünle gelen varsayılanlar. Kuruluma dokunmayın. |
 | 2 | `appsettings.{Environment}.json` (talky.exe'nin yanında) | `ASPNETCORE_ENVIRONMENT` (varsayılan `Production`). |
-| 3 | `%ProgramData%\Talky\appsettings.json` | **Makine yapılandırması.** MSI burayı yazar, yükseltmede korunur. |
+| 3 | `%ProgramData%\Talky\appsettings.json` | **Makine yapılandırması.** `Install-Talky.ps1` (tam kurulum veya `-ConfigOnly`) şablondan üretir; MSI yapılandırma dosyası yazmaz. Yükseltmede korunur. |
 | 4 | `%ProgramData%\Talky\appsettings.Local.json` | Tek makineye özel geçici düzeltmeler. |
 | 5 | `--config <dosya>` | Ek JSON dosyası. Dosya yoksa süreç hata ile çıkar. |
 | 3–4 (alternatif) | `--data-dir <dizin>` verilirse `<dizin>\appsettings.json` ve `<dizin>\appsettings.Local.json`, `%ProgramData%\Talky` çiftinin yerini alır. |
@@ -109,8 +109,9 @@ sınanır.
 | `Talky:Node:Roles` | string | `all` | `TALKY_Node__Roles` | Virgülle ayrılmış rol listesi. Geçerli değerler: `api`, `worker`, `search`, `push-relay`, `all`. Büyük/küçük harf duyarsız; `pushrelay` ve `push_relay` de kabul edilir. |
 
 Roller M2'ye kadar yalnızca kaydedilir ve raporlanır (`/api/v1/ping`, `talky doctor`), hiçbir
-davranışı açıp kapatmaz; kurulum betikleri `--role` geçmeyi bırakacağı için kaynak yapılandırma
-dosyası ve `TALKY_Node__Roles` ortam değişkenidir.
+davranışı açıp kapatmaz. Servis komut satırı yalnızca `--data-dir` içerir (MSI ve `Install-Talky.ps1`
+`--role` geçmez); roller yapılandırma dosyasından (`Install-Talky.ps1 -Roles` yazar) veya onu ezen
+`TALKY_Node__Roles` ortam değişkeninden gelir.
 
 Kimliği yalnızca dış bir sistem sabit ad bekliyorsa sabitleyin; sabitlenmiş kimlik aynı makinede
 ikinci bir süreç çalıştırmayı imkânsız kılar.
@@ -179,7 +180,8 @@ Her olay `Application=talky`, `MachineName` ve `NodeId` ile zenginleştirilir.
 `/healthz` ve `/readyz` istek loglarına **girmez**. Belirteçler ve kimlik bilgileri hiçbir zaman loglanmaz.
 
 Olay günlüğü kaynağının (`Talky`) önceden var olması gerekir; sink kaynağı kendisi oluşturmaz.
-Kaynak yoksa sink yazamaz; süreç bu yüzden başlamayı reddetmez.
+Her iki kurulum yolu (MSI ve `Install-Talky.ps1`) kaynağı oluşturur. Kaynak yoksa sink yazamaz;
+süreç bu yüzden başlamayı reddetmez.
 
 ---
 
@@ -205,8 +207,11 @@ Küçük kurulum: tek makine, tüm roller, `%ProgramData%\Talky\appsettings.json
 {
   "Talky": {
     "Node": { "Roles": "all" },
+    "Database": {
+      "ConnectionString": "Server=sql01.corp.local;Database=Talky;Integrated Security=true;Encrypt=true"
+    },
     "Server": {
-      "Urls": [ "https://+:443" ],
+      "Urls": [ "https://+:8443" ],
       "PublicUrl": "https://talky.corp.local",
       "DrainSeconds": 30,
       "Certificate": {
@@ -224,8 +229,8 @@ Küçük kurulum: tek makine, tüm roller, `%ProgramData%\Talky\appsettings.json
 Kurulum sonrası:
 
 ```powershell
+talky migrate           # veritabanı şeması (yoksa veritabanını da oluşturur)
 talky doctor            # yapılandırma, sertifika, kimlik, log dizini, işletim sistemi, runtime, SQL
-talky migrate           # veritabanı şeması
 sc.exe start Talky
 ```
 
@@ -238,6 +243,9 @@ Ortak `%ProgramData%\Talky\appsettings.json` (üç makinede de aynı):
 ```json
 {
   "Talky": {
+    "Database": {
+      "ConnectionString": "Server=talky-ag.corp.local;Database=Talky;Integrated Security=true;Encrypt=true;MultiSubnetFailover=true"
+    },
     "Server": {
       "Urls": [ "https://+:8443" ],
       "PublicUrl": "https://talky.corp.local",
@@ -255,8 +263,9 @@ Ortak `%ProgramData%\Talky\appsettings.json` (üç makinede de aynı):
 }
 ```
 
-Roller makine başına ayrılır — servis kaydında argüman vermek yerine ortam değişkeni kullanmak
-yükseltmelerde daha güvenlidir:
+Roller makine başına ayrılır (M2'ye kadar yalnızca bilgi amaçlıdır, bkz. §3). Ortak dosyayı
+değiştirmeden makine ortam değişkeniyle ezilebilir; servis komut satırında `--role` olmadığı için
+bu değer geçerli olur:
 
 ```powershell
 # api-01, api-02, api-03
@@ -271,8 +280,8 @@ Kapanma sırası şudur:
 
 1. `sc.exe stop Talky` veya yükseltme betiği kapanışı tetikler.
 2. Host, Kestrel durmadan **önce** boşaltma (drain) aşamasını çalıştırır: `/readyz` 503 döner,
-   `IDrainCoordinator.DrainToken` iptal edilir (Realtime `Reconnect` çerçevesi gönderir, mesh
-   `NodeBye` yollar, worker'lar yeni iş almayı bırakır).
+   `IDrainCoordinator.DrainToken` iptal edilir (Realtime `Reconnect` çerçevesi gönderir; M2'den
+   itibaren mesh `NodeBye` yollar ve worker'lar yeni iş almayı bırakır).
 3. `DrainSeconds` boyunca düğüm mevcut istekleri sunmaya devam eder; yük dengeleyici bu sürede
    düğümü havuzdan çıkarır.
 4. Süre dolunca Kestrel ve modüller durur. Host'un sert kapanma sınırı `DrainSeconds + 15` saniyedir.

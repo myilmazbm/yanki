@@ -3,9 +3,11 @@
 Windows Server 2022/2025 üzerinde Talky kurmak, yükseltmek, yedeklemek ve arızasını bulmak.
 Mimari için `docs/architecture.md`, medya spike'ı için `docs/livekit-windows-spike.md`.
 
-Bütün betikler `deploy/windows/` ve `deploy/livekit/` altındadır, PowerShell 5.1 uyumludur,
-yükseltilmiş oturum ister ve **`-WhatIf` destekler**. Bir sunucuda ilk kez çalıştırmadan
-önce her zaman `-WhatIf` ile çalıştırın.
+Bütün betikler `deploy/windows/` ve `deploy/livekit/` altındadır ve PowerShell 5.1 uyumludur.
+Durum değiştiren betikler yükseltilmiş oturum ister ve **`-WhatIf` destekler**; bir sunucuda ilk
+kez çalıştırmadan önce her zaman `-WhatIf` ile çalıştırın. İstisnalar: salt okunur
+`Test-TalkyPrerequisites.ps1` (değiştirecek bir şey yok) ve yalnızca atılabilir VM için olan
+`Test-TalkyInstall.ps1` (`-AcknowledgeServiceInstall` ister).
 
 > **Durum (M0).** Bu kılavuz v1'in hedeflenen işletimini anlatır. M0'da yalnızca host
 > (`talky.exe`), CLI (`serve`, `migrate`, `doctor`, `config`), SQL şeması, `/ws` el sıkışması
@@ -26,7 +28,7 @@ yükseltilmiş oturum ister ve **`-WhatIf` destekler**. Bir sunucuda ilk kez ça
 
 Denetlenenler: işletim sistemi sürümü ve mimarisi, yükseltilmiş oturum, gMSA'nın
 `Test-ADServiceAccount` ile çözülmesi, hesabın `SeServiceLogonRight` hakkı, SQL erişimi ve
-sürümü, 8443/9443 portlarının boş olması, sertifikanın varlığı ve özel anahtarı, dosya
+sürümü, 8443 portunun (ve `-EnableHttp` ile 8080'in) boş olması, sertifikanın varlığı ve özel anahtarı, dosya
 payına erişim, saat kaynağı, disk alanı. Herhangi bir `Fail` varsa çıkış kodu 1'dir.
 
 .NET çalışma zamanı **gerekmez**: `talky.exe` self-contained yayımlanır.
@@ -165,6 +167,10 @@ her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.js
 sc.exe qfailure Talky      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
 sc.exe qc Talky            # START_TYPE AUTO_START (DELAYED)
 ```
+
+Bilinen açık: host, arızalanan bir arka plan servisi yüzünden kendini durdurduğunda süreç
+bugün 0 koduyla çıkar; SCM bunu hata saymaz ve kurtarma eylemleri tetiklenmez. Doğru çıkış
+kodu ve `sc.exe failureflag` ayarı gerçek bir servis kurulumunda doğrulanınca gelecek.
 
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri). Servis kurup
@@ -357,8 +363,11 @@ pay geri yükleme).
 | MSI kurulumu | `msiexec /l*v <dosya>` ile verdiğiniz yol |
 | Arama indeksi (log değil, veri) | `<DataDir>\index` |
 
-Bir olayı düğümler arasında izlemek için log satırlarındaki `traceId` ve `conversationId`
-alanlarını kullanın; mesh (M2) geldiğinde her ikisi de düğümler arasında taşınacak.
+Bir isteği izlemek için JSON log satırlarındaki izleme kimliğini (`@tr`) kullanın. Düğümler
+arası izleme bugün yoktur; mesh M2'de gelir.
+
+Süreç başlarken (host ve logger daha yokken) biten hatalar ayrıca
+`<DataDir>\logs\talky-startup.log` dosyasına ve Olay Günlüğü'ne (kaynak `Talky`) yazılır.
 
 ---
 
@@ -379,12 +388,13 @@ Bugün var olan denetimler (tam liste):
 | `certificate` | Yapılandırılan TLS sertifikası bulunuyor mu, süresi geçmemiş mi, gerçek düğümde geliştirme sertifikası mı |
 | `identity` | `talky.exe` hangi hesapla çalışıyor (üretimde gMSA olmalı, yönetici ya da operatör değil) |
 | `log-directory` | Log klasörü var mı / oluşturulabiliyor mu, bu hesap yazabiliyor mu |
-| `os` | İşletim sistemi; Windows Server dışı laboratuvar olarak işaretlenir |
+| `os` | İşletim sistemi ve sürümü; istemci Windows sürümü (Windows 10/11) Development dışında uyarıdır ("yalnızca laboratuvar") |
 | `runtime` | .NET çalışma zamanı ve sunucu GC açık mı |
 | `sql` | Veritabanına erişim, beklenen ayarlar ve bekleyen göçler (bekleyen göç uyarıdır: `talky migrate`) |
 
-Dosya payı, LiveKit, mesh eşleri, `jobs` gecikmesi, disk ve saat kayması denetimleri
-planlıdır ve ilgili özellikle (M2–M5) gelir. Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk
+Mesh eşleri ve `jobs` gecikmesi (M2), dosya payı (M4) ve LiveKit (M5) denetimleri ilgili
+özellikle gelir; SQL'e göre saat kayması denetimi M2 için açık bir iştir. Disk alanı ve saat
+kaynağı bugün yalnızca kurulum öncesinde `Test-TalkyPrerequisites.ps1` ile denetlenir. Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk
 demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğümü havuza almadan önce
 `doctor` ve `/readyz` birlikte yeşil olmalıdır.
 
@@ -394,7 +404,7 @@ demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğ�
 
 | Belirti | Muhtemel sebep | Bakılacak yer |
 |---|---|---|
-| Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs`, `talky config validate --data-dir <DataDir>`, ardından `talky doctor` |
+| Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs\talky-startup.log`, Olay Günlüğü (kaynak `Talky`), `talky config validate --data-dir <DataDir>` (bozuk JSON'da dosya adı ve hata ile çıkış kodu 3), ardından `talky doctor` |
 | Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok | `Test-ADServiceAccount -Identity talky`, GPO kullanıcı hakları |
 | TLS el sıkışması başarısız, servis ayakta | gMSA sertifikanın özel anahtarını okuyamıyor | Bölüm 3, anahtar dosyası ACL'i |
 | İstemci 401, tarayıcıda kimlik istemi | SPN eksik veya iki hesapta kayıtlı | `setspn -Q HTTP/talky.corp` |
