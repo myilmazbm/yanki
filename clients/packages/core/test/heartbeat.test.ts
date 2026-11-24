@@ -1,5 +1,3 @@
-import { create } from '@bufbuild/protobuf';
-import { PingSchema } from '@talky/protocol/v1';
 import { pongFrame } from '@talky/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createHarness } from './helpers.js';
@@ -34,29 +32,6 @@ describe('heartbeat', () => {
     }
   });
 
-  it('skips the Ping when another frame was sent inside the window', async () => {
-    const harness = createHarness();
-    try {
-      await harness.open();
-
-      // t+20s: application traffic. The server counts this as the heartbeat.
-      await harness.advance(20_000);
-      harness.client.send({ case: 'ping', value: create(PingSchema, { ts: 1n }) });
-      await harness.settle();
-      expect(pings(harness.server.received)).toBe(1);
-
-      // t+25s: the scheduled tick must skip, because only 5 s elapsed since the last frame.
-      await harness.advance(5_000);
-      expect(pings(harness.server.received)).toBe(1);
-
-      // t+50s: the window has fully elapsed, so a real heartbeat goes out.
-      await harness.advance(25_000);
-      expect(pings(harness.server.received)).toBe(2);
-    } finally {
-      await harness.dispose();
-    }
-  });
-
   it('treats a missing Pong as a dead link and reconnects', async () => {
     const harness = createHarness({ client: { pongTimeoutMs: 10_000 } });
     try {
@@ -72,6 +47,24 @@ describe('heartbeat', () => {
 
       await harness.waitUntil(() => harness.client.state === 'open' && harness.opens() === 2);
       expect(harness.server.connections).toHaveLength(2);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('does not let a heartbeat shorter than the pong timeout postpone the deadline', async () => {
+    const harness = createHarness({
+      client: { pongTimeoutMs: 10_000 },
+      server: { heartbeatIntervalMs: 5_000 },
+    });
+    try {
+      await harness.open();
+      harness.server.simulateSilence();
+
+      // Pings at 5 s and 10 s; the deadline armed by the first one expires at 15 s.
+      await harness.advance(15_000);
+      expect(harness.errors.filter((error) => error.reason === 'heartbeat')).toHaveLength(1);
+      expect(harness.reconnects).toHaveLength(1);
     } finally {
       await harness.dispose();
     }

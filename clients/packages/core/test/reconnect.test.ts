@@ -75,6 +75,47 @@ describe('reconnect', () => {
     }
   });
 
+  it('backs off when a draining node refuses the handshake with Reconnect{0} + 1013', async () => {
+    const harness = createHarness({
+      client: { random: NO_JITTER },
+      server: { autoWelcome: false },
+    });
+    try {
+      harness.server.onRequest('hello', (_frame, connection) => {
+        connection.sendReconnect(0);
+        connection.close(1013, 'draining');
+        return undefined;
+      });
+      harness.client.connect();
+      await harness.waitUntil(() => harness.reconnects.length >= 3, { stepMs: 50 });
+
+      expect(harness.reconnects.slice(0, 3).map((info) => info.delayMs)).toEqual([
+        500, 1_000, 2_000,
+      ]);
+      expect(harness.reconnects.slice(0, 3).map((info) => info.attempt)).toEqual([1, 2, 3]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('a connect() from a reconnectScheduled listener replaces the scheduled attempt', async () => {
+    const harness = createHarness({ client: { random: NO_JITTER } });
+    try {
+      await harness.open();
+      harness.client.on('reconnectScheduled', () => {
+        harness.client.connect();
+      });
+      harness.server.dropConnection();
+      await harness.settle();
+      await harness.advance(5_000);
+
+      expect(harness.server.connections).toHaveLength(2);
+      expect(harness.client.state).toBe('open');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it('resets the backoff after a successful Welcome', async () => {
     const harness = createHarness({ client: { random: NO_JITTER } });
     try {
