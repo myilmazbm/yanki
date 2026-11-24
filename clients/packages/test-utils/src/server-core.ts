@@ -145,13 +145,14 @@ export class MockSession implements MockConnection {
   handleText(text: string): void {
     let parsed: ClientFrameJson;
     try {
-      // Decoding through the generated schema is the point: it asserts that the client puts
-      // valid proto3 JSON on the wire, unknown fields included.
-      fromJsonString(ClientFrameSchema, text);
+      // Decoding through the generated schema asserts that the client puts valid proto3 JSON
+      // on the wire. Unknown fields are ignored like the real server does, so an unknown body
+      // reaches `route` as an empty one.
+      fromJsonString(ClientFrameSchema, text, { ignoreUnknownFields: true });
       parsed = JSON.parse(text) as ClientFrameJson;
     } catch (error) {
       this.sendError('ERROR_CODE_INVALID_FRAME', { message: String(error) });
-      this.close(1009, 'invalid frame');
+      this.close(1003, 'invalid frame');
       return;
     }
     this.received.push(parsed);
@@ -192,8 +193,13 @@ export class MockSession implements MockConnection {
         this.close(1000, 'bye');
         return;
       case undefined:
-        this.sendError('ERROR_CODE_INVALID_FRAME', { message: 'empty oneof body' });
-        break;
+        // `docs/protocol.md`: after Welcome an unknown or empty body is answered and the
+        // connection stays open, so newer clients keep working against older nodes.
+        this.sendError('ERROR_CODE_INVALID_FRAME', {
+          ...(frame.rid === undefined || frame.rid === '' ? {} : { rid: frame.rid }),
+          message: 'unknown or empty frame body',
+        });
+        return;
     }
     this.runScripts(frame);
   }

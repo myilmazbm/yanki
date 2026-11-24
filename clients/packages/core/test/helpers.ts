@@ -72,7 +72,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
   const random = options.client?.random ?? seededRandom(options.seed ?? 0x5eed);
 
   const client = createWsClient({
-    url: 'ws://mock.talky.local/api/v1/ws',
+    url: 'ws://mock.talky.local/ws',
     getToken: () => Promise.resolve('dev:u1'),
     deviceId: '11111111-2222-4333-8444-555555555555',
     client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },

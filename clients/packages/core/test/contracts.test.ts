@@ -27,7 +27,7 @@ describe('cross-package contracts', () => {
   it('accepts the memory server factory as a WebSocketFactory', () => {
     const server = startMemoryServer();
     const factory: WebSocketFactory = server.webSocketFactory;
-    const socket = factory('ws://mock.talky.local/api/v1/ws');
+    const socket = factory('ws://mock.talky.local/ws');
     expect(mockSocketIsAWebSocket(socket as MemorySocket).readyState).toBe(WS_CONNECTING);
     expect(mirroredSocketIsAWebSocket(socket).readyState).toBe(WS_CONNECTING);
   });
