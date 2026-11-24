@@ -3,8 +3,9 @@ using System.ComponentModel.DataAnnotations;
 namespace Talky.Core.Configuration;
 
 /// <summary>
-/// <c>Talky:Logging</c> — the Serilog sinks owned by the host. This is a different section from the
-/// framework's own <c>Logging</c> section, which still controls per-category levels.
+/// <c>Talky:Logging</c> — the Serilog sinks and the minimum level owned by the host. Serilog is the
+/// only logging provider, so the framework's <c>Logging:LogLevel</c> section has no effect; the
+/// per-category overrides are fixed in code.
 /// </summary>
 public sealed class LoggingOptions
 {

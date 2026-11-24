@@ -27,6 +27,9 @@ internal static class TalkyHostFactory
     /// <summary>Seconds added on top of the drain grace period before the host is force stopped.</summary>
     public const int ShutdownTimeoutHeadroomSeconds = 15;
 
+    /// <summary>Configuration key of the Realtime module's development token switch.</summary>
+    private const string AllowDevTokensKey = "Talky:Realtime:AllowDevTokens";
+
     /// <summary>Creates a fully configured builder: configuration stack, logging, options and services.</summary>
     /// <param name="arguments">Command line values that participate in configuration.</param>
     /// <returns>The builder, ready for module registration.</returns>
@@ -206,9 +209,10 @@ internal static class TalkyHostFactory
         });
 
     /// <summary>
-    /// Last gate before the node starts listening: refuses an unsafe transport setup and proves the
-    /// certificate can be loaded, so a bad thumbprint fails with one readable line instead of a
-    /// Kestrel bind error.
+    /// Last gate before the node starts listening: refuses an unsafe transport or authentication
+    /// setup and proves the certificate can be loaded and its private key used by this account, so
+    /// a bad thumbprint or a missing key permission fails with one readable line instead of a node
+    /// that runs but completes no TLS handshake.
     /// </summary>
     /// <param name="app">The built application.</param>
     /// <exception cref="TalkyStartupException">The node must not serve with this configuration.</exception>
@@ -218,10 +222,55 @@ internal static class TalkyHostFactory
 
         var server = app.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
         GuardInsecureConfiguration(server, app.Environment);
+        GuardDevTokens(app.Configuration, server, app.Environment);
 
         if (server.Urls.Any(url => url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
         {
-            using var probe = CertificateResolver.Resolve(server.Certificate).Certificate;
+            var resolution = CertificateResolver.Resolve(server.Certificate);
+            using var certificate = resolution.Certificate;
+            if (certificate is not null)
+            {
+                CertificateResolver.EnsurePrivateKeyAccessible(certificate, resolution.Description);
+            }
+
+            if (app.Logger.IsEnabled(LogLevel.Information))
+            {
+                if (certificate is null)
+                {
+                    // DevCert: Kestrel loads the development certificate itself; the description says which.
+                    app.Logger.LogInformation("Serving HTTPS with {Certificate}.", resolution.Description);
+                }
+                else
+                {
+                    app.Logger.LogInformation(
+                        "Serving HTTPS with {Certificate} (thumbprint {Thumbprint}, not after {NotAfter:u}).",
+                        resolution.Description,
+                        certificate.Thumbprint,
+                        certificate.NotAfter.ToUniversalTime());
+                }
+            }
+
+            if (certificate is not null)
+            {
+                var now = app.Services.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
+                if (now < certificate.NotBefore.ToUniversalTime() || now > certificate.NotAfter.ToUniversalTime())
+                {
+                    app.Logger.LogWarning(
+                        "The server certificate {Certificate} is outside its validity period; clients will reject it.",
+                        resolution.Description);
+                }
+            }
+        }
+
+        var logging = app.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
+        var logDirectory = TalkyLogging.ExpandDirectory(logging.Directory);
+        if (!Directory.Exists(logDirectory))
+        {
+            // The file sink is dropped when its directory cannot be created; say so in the sinks
+            // that do work. `talky doctor` (log-directory) reports the reason.
+            app.Logger.LogWarning(
+                "Log directory {LogDirectory} is not usable, so the file log is disabled. Run 'talky doctor' for the reason.",
+                logDirectory);
         }
     }
 
@@ -246,6 +295,32 @@ internal static class TalkyHostFactory
         throw new TalkyStartupException(
             $"Talky:Server:Certificate:Source is 'DevCert' but the environment is '{environment.EnvironmentName}'. " +
             "Configure a Store or Pfx certificate, or set Talky:Server:AllowInsecureHttp to true for a lab node.");
+    }
+
+    /// <summary>
+    /// Refuses development tokens (any caller may sign in as any user) outside development, unless
+    /// the node is an explicitly insecure lab node.
+    /// </summary>
+    /// <param name="configuration">The assembled configuration; <c>Talky:Realtime:AllowDevTokens</c> is read from it.</param>
+    /// <param name="server">Validated server options.</param>
+    /// <param name="environment">Host environment.</param>
+    /// <exception cref="TalkyStartupException">Dev tokens are on where they must not be.</exception>
+    public static void GuardDevTokens(IConfiguration configuration, ServerOptions server, IHostEnvironment environment)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(environment);
+
+        var allowDevTokens = bool.TryParse(configuration[AllowDevTokensKey], out var value) && value;
+        if (!allowDevTokens || environment.IsDevelopment() || server.AllowInsecureHttp)
+        {
+            return;
+        }
+
+        throw new TalkyStartupException(
+            $"{AllowDevTokensKey} is true but the environment is '{environment.EnvironmentName}'; dev tokens let " +
+            "any caller sign in as any user. Turn it off, or for a lab node run with --environment Development " +
+            "or set Talky:Server:AllowInsecureHttp to true.");
     }
 
     /// <summary>Applies the host's own middleware and endpoints; called after <c>builder.Build()</c>.</summary>

@@ -230,6 +230,21 @@ public sealed class LoggingOptionsValidationTests
     }
 
     [Theory]
+    [InlineData("logs", false)]
+    [InlineData(@"%TALKY_TEST_UNDEFINED_VARIABLE%\logs", false)]
+    [InlineData(@"C:\Talky\logs", true)]
+    public void Directory_must_be_fully_qualified_after_expansion(string directory, bool valid)
+    {
+        var result = Validate(new LoggingOptions { Directory = directory });
+
+        Assert.Equal(valid, result.Succeeded);
+        if (!valid)
+        {
+            Assert.Contains("Talky:Logging:Directory", result.FailureMessage, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(3651)]
     public void Retained_file_count_out_of_range_fails(int retained)

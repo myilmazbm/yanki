@@ -41,6 +41,7 @@ internal static class TalkyLogging
             .MinimumLevel.Is(ParseLevel(options.MinimumLevel))
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+            .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "talky")
             .Enrich.WithProperty("MachineName", Environment.MachineName)
@@ -94,7 +95,7 @@ internal static class TalkyLogging
     /// <summary>
     /// Creates the log directory if needed. Returns null when it cannot be created, so that a node
     /// with a misconfigured log path still starts and still logs to the other sinks;
-    /// <c>talky doctor</c> reports the problem.
+    /// <c>talky serve</c> logs a warning once the logger exists and <c>talky doctor</c> reports the reason.
     /// </summary>
     private static string? ResolveDirectory(string configured)
     {
@@ -107,7 +108,6 @@ internal static class TalkyLogging
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            Serilog.Debugging.SelfLog.WriteLine("Talky log directory '{0}' is not usable: {1}", directory, ex.Message);
             return null;
         }
     }

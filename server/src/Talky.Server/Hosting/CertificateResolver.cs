@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Talky.Core.Configuration;
 
@@ -174,6 +175,51 @@ internal static class CertificateResolver
         }
 
         return new CertificateResolution(certificate, CertificateSource.Pfx, $"{path}, {Describe(certificate)}");
+    }
+
+    /// <summary>
+    /// Proves that this process can use the certificate's private key by making one trial signature.
+    /// <see cref="X509Certificate2.HasPrivateKey"/> only says a key is associated; whether the
+    /// service account may open it (the "Manage Private Keys" permission) shows only on use.
+    /// </summary>
+    /// <param name="certificate">The resolved server certificate.</param>
+    /// <param name="description">Safe description of the certificate, used in the error message.</param>
+    /// <exception cref="TalkyStartupException">There is no usable RSA or ECDSA private key.</exception>
+    public static void EnsurePrivateKeyAccessible(X509Certificate2 certificate, string description)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        byte[] probe = [0x74, 0x61, 0x6c, 0x6b, 0x79];
+        var message =
+            $"The private key of {description} is not accessible to {Environment.UserDomainName}\\{Environment.UserName}. " +
+            "Grant the service account read access to the key (Manage Private Keys) or use a certificate with a private key.";
+
+        try
+        {
+            using (var rsa = certificate.GetRSAPrivateKey())
+            {
+                if (rsa is not null)
+                {
+                    rsa.SignData(probe, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                    return;
+                }
+            }
+
+            using (var ecdsa = certificate.GetECDsaPrivateKey())
+            {
+                if (ecdsa is not null)
+                {
+                    ecdsa.SignData(probe, HashAlgorithmName.SHA256);
+                    return;
+                }
+            }
+        }
+        catch (CryptographicException ex)
+        {
+            throw new TalkyStartupException(message, ex);
+        }
+
+        throw new TalkyStartupException(message);
     }
 
     /// <summary>Formats subject, thumbprint and validity of a certificate for logs and the doctor table.</summary>
