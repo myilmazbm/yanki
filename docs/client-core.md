@@ -64,7 +64,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 | `requestTimeoutMs` | `15000` | `request()` zaman aşımı; aynı zamanda `Welcome` bekleme süresi. |
 | `pongTimeoutMs` | `10000` | `Pong` gelmezse bağlantı ölü sayılır. |
 | `backoff` | `{500, 30000, 2, 0.2}` | `initialMs`, `maxMs`, `factor`, `jitter`. |
-| `retryOnAuthFailure` | `false` | 1008 sonrası yeniden denemeye devam edilsin mi. |
+| `retryOnAuthFailure` | `false` | `Error{UNAUTHENTICATED}` + 1008 veya çerçevesiz 1008 sonrası yeniden denemeye devam edilsin mi. `Error{HELLO_REQUIRED}` + 1008 buna bağlı değildir, her zaman backoff ile yeniden denenir. |
 | `dedupeCapacity` | `2048` | Yerleşik `id` LRU kapasitesi. |
 
 ### `WsClient`
@@ -176,8 +176,8 @@ oluşmaz.
 `reason: 'evicted'` hatası yayınlanır, yeniden bağlanılmaz.
 
 Kapanış kodlarının normatif politikası `docs/protocol.md` → "Kapatma kodları ve `Reconnect.reason`"
-bölümündedir; istemci onu uygular (1002 ve 1003 kalıcı; 1008 `retryOnAuthFailure`'a göre; diğer
-her kod, 1006 dahil, geri çekilme). İstemciye özgü ek kurallar:
+bölümündedir; istemci onu uygular (1002 ve 1003 kalıcı; `Error{HELLO_REQUIRED}` sonrası 1008 geri
+çekilme, diğer 1008'ler `retryOnAuthFailure`'a göre; diğer her kod, 1006 dahil, geri çekilme). İstemciye özgü ek kurallar:
 
 - İstemci **yalnızca 1000 gönderir**; ayrımı `reason` dizesi taşır: `client-close` (veya
   `close(reason)` ile verilen), `pong-timeout`, `server-reconnect`, `protocol-error`,
@@ -189,7 +189,9 @@ her kod, 1006 dahil, geri çekilme). İstemciye özgü ek kurallar:
 Ek olarak, ölümcül bir `Error` çerçevesi (`PROTOCOL_VERSION_UNSUPPORTED`, `UNAUTHENTICATED`,
 `HELLO_REQUIRED`) geldiğinde istemci sunucunun kapatmasını **bekler** (yarışa girmez) ama 5 sn
 içinde kapanış gelmezse soketi kendisi kapatır. Böylece sunucu `Error` + kapanış sırasını
-koruduğu sürece istemci sonsuz döngüye giremez.
+koruduğu sürece istemci sonsuz döngüye giremez. `HELLO_REQUIRED` sonrasındaki kapanış (Hello
+sunucunun zaman aşımından sonra ulaştı) kalıcı değildir: istemci geri çekilmeyle yeniden bağlanır.
+`retryOnAuthFailure` kapalıyken `UNAUTHENTICATED` sonrasında ise `closed` kalır.
 
 `Hello`'nun `rid`'i: istemci `Hello`'ya bir `rid` atar. Sunucu el sıkışma hatalarında bu `rid`'i
 **yankılayabilir de yankılamayabilir de**; istemci her iki durumu da kabul eder (eşleşen bekleyen

@@ -28,7 +28,9 @@ uyar; `api/fixtures/ws/*.json` altın akışları her iki tarafın testlerinde �
 
 1. İstemci bağlanır ve **5 sn** (`Talky:Realtime:HelloTimeoutMs`) içinde `Hello` gönderir; aksi halde sunucu
    `Error{HELLO_REQUIRED}` gönderip 1008 ile kapatır. Süre yalnızca `Hello` çerçevesinin alınmasını kapsar; `Hello`
-   alındıktan sonra kimlik doğrulama sürerken bağlantı kapatılmaz.
+   alındıktan sonra kimlik doğrulama sürerken bağlantı kapatılmaz. Bu bir zamanlama hatasıdır, kimlik hatası değil
+   (askıya alınmış mobil uygulama, donmuş sekme): `Error{HELLO_REQUIRED}` + 1008 alan istemci normal backoff ile
+   yeniden bağlanır.
 2. `protoVersion != 1` → `Error{PROTOCOL_VERSION_UNSUPPORTED}`, kapatma 1002.
 3. Token doğrulanamazsa → `Error{UNAUTHENTICATED}`, kapatma 1008. Gerçek bir doğrulayıcı yokken (M1 öncesi, geliştirme
    jetonları kapalı) düğüm açılır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 alır. `Talky:Realtime:AllowDevTokens=true`
@@ -58,7 +60,7 @@ Sunucunun kullandığı WebSocket kapatma kodları ve istemcinin zorunlu davran�
 | 1001 | Drain (`Reconnect{reason:"draining"}` sonrası), düşürme (`Reconnect{reason:"too_many_connections"}` sonrası) veya bağlantıda beklenmeyen sunucu hatası (çerçevesiz) | `Reconnect` alındıysa `reason`'a göre (aşağıya bakın), yoksa backoff ile yeniden bağlan |
 | 1002 | `PROTOCOL_VERSION_UNSUPPORTED` | kalıcı; `closed` |
 | 1003 | Ayrıştırılamayan JSON, binary çerçeve | kalıcı; `closed` (istemci hatası) |
-| 1008 | `HELLO_REQUIRED` (Welcome öncesi Hello-dışı çerçeve veya Hello zaman aşımı), `UNAUTHENTICATED` | kalıcı; `closed` (istemci `retryOnAuthFailure` ile yeniden deneyebilir) |
+| 1008 | `HELLO_REQUIRED` (Welcome öncesi Hello-dışı çerçeve veya Hello zaman aşımı), `UNAUTHENTICATED` | `Error{HELLO_REQUIRED}` sonrası: backoff ile yeniden bağlan (Hello geç ulaştı). `Error{UNAUTHENTICATED}` sonrası veya öncesinde `Error` çerçevesi yoksa: kalıcı; `closed` (istemci `retryOnAuthFailure` ile yeniden deneyebilir) |
 | 1009 | Çerçeve `MaxFrameBytes`'ı aştı (`Error{INVALID_FRAME}` sonrası) | backoff ile yeniden bağlan |
 | 1013 | Drain sırasında yeni bağlantı reddedildi (`Reconnect` çerçevesi **yok**) | backoff ile yeniden bağlan |
 

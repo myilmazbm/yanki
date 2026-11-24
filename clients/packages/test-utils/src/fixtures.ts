@@ -190,11 +190,19 @@ const PERMANENT_CLOSE_CODES: ReadonlySet<number> = new Set([1002, 1003, 1008]);
 /**
  * The client state a conforming client must be in once the fixture's top-level `close` has
  * been observed: `closed` after its own `Bye` or a permanent code, `reconnecting` otherwise.
+ * 1008 after `Error{HELLO_REQUIRED}` is not permanent: the Hello arrived after the server's
+ * timeout, and the client reconnects with backoff (docs/protocol.md, P7).
  */
 export function expectedClientStateAfterClose(fixture: WsFixture): 'closed' | 'reconnecting' {
-  const lastClientEntry = [...fixture.frames].reverse().find((entry) => entry.dir === 'c2s');
+  const reversed = [...fixture.frames].reverse();
+  const lastClientEntry = reversed.find((entry) => entry.dir === 'c2s');
   if (frameBodyKey(lastClientEntry?.json) === 'bye') return 'closed';
   const code = fixture.close?.code ?? 1000;
+  const lastError = reversed.find(
+    (entry) => entry.dir === 's2c' && isPlainObject(entry.json?.error),
+  )?.json?.error;
+  if (isPlainObject(lastError) && lastError.code === 'ERROR_CODE_HELLO_REQUIRED')
+    return 'reconnecting';
   return PERMANENT_CLOSE_CODES.has(code) ? 'closed' : 'reconnecting';
 }
 

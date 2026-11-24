@@ -143,6 +143,29 @@ describe('handshake', () => {
     }
   });
 
+  it('reconnects with backoff after HELLO_REQUIRED + 1008 (the Hello arrived too late)', async () => {
+    let attempt = 0;
+    const harness = createHarness({
+      server: {
+        authenticate: () => {
+          attempt += 1;
+          return attempt === 1 ? { ok: false, code: 'ERROR_CODE_HELLO_REQUIRED' } : true;
+        },
+      },
+    });
+    try {
+      harness.client.connect();
+      await harness.waitUntil(() => harness.client.state === 'open', { maxMs: 60_000 });
+
+      expect(harness.errors.map((error) => error.code)).toEqual([ErrorCode.HELLO_REQUIRED]);
+      expect(harness.reconnects).toHaveLength(1);
+      expect(harness.reconnects[0]).toMatchObject({ attempt: 1, reason: 'close', closeCode: 1008 });
+      expect(harness.server.connections).toHaveLength(2);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it('emits an error and reconnects when Welcome never arrives', async () => {
     const harness = createHarness({ server: { autoWelcome: false } });
     try {
