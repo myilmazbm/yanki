@@ -13,8 +13,10 @@
          publishes no checksums file and the binary is unsigned, so its SHA-256 is
          pinned in this script and verified after the download;
       2. render deploy\livekit\livekit.xml into InstallDir\livekit-service.xml;
-      3. copy deploy\livekit\livekit.yaml next to the binary if it is not there yet
-         (an existing file is never overwritten - it holds the node's keys);
+      3. copy the deploy\livekit\livekit.yaml template next to the binary if no
+         livekit.yaml is there yet (an existing file is never overwritten - it holds the
+         node's keys). The operator fills in that copy; the template in the repository
+         stays unfilled;
       4. set the file permissions the service account needs (see -ServiceAccount);
       5. `livekit-service.exe install` and, unless -NoStart, `start`. The start only counts
          once the same wrapper process and its livekit-server.exe child are still running a
@@ -96,8 +98,11 @@
 
 .NOTES
     Requires an elevated session. PowerShell 5.1 compatible.
-    Run Get-LiveKit.ps1 first and fill in livekit.yaml (node_ip, turn.domain,
-    certificate paths, keys) before starting the service.
+    Order on a new node: Get-LiveKit.ps1; this script with -NoStart, which copies the
+    template to <InstallDir>\livekit.yaml; fill in that copy (node_ip, turn.domain,
+    certificate paths, keys); run this script again without -NoStart, which grants the
+    service account read on the TURN files the copy names and starts the service. Never
+    fill in deploy\livekit\livekit.yaml in the repository checkout.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -429,7 +434,7 @@ else {
     $configTemplate = Join-Path $PSScriptRoot 'livekit.yaml'
     if ($PSCmdlet.ShouldProcess($ConfigTarget, "Copy the template from $configTemplate")) {
         Copy-Item -LiteralPath $configTemplate -Destination $ConfigTarget
-        Write-Warning "livekit.yaml was copied from the template. Fill in node_ip, turn.domain, the certificate paths and keys before the node serves traffic."
+        Write-Warning "livekit.yaml was copied from the template to $ConfigTarget. Fill in node_ip, turn.domain, the certificate paths and keys in that copy (not in the template in the repository), then run this script again."
     }
 }
 

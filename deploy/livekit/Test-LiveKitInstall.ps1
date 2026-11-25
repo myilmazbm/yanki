@@ -17,8 +17,9 @@
     InstallDir. It downloads LiveKit, WinSW and lk from their official GitHub releases
     (checksums verified by the scripts) unless the %TEMP% caches already hold them.
 
-    The test fills the livekit.yaml template next to it itself (node IP, TURN domain,
-    certificate and key paths, key "talky") with an API secret generated on this machine.
+    The test reads the livekit.yaml template next to it and writes a filled copy to
+    InstallDir itself (node IP, TURN domain, certificate and key paths, key "talky", an API
+    secret generated on this machine); the template is never modified.
     The secret is never printed; it reaches lk only through the environment, and the
     livekit.yaml holding it is deleted at the end of leg d.
 

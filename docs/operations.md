@@ -291,10 +291,19 @@ Medya düğümü:
 
 ```powershell
 .\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
-# livekit.yaml içindeki "<...>" yer tutucularını doldurun
+# İlk çalıştırma şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24 `
+    -ServiceAccount 'NT AUTHORITY\NetworkService' -NoStart
+# C:\Program Files\LiveKit\livekit.yaml içindeki "<...>" yer tutucularını doldurun
 .\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24 `
     -ServiceAccount 'NT AUTHORITY\NetworkService'
 ```
+
+Doldurulan dosya, betiğin `InstallDir`'e kopyaladığı `livekit.yaml`'dır; depodaki
+`deploy/livekit/livekit.yaml` şablondur ve **hiçbir zaman doldurulmaz** (gerçek anahtar çifti
+bir commit'le herkese açık depoya gider). Var olan bir `InstallDir\livekit.yaml` hiçbir zaman
+şablonla ezilmez. İkinci çalıştırma, kopyanın adını verdiği TURN sertifikasına ve anahtarına
+servis hesabı için okuma izni verir ve servisi başlatır.
 
 LiveKit bir konsol programıdır; WinSW 2.12.0 sarmalayıcısıyla (`livekit-service.exe`)
 `LiveKit` adlı Windows servisi olur: gecikmeli otomatik başlatma, 5/10/30 sn'de yeniden
@@ -335,7 +344,8 @@ baştan sona sınar; servis kurup kaldırdığı için yalnızca atılabilir bir
     -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
 ```
 
-Şablonu kendisi doldurur, API sırrını makinede rastgele üretir (hiçbir yere yazdırmaz) ve
+Şablonun doldurulmuş bir kopyasını `InstallDir`'e kendisi yazar (şablona dokunmaz), API sırrını
+makinede rastgele üretir (hiçbir yere yazdırmaz) ve
 dört adımı koşar: LocalSystem kurulumu, ikinci kurulum, `livekit-server.exe` öldürülünce
 20 sn içinde toparlanma; 1 yayıncı / 4 aboneyle 30 sn'lik medya denetimi
 (`Invoke-LiveKitLoadTest.ps1`, her abone izini almalı) ve olmayan bir odaya karşı mutlaka

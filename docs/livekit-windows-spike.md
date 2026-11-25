@@ -121,7 +121,10 @@ Kurulum:
 ```powershell
 # SFU düğümünde, yükseltilmiş oturum
 .\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
-# livekit.yaml içindeki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys)
+# Şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR> -NoStart
+# O kopyadaki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys);
+# depodaki deploy\livekit\livekit.yaml şablon olarak doldurulmamış kalır
 .\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR>
 ```
 

@@ -8,10 +8,12 @@
 #               (hwstats reports "CPU monitoring unsupported on current platform"),
 #               so placement is driven by the Talky backend, not by the SFU.
 #
-# Replace every "<...>" placeholder, keeping the quotes. They are written as quoted
-# strings on purpose: the template stays valid YAML, so it can be linted and diffed before
-# anyone fills it in. Install-LiveKitService.ps1 copies this file next to
-# livekit-server.exe and the service is started with --config on that copy.
+# This is a template and stays unfilled in the repository: never put a real key pair in
+# this file. Install-LiveKitService.ps1 copies it next to livekit-server.exe
+# (<InstallDir>\livekit.yaml) when no configuration is there yet, and the service is
+# started with --config on that copy. Fill in the copy: replace every "<...>" placeholder,
+# keeping the quotes. They are written as quoted strings on purpose: the template stays
+# valid YAML, so it can be linted and diffed.
 
 # Signalling / HTTP. YARP inside talky.exe reverse-proxies this under
 # https://talky.corp/media/{node}/rtc (planned, M5), so 7880 never needs to face clients directly.
