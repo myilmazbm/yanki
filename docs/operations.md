@@ -183,10 +183,28 @@ her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.js
 ve yeniden kurulum bu değerleri oradan okur, bu yüzden yükseltme ve geri alma komutlarında
 tekrarlanmaları gerekmez. Öncelik: komut satırında verilen değer > hatırlanan değer >
 varsayılan (LocalSystem, `C:\ProgramData\Talky`). `SERVICE_PASSWORD` hiçbir yere yazılmaz.
-Hesabı ya da veri klasörünü **bilerek** değiştirmek için yeni değeri bir sonraki
-`msiexec /i` komutunda verin (`SERVICE_ACCOUNT=…` / `DATADIR=…`); o değer servise uygulanır
-ve yeni hatırlanan değer olur (parolalı bir hesapta `SERVICE_PASSWORD=` de gerekir; veri
-klasörünü değiştirirseniz `appsettings.json`'u ve ACL'leri yeni klasöre siz taşırsınız).
+Hesabı ya da veri klasörünü **bilerek** değiştirmek için yeni değeri servisin yeniden
+kaydedildiği bir kurulumda verin (`SERVICE_ACCOUNT=…` / `DATADIR=…`): bir sonraki sürüm
+yükseltmesinde ya da `Stop-Service Talky` → `msiexec /x` → `msiexec /i … SERVICE_ACCOUNT=…`
+sırasıyla. O değer servise uygulanır ve yeni hatırlanan değer olur (veri klasörünü
+değiştirirseniz `appsettings.json`'u ve ACL'leri yeni klasöre siz taşırsınız). **Kurulu
+sürümün kendi MSI'siyle `msiexec /i` çalıştırmak hiçbir şeyi değiştirmez:** komut 0 ile
+çıkar ama servis ve hatırlanan değerler aynı kalır (lab'da ölçüldü).
+
+Hatırlamanın kapsamadığı üç durum:
+
+- **Parola hatırlanmaz.** Parolalı bir hesapla kurulmuş düğümde `SERVICE_PASSWORD=` her
+  `msiexec /i` komutunda (yükseltme ve geri alma dahil) yeniden verilir; verilmezse servis
+  hatırlanan hesap ve boş parolayla kaydedilir ve başlamaz. gMSA'da parola yoktur, bu durum
+  onu etkilemez.
+- **Yükseltme canlı servise değil hatırlanan değere bakar.** Hesabı MSI dışında
+  (`services.msc`, `sc.exe config`, `Install-Talky.ps1 -ServiceAccount`) değiştirdiyseniz
+  bir sonraki yükseltme komutunda `SERVICE_ACCOUNT=` verin; yoksa servis eski hatırlanan
+  hesaba döner.
+- **Hatırlanan veri klasörünün sürücüsü artık yoksa** (disk sökülmüş, harfi değişmiş)
+  özellik verilmeden yapılan yükseltme hiçbir şeyi değiştirmeden 1603 ile durur (logda
+  `Error 1327. Invalid Drive`). Komuta `DATADIR=<yeni klasör>` ekleyin; kaldırma
+  (`msiexec /x`) bu durumda da çalışır (ikisi de lab'da ölçüldü).
 Anahtar, `DATADIR` gibi kalıcıdır: `msiexec /x` onu silmez, böylece kaldırıp eski sürümü
 kurmak (geri alma) ve yeniden kurulum aynı hesabı ve klasörü bulur. Düğümü tamamen
 temizlerken anahtarı elle silin: `Remove-Item HKLM:\SOFTWARE\Talky`. Bu davranış bu
@@ -492,7 +510,8 @@ demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğ�
 | Belirti | Muhtemel sebep | Bakılacak yer |
 |---|---|---|
 | Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs\talky-startup.log`, Olay Günlüğü (kaynak `Talky`), `talky config validate --data-dir <DataDir>` (bozuk JSON'da dosya adı ve hata ile çıkış kodu 3), ardından `talky doctor` |
-| Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok | `Test-ADServiceAccount -Identity talky`, GPO kullanıcı hakları |
+| Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok; parolalı hesapta MSI yükseltmesi `SERVICE_PASSWORD=` verilmeden yapılmış | `Test-ADServiceAccount -Identity talky`, GPO kullanıcı hakları; bölüm 4.1 "MSI … hatırlar" |
+| MSI yükseltmesi 1603 ile duruyor, logda `Error 1327. Invalid Drive` | Hatırlanan veri klasörünün sürücüsü artık yok | Komuta `DATADIR=<klasör>` ekleyin (bölüm 4.1) |
 | TLS el sıkışması başarısız, servis ayakta | gMSA sertifikanın özel anahtarını okuyamıyor | Bölüm 3, anahtar dosyası ACL'i |
 | İstemci 401, tarayıcıda kimlik istemi | SPN eksik veya iki hesapta kayıtlı | `setspn -Q HTTP/talky.corp` |
 | Yük dengeleyici bütün düğümleri "down" görüyor | Prob `/healthz` yerine `/readyz` olmalı ya da düğüm boşaltmada | `Invoke-WebRequest .../readyz` |
@@ -513,13 +532,15 @@ Kaldırma:
 
 MSI ile kurulmuş düğümde servisi önce durdurun (MSI'nin kendi durdurması boşaltmayı
 beklemek için tasarlanmadı, bölüm 4.1 "Bilinen açıklar"). `msiexec /x` veri klasörünü ve
-`HKLM\SOFTWARE\Talky` anahtarını bırakır; düğümü tamamen temizlerken ikisini de elle silin:
+`HKLM\SOFTWARE\Talky` anahtarını bırakır; güvenlik duvarı kurallarını da MSI değil
+`Set-TalkyFirewall.ps1` yönetir. Düğümü tamamen temizlerken üçünü de elle kaldırın:
 
 ```powershell
 Stop-Service Talky
 $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<sürüm>.msi','/qn','/norestart','/l*v','uninstall.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see uninstall.log" }
 # Tamamen temizlemek için (yapılandırma ve loglar da gider):
+#   .\deploy\windows\Set-TalkyFirewall.ps1 -Remove
 #   Remove-Item -Recurse -Force 'D:\TalkyData'; Remove-Item HKLM:\SOFTWARE\Talky
 ```
 

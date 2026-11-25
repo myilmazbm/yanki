@@ -13,9 +13,12 @@
     SERVICE_ACCOUNT  service logon account   (default LocalSystem)
     SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA; never stored)
 
-  SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky: an upgrade, repair
-  or reinstall that does not pass them keeps the values of the previous install; a value
-  passed on the command line wins and becomes the new remembered value.
+  SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky: an upgrade or a
+  reinstall after an uninstall that does not pass them keeps the values of the previous
+  install; a value passed on the command line of such an install wins and becomes the new
+  remembered value. Running msiexec /i with the MSI of the version that is already
+  installed is maintenance mode: it exits 0 and changes neither the service nor the
+  remembered values (measured on the lab VM, 2026-11-25).
 
   The MSI lays down the files, registers the service STOPPED and creates the Windows
   Event Log source "Talky". It writes no appsettings.json and opens no firewall port;
