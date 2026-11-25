@@ -7,9 +7,9 @@
 .DESCRIPTION
     STATUS: executed on 2026-11-25 on a lab VM (Windows Server 2025 Datacenter,
     2 vCPU / 4 GB, domain member, self-signed lab TURN certificate), driven over
-    PowerShell Direct from a clean reset, in this form with LiveKit 1.13.11 twice and
-    1.13.6 once; results in docs/livekit-windows-spike.md, section 1.4. That is a
-    functional check, not the Spike A hardware measurement.
+    PowerShell Direct from a clean reset, in this form (116 checks) with LiveKit 1.13.11
+    and 1.13.6: all checks passed (docs/livekit-windows-spike.md, sections 1.5 and 1.6).
+    That is a functional check, not the Spike A hardware measurement.
 
     It installs and removes the LiveKit service and its firewall rules, so run it only on
     a throw-away VM, elevated, with -AcknowledgeServiceInstall. The machine must not
