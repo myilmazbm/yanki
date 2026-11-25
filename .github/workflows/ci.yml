@@ -13,10 +13,12 @@ on:
   # Manual run, mainly to rehearse the MSI job without a release tag.
   workflow_dispatch:
 
-# One run per ref. A new push supersedes the one in flight.
+# One run per ref. On a pull request a new push supersedes the run in flight. Runs on main
+# are never cancelled: each one compares the contracts against the commit before its own
+# push, so a cancelled run would leave that push unchecked.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Read-only for every job; none of them needs more.
 permissions:
@@ -190,7 +192,11 @@ jobs:
         shell: pwsh
         run: ./deploy/windows/msi/Test-Msi.ps1
 
+      # Only release tags publish the package. A manual run is a rehearsal: on a public
+      # repository its artifact would be a public download of an MSI that does not carry the
+      # third-party notices yet (docs/operations.md, release prerequisites).
       - name: Upload MSI
+        if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
           name: Talky.Server-msi
