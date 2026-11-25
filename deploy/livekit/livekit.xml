@@ -28,7 +28,9 @@
   <onfailure action="restart" delay="30 sec" />
   <resetfailure>1 day</resetfailure>
 
-  <!-- LiveKit writes structured JSON to stdout; keep 10 files of 50 MB. -->
+  <!-- LiveKit writes its structured JSON log to stderr, so it lands in
+       livekit-service.err.log; livekit-service.out.log stays empty and
+       livekit-service.wrapper.log is WinSW's own log. Keep 10 files of 50 MB. -->
   <logpath>__LOGDIR__</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>51200</sizeThreshold>
