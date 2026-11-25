@@ -52,8 +52,8 @@ güvenlik duvarında açık değilse TURN el sıkışması başarılı olur ama 
 ### 1.2 Windows Server 2025 laboratuvar VM'i (2026-11-25)
 
 **Bu bir işlev denetimidir, Spike A ölçümü değildir.** Makine 2 vCPU / 4 GB'lık bir
-Hyper-V VM'idir (WEB: Windows Server 2025 Datacenter, etki alanı üyesi, düğüm IP'si
-10.0.0.16, kısa ömürlü öz-imzalı TURN sertifikası) ve yük üreteci SFU'nun kendisinde
+Hyper-V laboratuvar VM'idir (Windows Server 2025 Datacenter, etki alanı üyesi, özel bir
+düğüm IP'si, kısa ömürlü öz-imzalı TURN sertifikası) ve yük üreteci SFU'nun kendisinde
 çalıştı. Aşağıdaki CPU sayıları yalnızca "kurulum çalışıyor ve medya akıyor" demektir; §3
 ölçütleri için §2'deki donanım ve ayrı yük üreteci gerekir.
 
@@ -62,7 +62,7 @@ Hyper-V VM'idir (WEB: Windows Server 2025 Datacenter, etki alanı üyesi, düğ�
 | Adım | Sonuç |
 |---|---|
 | `Get-LiveKit.ps1 -Version 1.13.6` | 17,8 MB indirildi, `checksums.txt`'e karşı SHA-256 doğrulandı, 32 sn; ikinci çalıştırma "already current" |
-| `Install-LiveKitService.ps1` (LocalSystem) | WinSW 2.12.0 SHA-256 doğrulandı; servis Running, gecikmeli otomatik başlatma, `sc qfailure` 5000/10000/30000 ms, sıfırlama 86400 sn; `livekit-server.exe` önceliği High; TCP 7880/7881/5349 dinliyor, UDP 3478 ve 10.0.0.16:7882 bağlı; `GET /` → 200 "OK"; "LiveKit" grubunda altı kural |
+| `Install-LiveKitService.ps1` (LocalSystem) | WinSW 2.12.0 SHA-256 doğrulandı; servis Running, gecikmeli otomatik başlatma, `sc qfailure` 5000/10000/30000 ms, sıfırlama 86400 sn; `livekit-server.exe` önceliği High; TCP 7880/7881/5349 dinliyor, UDP 3478 ve `<düğüm-IP>`:7882 bağlı; `GET /` → 200 "OK"; "LiveKit" grubunda altı kural |
 | Çalışırken ikinci kurulum | 3,5 sn'de yeniden oluşturuldu, Running |
 | `livekit-server.exe` öldürüldü | 5,6 sn sonra yeniden yanıt veriyor; `Stop-Service` 0,3 sn |
 | Elle oda + `lk load-test` (1 yayıncı, 4 abone, 30 sn) | 4/4 iz, abone başına 1,3 Mbps, %0 kayıp; `livekit-server` CPU ort. %1,1, tepe tek çekirdeğin %11'i |
@@ -121,7 +121,10 @@ Kurulum:
 ```powershell
 # SFU düğümünde, yükseltilmiş oturum
 .\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
-# livekit.yaml içindeki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys)
+# Şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR> -NoStart
+# O kopyadaki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys);
+# depodaki deploy\livekit\livekit.yaml şablon olarak doldurulmamış kalır
 .\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR>
 ```
 

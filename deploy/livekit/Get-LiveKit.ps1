@@ -149,6 +149,8 @@ if ($PSCmdlet.ShouldProcess($InstallDir, "Install $exeName")) {
     $reported = (& $targetExe --version 2>&1 | Out-String).Trim()
     Write-Host ("installed {0} ({1:N1} MB) -> {2}" -f $reported, ((Get-Item -LiteralPath $targetExe).Length / 1MB), $targetExe)
     Write-Host ''
-    Write-Host 'Next: copy livekit.yaml next to the binary, fill in node_ip, turn.domain, the'
-    Write-Host 'certificate paths and the API key, then run Install-LiveKitService.ps1.'
+    Write-Host 'Next: run Install-LiveKitService.ps1 -NoStart (it copies the livekit.yaml template'
+    Write-Host 'next to the binary), fill in node_ip, turn.domain, the certificate paths and the API'
+    Write-Host 'key in that copy, then run Install-LiveKitService.ps1 again. The template in the'
+    Write-Host 'repository stays unfilled.'
 }

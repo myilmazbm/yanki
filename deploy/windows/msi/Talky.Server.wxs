@@ -163,13 +163,19 @@
     </Component>
 
     <!-- Everything from `dotnet publish` except the host itself (declared below with
-         the service) and build-time leftovers. -->
+         the service) and build-time leftovers.
+         msalruntime.dll (Entra ID broker runtime, pulled in by Microsoft.Data.SqlClient via
+         Microsoft.Identity.Client.Broker) is left out: its licence terms carry no
+         redistribution grant, and it is only loaded for interactive broker sign-in, which a
+         node connecting to SQL Server with integrated security never uses. Test-Msi.ps1
+         asserts that it stays out. -->
     <ComponentGroup Id="ServerPayload" Directory="INSTALLFOLDER">
       <Files Include="$(var.PublishDir)\**">
         <Exclude Files="$(var.PublishDir)\$(var.ExeName)" />
         <Exclude Files="$(var.PublishDir)\**\*.pdb" />
         <Exclude Files="$(var.PublishDir)\**\*.xml" />
         <Exclude Files="$(var.PublishDir)\**\appsettings.Development.json" />
+        <Exclude Files="$(var.PublishDir)\**\msalruntime.dll" />
       </Files>
     </ComponentGroup>
 

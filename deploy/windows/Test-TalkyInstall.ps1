@@ -4,7 +4,7 @@
     installed with msiexec answers /api/v1/ping", plus the same check for the script path.
 
 .DESCRIPTION
-    STATUS: executed on 2026-11-25 on the lab VM "WEB" (Windows Server 2025 Datacenter,
+    STATUS: executed on 2026-11-25 on a lab VM (Windows Server 2025 Datacenter,
     domain member, service as LocalSystem, SQL Server 2022 on another VM), driven over
     PowerShell Direct, with the upgrade sub-leg; all checks passed (docs/plan-v1.md,
     "M0 durumu"). It installs and removes a Windows service, firewall rules and an event

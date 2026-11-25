@@ -238,6 +238,21 @@ Bilinen açıklar:
   yükseltmesi, kaldırması ve geri alması her zaman önce `Stop-Service Talky` ile başlar
   (bölüm 6 ve 10). Çalışan düğüme karşı yükseltme amaçlı `msiexec /i` ölçülmedi.
 
+**MSI yükü ve yayın ön koşulları.** MSI, `dotnet publish` çıktısının tamamını taşır; tek
+bilinçli istisna `msalruntime.dll`'dir (Microsoft.Data.SqlClient'ın Entra ID aracı bileşeni).
+Lisans metni yeniden dağıtım izni vermez ve dosya yalnızca etkileşimli Entra ID aracılı oturum
+açmada yüklenir; SQL Server'a Integrated Security ile bağlanan bir düğüm onu hiç kullanmaz.
+`Test-Msi.ps1` dosyanın pakette olmadığını denetler; `Test-TalkyInstall.ps1` dosya olmadan
+`talky migrate` ve `/api/v1/ping`'in çalıştığını laboratuvar VM'inde doğruladı. İki yayın ön
+koşulu **henüz karşılanmadı**:
+
+- Yayın sırasında üretilen bir `THIRD-PARTY-NOTICES` dosyası (MSI'nin taşıdığı açık kaynak
+  bileşenlerin ve Microsoft.Data.SqlClient SNI kütüphanesinin lisans ve bildirimleri) yok.
+- Bu dosya var olana kadar **hiçbir `v*` etiketi push edilmez**: bir `v*` etiketi CI'da MSI'yi
+  derler ve iş akışı yapıtı olarak yayımlar. El ile tetiklenen çalıştırma (`workflow_dispatch`,
+  MSI provası için) da MSI'yi yapıt olarak yükler; bu dosya gelmeden prova yapılırsa yapıt
+  çalıştırmadan sonra silinir.
+
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri); MSI yolunda ayrıca
 gecikmeli otomatik başlatmayı ve 5/10/30 sn kurtarma ayarını denetler. `-UpgradeMsiPath` ile
@@ -291,10 +306,19 @@ Medya düğümü:
 
 ```powershell
 .\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
-# livekit.yaml içindeki "<...>" yer tutucularını doldurun
+# İlk çalıştırma şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24 `
+    -ServiceAccount 'NT AUTHORITY\NetworkService' -NoStart
+# C:\Program Files\LiveKit\livekit.yaml içindeki "<...>" yer tutucularını doldurun
 .\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24 `
     -ServiceAccount 'NT AUTHORITY\NetworkService'
 ```
+
+Doldurulan dosya, betiğin `InstallDir`'e kopyaladığı `livekit.yaml`'dır; depodaki
+`deploy/livekit/livekit.yaml` şablondur ve **hiçbir zaman doldurulmaz** (gerçek anahtar çifti
+bir commit'le herkese açık depoya gider). Var olan bir `InstallDir\livekit.yaml` hiçbir zaman
+şablonla ezilmez. İkinci çalıştırma, kopyanın adını verdiği TURN sertifikasına ve anahtarına
+servis hesabı için okuma izni verir ve servisi başlatır.
 
 LiveKit bir konsol programıdır; WinSW 2.12.0 sarmalayıcısıyla (`livekit-service.exe`)
 `LiveKit` adlı Windows servisi olur: gecikmeli otomatik başlatma, 5/10/30 sn'de yeniden
@@ -335,14 +359,15 @@ baştan sona sınar; servis kurup kaldırdığı için yalnızca atılabilir bir
     -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
 ```
 
-Şablonu kendisi doldurur, API sırrını makinede rastgele üretir (hiçbir yere yazdırmaz) ve
+Şablonun doldurulmuş bir kopyasını `InstallDir`'e kendisi yazar (şablona dokunmaz), API sırrını
+makinede rastgele üretir (hiçbir yere yazdırmaz) ve
 dört adımı koşar: LocalSystem kurulumu, ikinci kurulum, `livekit-server.exe` öldürülünce
 20 sn içinde toparlanma; 1 yayıncı / 4 aboneyle 30 sn'lik medya denetimi
 (`Invoke-LiveKitLoadTest.ps1`, her abone izini almalı) ve olmayan bir odaya karşı mutlaka
 başarısız olması gereken negatif deneme; LocalSystem kurulumunun üzerine NetworkService ile
 yeniden kurulum ve 45 sn sonra aynı süreçle ayakta olması (7031 olayı yok); `-Remove`.
 Her adımda bir PASS/FAIL satırı basar, ilk başarısız adımda durur ve 1 ile çıkar.
-2026-11-25'te WEB laboratuvar VM'inde (Windows Server 2025) tüm denetimler geçti
+2026-11-25'te bir laboratuvar VM'inde (Windows Server 2025) tüm denetimler geçti
 (`docs/livekit-windows-spike.md` §1.2).
 
 `Invoke-LiveKitLoadTest.ps1` odayı kendisi oluşturur (`room.auto_create: false`) ve
