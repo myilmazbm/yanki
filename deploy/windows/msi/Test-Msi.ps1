@@ -7,7 +7,8 @@
     payload and resolves the Directory table exactly as a real install would, then asserts:
 
       * the administrative install succeeded (exit code 0);
-      * the host executable and the harvested payload were laid down, without .pdb files;
+      * the host executable and the harvested payload were laid down, without .pdb files
+        and without msalruntime.dll (excluded: no redistribution grant in its licence);
       * the MSI declares the "Talky" service with delayed automatic start;
       * the recovery policy (restart after 5 s / 10 s / 30 s, reset after a day) comes from
         the deferred, non-impersonated custom action ConfigureServiceRecovery running
@@ -134,6 +135,8 @@ if ($PSCmdlet.ShouldProcess($WorkDir, 'Administrative install (msiexec /a) extra
     }
     $appSettings = @(Get-ChildItem -LiteralPath $WorkDir -Recurse -Filter 'appsettings.json' -ErrorAction SilentlyContinue)
     Assert-True ($appSettings.Count -ge 1) 'appsettings.json laid down in the install folder'
+    $msalExtracted = @(Get-ChildItem -LiteralPath $WorkDir -Recurse -Filter 'msalruntime*.dll' -ErrorAction SilentlyContinue)
+    Assert-True ($msalExtracted.Count -eq 0) "msalruntime.dll not laid down (no redistribution grant; actual: $($msalExtracted.Count))"
 }
 
 # --- Metadata assertions (read straight from the MSI, no extraction required) ---
@@ -160,6 +163,11 @@ $secure = @(if ($props.ContainsKey('SecureCustomProperties')) { $props['SecureCu
 Assert-True ($secure -contains 'SERVICE_ACCOUNT') 'SERVICE_ACCOUNT is a secure custom property (survives elevation)'
 Assert-True ($secure -contains 'DATADIR') 'DATADIR is a secure custom property (survives elevation)'
 Assert-True ($props.ContainsKey('ARPHELPLINK') -and $props.ContainsKey('ARPURLINFOABOUT')) 'ARP metadata present'
+
+# The File table stores "short|long" names; match the long name.
+$msalFiles = @((Get-MsiTable -Path $MsiPath -Query 'SELECT `FileName` FROM `File`' -ColumnCount 1) |
+    Where-Object { ($_[0] -split '\|')[-1] -like 'msalruntime*.dll' })
+Assert-True ($msalFiles.Count -eq 0) "msalruntime.dll is not in the File table (actual: $($msalFiles.Count))"
 
 $upgrade = Get-MsiTable -Path $MsiPath -Query 'SELECT `UpgradeCode`,`ActionProperty` FROM `Upgrade`' -ColumnCount 2
 Assert-True ($upgrade.Count -ge 1) 'MajorUpgrade rows present'

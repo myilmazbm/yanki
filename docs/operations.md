@@ -238,6 +238,21 @@ Bilinen açıklar:
   yükseltmesi, kaldırması ve geri alması her zaman önce `Stop-Service Talky` ile başlar
   (bölüm 6 ve 10). Çalışan düğüme karşı yükseltme amaçlı `msiexec /i` ölçülmedi.
 
+**MSI yükü ve yayın ön koşulları.** MSI, `dotnet publish` çıktısının tamamını taşır; tek
+bilinçli istisna `msalruntime.dll`'dir (Microsoft.Data.SqlClient'ın Entra ID aracı bileşeni).
+Lisans metni yeniden dağıtım izni vermez ve dosya yalnızca etkileşimli Entra ID aracılı oturum
+açmada yüklenir; SQL Server'a Integrated Security ile bağlanan bir düğüm onu hiç kullanmaz.
+`Test-Msi.ps1` dosyanın pakette olmadığını denetler; `Test-TalkyInstall.ps1` dosya olmadan
+`talky migrate` ve `/api/v1/ping`'in çalıştığını laboratuvar VM'inde doğruladı. İki yayın ön
+koşulu **henüz karşılanmadı**:
+
+- Yayın sırasında üretilen bir `THIRD-PARTY-NOTICES` dosyası (MSI'nin taşıdığı açık kaynak
+  bileşenlerin ve Microsoft.Data.SqlClient SNI kütüphanesinin lisans ve bildirimleri) yok.
+- Bu dosya var olana kadar **hiçbir `v*` etiketi push edilmez**: bir `v*` etiketi CI'da MSI'yi
+  derler ve iş akışı yapıtı olarak yayımlar. El ile tetiklenen çalıştırma (`workflow_dispatch`,
+  MSI provası için) da MSI'yi yapıt olarak yükler; bu dosya gelmeden prova yapılırsa yapıt
+  çalıştırmadan sonra silinir.
+
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri); MSI yolunda ayrıca
 gecikmeli otomatik başlatmayı ve 5/10/30 sn kurtarma ayarını denetler. `-UpgradeMsiPath` ile
