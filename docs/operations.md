@@ -352,7 +352,7 @@ dört adımı koşar: LocalSystem kurulumu, ikinci kurulum, `livekit-server.exe`
 başarısız olması gereken negatif deneme; LocalSystem kurulumunun üzerine NetworkService ile
 yeniden kurulum ve 45 sn sonra aynı süreçle ayakta olması (7031 olayı yok); `-Remove`.
 Her adımda bir PASS/FAIL satırı basar, ilk başarısız adımda durur ve 1 ile çıkar.
-2026-11-25'te WEB laboratuvar VM'inde (Windows Server 2025) tüm denetimler geçti
+2026-11-25'te bir laboratuvar VM'inde (Windows Server 2025) tüm denetimler geçti
 (`docs/livekit-windows-spike.md` §1.2).
 
 `Invoke-LiveKitLoadTest.ps1` odayı kendisi oluşturur (`room.auto_create: false`) ve

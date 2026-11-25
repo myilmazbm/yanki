@@ -5,7 +5,7 @@
     through Invoke-LiveKitLoadTest.ps1.
 
 .DESCRIPTION
-    STATUS: executed on 2026-11-25 on the lab VM "WEB" (Windows Server 2025 Datacenter,
+    STATUS: executed on 2026-11-25 on a lab VM (Windows Server 2025 Datacenter,
     2 vCPU / 4 GB, domain member, self-signed lab TURN certificate), driven over
     PowerShell Direct from a clean reset; all checks passed, 144 s in total
     (docs/livekit-windows-spike.md, section 1.2). That is a functional check, not the
@@ -79,7 +79,7 @@
     Required: confirms that this machine may get the LiveKit service installed and removed.
 
 .EXAMPLE
-    .\Test-LiveKitInstall.ps1 -AcknowledgeServiceInstall -NodeIp 10.0.0.16 -TurnDomain web.corp.local `
+    .\Test-LiveKitInstall.ps1 -AcknowledgeServiceInstall -NodeIp 192.0.2.16 -TurnDomain media-01.corp.local `
         -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
 #>
 [CmdletBinding()]
