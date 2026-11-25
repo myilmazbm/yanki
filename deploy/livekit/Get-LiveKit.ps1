@@ -84,6 +84,20 @@ function Get-ExpectedHash {
     throw "checksums.txt has no entry for $FileName."
 }
 
+# SHA-256 of a file in lower case. Not Get-FileHash: in Windows PowerShell 5.1 that is a
+# script function which honours a global WhatIfPreference (powershell.exe -File ... -WhatIf)
+# and then returns nothing.
+function Get-Sha256 {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string] $Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    # Resolved the PowerShell way (location, PSDrives) like the cmdlets that wrote the file;
+    # .NET alone would resolve a relative path against the process directory.
+    $stream = [IO.File]::OpenRead($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+    try { return (-join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') })) }
+    finally { $stream.Dispose(); $sha.Dispose() }
+}
+
 $resolved = Resolve-LiveKitVersion -Requested $Version
 $archive = "livekit_${resolved}_windows_${Architecture}.zip"
 $baseUrl = "https://github.com/$Repo/releases/download/v$resolved"
@@ -128,7 +142,7 @@ elseif ($PSCmdlet.ShouldProcess("$baseUrl/$archive", 'Download release archive')
 
 if (Test-Path -LiteralPath $archivePath) {
     $expected = Get-ExpectedHash -ChecksumsPath $checksumsPath -FileName $archive
-    $actual = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256 -Path $archivePath
     if ($expected -ne $actual) {
         Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
         throw "SHA-256 mismatch for ${archive}: expected $expected, got $actual. The download was deleted."

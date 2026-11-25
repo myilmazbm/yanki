@@ -43,15 +43,19 @@
     <keepFiles>10</keepFiles>
   </log>
 
-  <!-- On stop WinSW sends Ctrl+C, which lets LiveKit drain its sessions, and kills the
-       process after stoptimeout. That happens in either order of this setting; it only
-       says whether child processes are listed after (true) or before (false) LiveKit is
-       stopped, and livekit-server.exe starts none. It must be false: with true, WinSW
-       2.12.0 lists them after LiveKit has exited, reads StartTime of the exited process
-       (ProcessHelper.GetChildren) and, now and then (a race, most likely with its own exit
-       handler), the wrapper dies with "The handle is invalid" - a plain stop then becomes
-       a crash, event 7031 and an SCM restart (seen once on a lab VM with LiveKit 1.13.11). -->
-  <stopparentprocessfirst>false</stopparentprocessfirst>
+  <!-- Must be true (WinSW's default). On stop WinSW then sends LiveKit Ctrl+C: LiveKit logs
+       "exit requested, shutting down" in livekit-service.err.log, drains and exits 0, and
+       WinSW kills it only after stoptimeout. The order matters: livekit-server.exe has a
+       child, the conhost.exe of its console. With false WinSW stops that child first,
+       killing conhost; Ctrl+C can then no longer reach LiveKit ("Failed to attach to
+       console") and LiveKit is killed at once, exit -1, no drain (measured on a lab VM
+       with 1.13.6 and 1.13.11). With true, WinSW 2.12.0 lists the children after LiveKit
+       exited and can, rarely, crash there ("The handle is invalid" in
+       ProcessHelper.GetChildren, seen once); the SCM then treats the stop as a failure and
+       restarts the service after 5 s. Install-LiveKitService.ps1 removes the recovery
+       actions before its own stops; after a manual Stop-Service that comes back, stop it
+       again. -->
+  <stopparentprocessfirst>true</stopparentprocessfirst>
   <stoptimeout>30 sec</stoptimeout>
 
   <!-- Media threads should not lose the CPU to background maintenance work. -->
