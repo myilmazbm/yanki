@@ -322,7 +322,12 @@ function Invoke-Native {
     [OutputType([int])]
     param([Parameter(Mandatory)][string] $FilePath, [string[]] $ArgumentList = @())
     $ErrorActionPreference = 'Continue'
-    & $FilePath @ArgumentList 2>&1 | ForEach-Object { Write-Verbose "$_" }
+    # A launch failure (blocked, quarantined, missing) is not a stderr line: it must end the
+    # run, and an earlier call's exit code must never be returned in its place.
+    $global:LASTEXITCODE = $null
+    try { & $FilePath @ArgumentList 2>&1 | ForEach-Object { Write-Verbose "$_" } }
+    catch { throw "$FilePath could not be started: $($_.Exception.Message)" }
+    if ($null -eq $LASTEXITCODE) { throw "$FilePath could not be started (no exit code)." }
     return $LASTEXITCODE
 }
 
@@ -340,7 +345,9 @@ function Get-Sha256 {
     [OutputType([string])]
     param([Parameter(Mandatory)][string] $Path)
     $sha = [Security.Cryptography.SHA256]::Create()
-    $stream = [IO.File]::OpenRead($Path)
+    # Resolved the PowerShell way (location, PSDrives) like the cmdlets that wrote the file;
+    # .NET alone would resolve a relative path against the process directory.
+    $stream = [IO.File]::OpenRead($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
     try { return (-join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') })) }
     finally { $stream.Dispose(); $sha.Dispose() }
 }
@@ -581,44 +588,39 @@ function Remove-AllowRule {
 
 # The TURN private key must not be readable by ordinary users. The decision does not
 # depend on what the DACL shows: a key moved into its folder keeps a stale DACL without
-# the folder's entries, and the next write of an unprotected DACL brings them back. So
-# inheritance is turned off whenever it is still on (inherited entries become explicit
-# ones), then the allow entries of the broad groups are removed; everything else stays.
-# SYSTEM and Administrators get Full Control if they have no allow entry left that reads
-# the file. Call it before granting the service account Read: once the DACL is protected,
-# no later write can bring the folder's entries back. Returns what it changed, or ''.
+# the folder's entries, and the next write of an unprotected DACL brings them back. So the
+# new DACL is protected (inherited entries are kept as explicit ones), without the allow
+# entries of the broad groups, and with Full Control for SYSTEM and Administrators if no
+# remaining allow entry of theirs reads the file. It is built in memory with AddAccessRule,
+# which keeps the canonical order (deny before allow, whatever the old order was), and
+# written once, so the key never has an empty or half-changed DACL on disk. Call it before
+# granting the service account Read. Returns what it changed, or '' (nothing written).
 function Protect-PrivateKeyFile {
     param([Parameter(Mandatory)][string] $Path)
     $item = Get-Item -LiteralPath $Path
-    $acl = $item.GetAccessControl('Access')
-    $changes = @()
-    if (-not $acl.AreAccessRulesProtected) {
-        $acl.SetAccessRuleProtection($true, $true)
-        # Persist and re-read so the formerly inherited entries are explicit and removable.
-        $item.SetAccessControl($acl)
-        $acl = $item.GetAccessControl('Access')
-        $changes += 'inheritance off'
-    }
-    $broad = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
-        Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -in $BroadSids })
-    if ($broad.Count -gt 0) {
-        foreach ($sid in $BroadSids) {
-            $acl.RemoveAccessRuleAll((New-Object Security.AccessControl.FileSystemAccessRule(
-                (New-Object Security.Principal.SecurityIdentifier($sid)), 'Read', 'Allow')))
-        }
-        $item.SetAccessControl($acl)
-        $changes += 'Users / Authenticated Users / Everyone / app packages removed'
-        $acl = $item.GetAccessControl('Access')
-    }
-    $readers = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
-        Where-Object { $_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band [int][Security.AccessControl.FileSystemRights]::ReadData) -ne 0 } |
+    $current = $item.GetAccessControl('Access')
+    $rules = @($current.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+    $broad = @($rules | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -in $BroadSids })
+    $kept = @($rules | Where-Object { $broad -notcontains $_ })
+    $readers = @($kept | Where-Object { $_.AccessControlType -eq 'Allow' -and
+            ([int]$_.FileSystemRights -band [int][Security.AccessControl.FileSystemRights]::ReadData) -ne 0 } |
         ForEach-Object { $_.IdentityReference.Value })
     $missing = @($SystemSid, $AdminsSid | Where-Object { $readers -notcontains $_.Value })
+    $changes = @()
+    if (-not $current.AreAccessRulesProtected) { $changes += 'inheritance off' }
+    if ($broad.Count -gt 0) { $changes += 'Users / Authenticated Users / Everyone / app packages removed' }
     if ($missing.Count -gt 0) {
-        foreach ($sid in $missing) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'Allow'))) }
-        $item.SetAccessControl($acl)
         $changes += "$(($missing | ForEach-Object { if ($_.Value -eq $SystemSid.Value) { 'SYSTEM' } else { 'Administrators' } }) -join ' and ') full control added (no entry of theirs could read it)"
     }
+    if ($changes.Count -eq 0) { return '' }
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in $kept) {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($rule.IdentityReference, $rule.FileSystemRights,
+                    $rule.InheritanceFlags, $rule.PropagationFlags, $rule.AccessControlType)))
+    }
+    foreach ($sid in $missing) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'Allow'))) }
+    $item.SetAccessControl($acl)
     return ($changes -join ', ')
 }
 
@@ -996,20 +998,26 @@ $turnFiles = @()
 if (Test-Path -LiteralPath $ConfigTarget) {
     $turnFiles = @(Invoke-Read -What 'the TURN certificate and key named in livekit.yaml (their permissions)' -Default @() -Read { Get-TurnFilePath -ConfigPath $ConfigTarget })
 }
+$existingTurn = @()
 foreach ($turnFile in $turnFiles) {
-    if (-not (Test-Path -LiteralPath $turnFile.Path)) {
-        Write-Warning "TURN file $($turnFile.Path) ($($turnFile.Kind) in livekit.yaml) does not exist; LiveKit will not start."
-        continue
+    if (Test-Path -LiteralPath $turnFile.Path) { $existingTurn += $turnFile }
+    else { Write-Warning "TURN file $($turnFile.Path) ($($turnFile.Kind) in livekit.yaml) does not exist; LiveKit will not start." }
+}
+# Every key is closed before any grant (cert_file and key_file may name the same PEM), so a
+# key is never open between two writes and a failed grant leaves it closed; step 6 closes
+# it again after its clean-up. Read is then granted once per distinct file.
+foreach ($keyPath in @($existingTurn | Where-Object { $_.Kind -eq 'key_file' } | ForEach-Object { $_.Path } | Select-Object -Unique)) {
+    if ($PSCmdlet.ShouldProcess($keyPath, 'Turn inheritance off and remove Users, Authenticated Users, Everyone and app packages')) {
+        $changed = Protect-PrivateKeyFile -Path $keyPath
+        Write-Host "acl      $keyPath (private key: $(if ($changed) { $changed } else { 'already closed' }))"
     }
-    # The key is closed before the account's grant, so it is never open between two writes
-    # and a failed grant leaves it closed; step 6 closes it again after its clean-up.
-    if ($turnFile.Kind -eq 'key_file' -and $PSCmdlet.ShouldProcess($turnFile.Path, 'Turn inheritance off and remove Users, Authenticated Users, Everyone and app packages')) {
-        $changed = Protect-PrivateKeyFile -Path $turnFile.Path
-        Write-Host "acl      $($turnFile.Path) (private key: $(if ($changed) { $changed } else { 'already closed' }))"
-    }
-    if (-not $isLocalSystem -and $PSCmdlet.ShouldProcess($turnFile.Path, "Grant $ServiceAccount Read")) {
-        Add-AllowRule -Path $turnFile.Path -Sid $accountSid -Rights 'Read'
-        Write-Host "acl      $($turnFile.Path) ($ServiceAccount read)"
+}
+if (-not $isLocalSystem) {
+    foreach ($turnPath in @($existingTurn | ForEach-Object { $_.Path } | Select-Object -Unique)) {
+        if ($PSCmdlet.ShouldProcess($turnPath, "Grant $ServiceAccount Read")) {
+            Add-AllowRule -Path $turnPath -Sid $accountSid -Rights 'Read'
+            Write-Host "acl      $turnPath ($ServiceAccount read)"
+        }
     }
 }
 

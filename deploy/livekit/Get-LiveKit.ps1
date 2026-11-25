@@ -91,7 +91,9 @@ function Get-Sha256 {
     [OutputType([string])]
     param([Parameter(Mandatory)][string] $Path)
     $sha = [Security.Cryptography.SHA256]::Create()
-    $stream = [IO.File]::OpenRead($Path)
+    # Resolved the PowerShell way (location, PSDrives) like the cmdlets that wrote the file;
+    # .NET alone would resolve a relative path against the process directory.
+    $stream = [IO.File]::OpenRead($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
     try { return (-join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') })) }
     finally { $stream.Dispose(); $sha.Dispose() }
 }
