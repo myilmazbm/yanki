@@ -178,16 +178,27 @@ her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.js
 (`Talky:Node:Roles`) durur. MSI yükseltmesi de servisi başlatmaz; yükseltmeden sonra
 `Start-Service Talky` gerekir.
 
-> **MSI bu iki değeri hatırlamaz.** Yükseltme ve geri alma için çalıştırılan **her**
-> `msiexec /i` komutu `SERVICE_ACCOUNT=` ve `DATADIR=` değerlerini ilk kurulumdakiyle
-> **aynen** tekrarlamalıdır. Yükseltme eski servisi siler ve yenisini o komutun değerleriyle
-> kaydeder; değerler verilmezse servis **sessizce** LocalSystem hesabıyla ve varsayılan veri
-> klasörüyle (`C:\ProgramData\Talky`) yeniden oluşturulur, hiçbir uyarı çıkmaz. Özel bir
-> `DATADIR` kullanan düğümde varsayılan klasörde `appsettings.json` bulunmadığı için servis
-> başlamaz; varsayılan `DATADIR` kullanan düğümde servis gMSA yerine SYSTEM olarak başlar
-> (SQL ve Kerberos makine hesabıyla çalışır). Düzeltme planlıdır (aşağıda "Bilinen açıklar").
+**MSI `SERVICE_ACCOUNT` ve `DATADIR` değerlerini hatırlar.** Kurulum iki değeri
+`HKLM\SOFTWARE\Talky` altına (`ServiceAccount`, `DataDir`) yazar; sonraki yükseltme, onarım
+ve yeniden kurulum bu değerleri oradan okur, bu yüzden yükseltme ve geri alma komutlarında
+tekrarlanmaları gerekmez. Öncelik: komut satırında verilen değer > hatırlanan değer >
+varsayılan (LocalSystem, `C:\ProgramData\Talky`). `SERVICE_PASSWORD` hiçbir yere yazılmaz.
+Hesabı ya da veri klasörünü **bilerek** değiştirmek için yeni değeri bir sonraki
+`msiexec /i` komutunda verin (`SERVICE_ACCOUNT=…` / `DATADIR=…`); o değer servise uygulanır
+ve yeni hatırlanan değer olur (parolalı bir hesapta `SERVICE_PASSWORD=` de gerekir; veri
+klasörünü değiştirirseniz `appsettings.json`'u ve ACL'leri yeni klasöre siz taşırsınız).
+Anahtar, `DATADIR` gibi kalıcıdır: `msiexec /x` onu silmez, böylece kaldırıp eski sürümü
+kurmak (geri alma) ve yeniden kurulum aynı hesabı ve klasörü bulur. Düğümü tamamen
+temizlerken anahtarı elle silin: `Remove-Item HKLM:\SOFTWARE\Talky`. Bu davranış bu
+özelliği taşıyan sürümlerden itibaren geçerlidir; anahtarı okumayan daha eski bir MSI'ye
+geri dönülürse iki değer o komutta verilmelidir.
 
-Kurulumdan sonra kurtarma ayarlarını doğrulayın:
+**Kurtarma ayarları.** MSI, servisi kaydettikten hemen sonra `sc.exe failure Talky
+reset= 86400 actions= restart/5000/restart/10000/restart/30000` çalıştırır (betik yolundaki
+ayarın aynısı); komut başarısız olursa kurulum geri alınır. Windows Installer'ın kendi
+`MsiServiceConfigFailureActions` tablosu Windows Server 2025'te yeniden başlatma eylemlerini
+ayarlayamıyor (hata 1939, erişim reddedildi) ve kurulumu geri alıyordu; bu yüzden
+kullanılmıyor. Kurulumdan sonra doğrulayın:
 
 ```powershell
 sc.exe qfailure Talky      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
@@ -199,23 +210,25 @@ Bilinen açıklar:
 - Host, arızalanan bir arka plan servisi yüzünden kendini durdurduğunda süreç bugün 0
   koduyla çıkar; SCM bunu hata saymaz ve kurtarma eylemleri tetiklenmez. Doğru çıkış kodu ve
   `sc.exe failureflag` ayarı gerçek bir servis kurulumunda doğrulanınca gelecek.
-- MSI `SERVICE_ACCOUNT` ve `DATADIR` değerlerini hatırlamaz (yukarıdaki uyarı). Planlanan
-  düzeltme: MSI iki değeri ilk kurulumda HKLM altına yazar ve sonraki kurulumlarda oradan
-  geri okur (komut satırında açıkça verilen değer önceliklidir). Atılabilir bir VM'de
-  denenebilene kadar MSI'de değişiklik yapılmıyor; o zamana dek iki değer her `msiexec /i`
-  komutunda tekrarlanır.
-- MSI'nin kendi servis durdurması en fazla 30 sn bekler; düğüm ise durmadan önce
-  `DrainSeconds` (varsayılan 30 sn) boyunca boşaltır. Bu yüzden MSI yükseltmesi, kaldırması
-  ve geri alması her zaman önce `Stop-Service Talky` ile başlar (bölüm 6 ve 10). Çalışan bir
-  düğümde `msiexec`'in gerçekte ne yaptığı (1921/1603 ile geri alma mı, 3010 mu; MSI'nin
-  kendi durdurma eylemine gerek olup olmadığı), bir VM'de çalışan bir düğüme karşı
-  `msiexec /x` ve yükseltme amaçlı `msiexec /i` elle (`/l*v` günlüğüyle) denenene kadar
-  **doğrulanmamıştır**. Kabul testi `msiexec /x`'ten önce servisi durdurduğu için bunu ölçmez.
+- MSI'nin kendi servis durdurması boşaltmayı (`DrainSeconds`, varsayılan 30 sn) beklemek
+  için tasarlanmamıştır. **Bir kez ölçüldü** (2026-11-25, laboratuvar VM'i, Windows Server
+  2025): çalışan bir düğümde `msiexec /x … /qn /norestart` 31,3 sn sonra 0 koduyla çıktı;
+  `StopServices` 30 sn'lik boşaltmanın bitmesini bekledi, servis ve dosyalar kaldırıldı, veri
+  klasörü ve `appsettings.json` kaldı, yeniden başlatma gerekmedi. Tek bir ölçüm olduğu ve
+  daha uzun bir `DrainSeconds` ile sonucun değişebileceği için prosedür değişmedi: MSI
+  yükseltmesi, kaldırması ve geri alması her zaman önce `Stop-Service Talky` ile başlar
+  (bölüm 6 ve 10). Çalışan düğüme karşı yükseltme amaçlı `msiexec /i` ölçülmedi.
 
 **Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
-`/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri). Servis kurup
-kaldırdığı için yalnızca atılabilir bir VM'de, yükseltilmiş oturumda ve
-`-AcknowledgeServiceInstall` ile çalıştırılır. Henüz hiç çalıştırılmadı.
+`/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri); MSI yolunda ayrıca
+gecikmeli otomatik başlatmayı ve 5/10/30 sn kurtarma ayarını denetler. `-UpgradeMsiPath` ile
+verilen daha yüksek sürümlü ikinci bir MSI (`Build-Msi.ps1 -Version 0.1.1 -SkipPublish`),
+özel `SERVICE_ACCOUNT` ve `DATADIR` ile kurulmuş bir düğümün bu iki değeri vermeden
+yükseltildiğinde hesabını, `--data-dir`'ini ve kurtarma ayarını koruduğunu denetler. Servis
+kurup kaldırdığı için yalnızca atılabilir bir VM'de, yükseltilmiş oturumda ve
+`-AcknowledgeServiceInstall` ile çalıştırılır. 2026-11-25'te laboratuvar VM'inde (Windows
+Server 2025, SQL Server 2022) yükseltme alt adımıyla birlikte tüm denetimleri geçti
+(`docs/plan-v1.md`, "M0 durumu").
 
 **SQL izinleri.** `talky migrate` kurulumu yapan yönetici hesabıyla (Integrated Security
 ise o Windows kimliğiyle) çalışır: veritabanı yoksa oluşturur (`dbcreator`), varsa üzerinde
@@ -333,12 +346,12 @@ Stop-Service Talky            # boşaltma koordinatörü 503 + Reconnect + boşa
 # olan servisin --data-dir'i kullanılır; verilen -DataDir ondan farklıysa betik durur.
 ```
 
-MSI ile kurulmuş düğümde aynı adım (`SERVICE_ACCOUNT` ve `DATADIR` ilk kurulumdakiyle
-aynen):
+MSI ile kurulmuş düğümde aynı adım (`SERVICE_ACCOUNT` ve `DATADIR` hatırlanır, verilmez;
+bölüm 4.1):
 
 ```powershell
-Stop-Service Talky            # önce: MSI'nin kendi durdurması boşaltmayı beklemez
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<yeni-sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','upgrade.log'
+Stop-Service Talky            # önce: MSI'nin kendi durdurması boşaltmayı beklemek için tasarlanmadı
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','upgrade.log'
 if ($p.ExitCode -ne 0) { throw "msiexec exited with $($p.ExitCode); see upgrade.log" }
 & 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'   # yalnızca ilk düğümde
 Start-Service Talky
@@ -359,12 +372,12 @@ Kurallar:
 - Küme içinde **en fazla bir minör sürüm farkı** kabul edilir. Planlı (M2): mesh el
   sıkışması sürümü taşıyacak ve uyumsuzluğu loglayacak.
 - MSI ile yükseltme `MajorUpgrade Schedule="afterInstallInitialize"` kullanır: eski sürüm
-  önce kaldırılır, sonra yenisi kurulur. Servis önce `Stop-Service Talky` ile durdurulur:
-  MSI'nin kendi durdurması en fazla 30 sn bekler, boşaltma ise varsayılan olarak 30 sn
-  sürer (bölüm 4.1, "Bilinen açıklar"). `DataDir` klasörü ve `appsettings.json` yükseltmede
-  silinmez, ama servis yalnızca `DATADIR=` ve `SERVICE_ACCOUNT=` tekrarlandığında aynı klasörü
-  ve hesabı kullanır. MSI servisi başlatmaz: `talky migrate` (ilk düğümde), sonra
-  `Start-Service Talky`.
+  önce kaldırılır, sonra yenisi kurulur. Servis önce `Stop-Service Talky` ile durdurulur
+  (bölüm 4.1, "Bilinen açıklar"). `DataDir` klasörü ve `appsettings.json` yükseltmede
+  silinmez; yeni servis, `HKLM\SOFTWARE\Talky` altında hatırlanan hesap ve `--data-dir` ile
+  kaydedilir (laboratuvar VM'inde doğrulandı, bölüm 4.1). Kurtarma ayarı ve gecikmeli
+  başlatma yükseltmede yeniden uygulanır. MSI servisi başlatmaz: `talky migrate` (ilk
+  düğümde), sonra `Start-Service Talky`.
 
 Geri alma: bir önceki yayın klasörünü `Install-Talky.ps1 -SourceDir <eski-yayın> -SkipMigrate`
 ile geri kopyalayın (yapılandırma ve servis hesabı korunur; özel veri klasörüyle kurulmuş
@@ -375,10 +388,14 @@ kaldırıp eskisini kurun:
 Stop-Service Talky
 $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','rollback-x.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see rollback-x.log" }
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<eski-sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','rollback-i.log'
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<eski-sürüm>.msi','/qn','/norestart','/l*v','rollback-i.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /i exited with $($p.ExitCode); see rollback-i.log" }
 Start-Service Talky
 ```
+
+`msiexec /x` hatırlanan değerleri silmediği için eski sürüm aynı hesap ve klasörle kurulur
+(laboratuvar VM'inde elle denendi). Eski sürüm hatırlama özelliğinden önceki bir sürümse
+`SERVICE_ACCOUNT=` ve `DATADIR=` değerlerini bu komutta verin.
 
 Şema geriye uyumlu olduğu için veri geri alma gerekmez.
 
@@ -495,12 +512,15 @@ Kaldırma:
 ```
 
 MSI ile kurulmuş düğümde servisi önce durdurun (MSI'nin kendi durdurması boşaltmayı
-beklemez, bölüm 4.1 "Bilinen açıklar"):
+beklemek için tasarlanmadı, bölüm 4.1 "Bilinen açıklar"). `msiexec /x` veri klasörünü ve
+`HKLM\SOFTWARE\Talky` anahtarını bırakır; düğümü tamamen temizlerken ikisini de elle silin:
 
 ```powershell
 Stop-Service Talky
 $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<sürüm>.msi','/qn','/norestart','/l*v','uninstall.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see uninstall.log" }
+# Tamamen temizlemek için (yapılandırma ve loglar da gider):
+#   Remove-Item -Recurse -Force 'D:\TalkyData'; Remove-Item HKLM:\SOFTWARE\Talky
 ```
 
 Hiçbir durumda SQL veritabanı ve dosya payı silinmez; onlar elle kaldırılır.
