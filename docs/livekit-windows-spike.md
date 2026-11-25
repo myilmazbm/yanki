@@ -170,8 +170,10 @@ her durdurma `Stop-Service LiveKit`, LiveKit sağlıklı ve boşta:
 çünkü boşaltılacak oturum yoktur; dolu bir düğümde false, katılımcıları uyarısız düşürür. true'ya
 dönüldü; nadir "The handle is invalid" çökmesi (§1.3) için betiğin kendi durdurmaları kurtarma
 eylemlerini önce kaldırır ve "Stopped, süreç kalmadı" durumunu başarı sayar. Bu çökme bu turda da
-kasıtlı olarak üretilemedi; o yol yalnızca kod incelemesiyle doğrulandı. Kabul testi artık
-çalışan bir düğümün her durdurmasından sonra LiveKit'in logunda bu satırı arar.
+kasıtlı olarak üretilemedi; o yol yalnızca kod incelemesiyle doğrulandı. Kabul testi bu turda
+kurulum betiğinin çalışan düğümü durdurduğu dört yerden ikisinden (ikinci kurulum, `-Remove`)
+sonra LiveKit'in logunda bu satırı arıyordu; dördüncü turdan beri dördünde de (iki hesap
+değişikliği dahil, §1.5).
 
 **Diğer bulgular.** Önce düzeltilmemiş betiklerle (2. tur kodu), sonra düzeltmeyle:
 
@@ -201,11 +203,45 @@ yeniden getirdi.
 
 | Sürüm | Sonuç | Notlar |
 |---|---|---|
-| 1.13.11 | İki koşu, ikisi de 114 PASS, 0 FAIL, çıkış 0, 278 sn | Başarısız başlatma adımı 84 sn; toparlanma 5,9 sn; 4/4 iz, %0 kayıp; her durdurmada `exit requested, shutting down` |
+| 1.13.11 | İki koşu, ikisi de 114 PASS, 0 FAIL, çıkış 0, 278 sn | Başarısız başlatma adımı 84 sn; toparlanma 5,9 sn; 4/4 iz, %0 kayıp; denetlenen iki durdurmada `exit requested, shutting down` |
 | 1.13.6 | 114 PASS, 0 FAIL, çıkış 0, 269 sn | Başarısız başlatma adımı 75 sn (0 koduyla çıkış, yeniden başlatma yok); gerisi aynı |
 
 Süre artışı (158 → ~278 sn) yeni başarısız başlatma adımından (~85 sn bekleme dahil) ve
 taşınmış anahtar adımından gelir; on dakikanın çok altındadır.
+
+### 1.5 Dördüncü tur: düşük önemli bulgular (2026-11-25)
+
+Üçüncü turun bağımsız incelemesi ikinci turun bütün bulgularını kapanmış buldu ve 16 düşük
+önemli yeni bulgu doğruladı. Önce üçüncü tur koduyla, sonra düzeltmeyle:
+
+| Deneme | Düzeltmeden önce | Düzeltmeden sonra |
+|---|---|---|
+| Kurulu düğümde `powershell.exe -File Install-LiveKitService.ps1 -WhatIf` (VM, yükseltilmiş; yerelde yükseltilmemiş) | "The property 'Hash' cannot be found": `Get-FileHash` 5.1'de genel `WhatIfPreference`'a uyan bir betik işlevidir ve hiçbir şey döndürmez | Kuru çalıştırma tamamlanır, `present … (SHA-256 verified)`. `Get-LiveKit.ps1 -WhatIf` önbellekteki arşivle aynı hatayı veriyordu (yerel), artık doğruluyor. Yük testinin karması `-WhatIf` altında hiç çalışmaz |
+| `sc.exe`/WinSW stderr'e bir satır yazıp 0 ile çıkar (yerel, betiğin kendi çağırma biçimi) | `ErrorActionPreference Stop` altında çalıştırma o satırla biter; `Stop-ServiceForChange` içindeyse kurtarma eylemleri kaldırılmış kalır | Yalnızca çıkış kodu sayılır. Durdurma kesilirse ya da kayıt silinemezse kurtarma eylemleri geri gelir (işlev düzeyinde sahte servisle denendi) |
+| NetworkService düğümünde LocalSystem'e geçiş, güvenlik duvarı adımında hata, ardından `Restart-Service` (VM) | `livekit.yaml`'dan NETWORK SERVICE okuması alınmıştı: yeniden başlatma başarısız, `out.log`'da `open …\livekit.yaml: Access is denied.`, üç 7031 | Önceki hesap okumayı korur; yeniden başlatma 20 sn içinde yanıt verir, 7031 yok. Sonraki normal çalıştırma okumayı eski servis durunca kaldırır |
+| Anahtar klasörü devralınabilir bir Deny girdisi taşıyor (yerel) | Kural dışı DACL: "this access control list is not in canonical form"; Users anahtarda açık girdi olarak kaldı | Önce kapatılır, sonra okuma verilir; Deny yerinde, geniş grup yok |
+| Anahtar klasörü yalnızca Everyone'a tam denetim veriyor, LocalSystem (yerel) | DACL boş kaldı: SYSTEM de okuyamaz | SYSTEM ve Administrators tam denetim eklendi ve yazıldı |
+| Varsayılan log klasöründe izinleri okunamayan bir dosya (VM) | Çıplak `UnauthorizedAccessException`, adım 4'te durdu | Dosyayı adıyla anan uyarı, kurulum tamamlandı |
+| Sahibi çözülemeyen bir SID olan özel log klasörü (VM) | `IdentityNotMappedException`, adım 4'te durdu | SID'i anan uyarı, kurulum tamamlandı |
+| Varsayılan log klasörü bir junction (VM) | Junction'ın DACL'si değişti, gösterdiği klasör açık kaldı, "inheritance off" yazıldı | Betik durur: "is a junction or symbolic link" |
+| `Talky\logs` LOCAL SERVICE'e ait (VM) | Uyarı yok | Uyarı; `acl` satırı yalnızca klasörün kendisini anlatır ve üst klasörlere güvenilmediğini söyler |
+| Yük testi `-Layout 3X3`, 8 yayıncı / 2 abone (VM) | `lk` speaker çalıştırdı: abone başına 6/8, FAIL | `3x3` geçer: 8/8, PASS 16/16 |
+| Kabul testi, `-InstallDir C:\LiveKitAlt` (VM) | Ön koşul FAIL (5 grubun 3'ü); test anahtarı Everyone ve Authenticated Users'a okunur, `livekit.yaml` (üretilen sır) Users'a okunur kaldı | Tam koşu geçti (aşağıda); test sonunda üç dosyayı da siler |
+| Kabul testi ilk kurulumda başarısız (bozuk WinSW önbelleği, VM) | Test anahtarı beş gruba, `livekit.yaml` Users'a okunur kaldı | İkisi de silindi |
+
+Durdurma denetimi artık kurulum betiğinin çalışan düğümü durdurduğu dört yerin dördünde
+yapılır. Denenemeyenler: incelemenin önerdiği tetik (başka bir sürecin `wrapper.log`'u yazma
+paylaşımı olmadan açık tutması) VM'de WinSW'nin stderr'e yazmasına yol açmadı, bu yüzden
+stderr davranışı yerelde, aynı çağırma biçimiyle gösterildi; gerçek bir Ctrl+C yerine
+işlev düzeyinde bir kesinti kullanıldı.
+
+**Tam kabul koşuları** (son kod değişikliğinden sonra, her biri temiz sıfırlamadan):
+
+| Koşu | Sonuç | Notlar |
+|---|---|---|
+| 1.13.11 | 116 PASS, 0 FAIL, çıkış 0, 278 sn | Dört durdurmanın dördünde `exit requested, shutting down`; başarısız başlatma adımı 84 sn |
+| 1.13.6 | 116 PASS, 0 FAIL, çıkış 0, 269 sn | Başarısız başlatma adımı 76 sn; gerisi aynı |
+| 1.13.11, `-InstallDir C:\LiveKitAlt` (Program Files dışında) | 116 PASS, 0 FAIL, çıkış 0, 278 sn | Ön koşul 5/5; test sonunda `livekit.yaml` ve iki anahtar kopyası silindi |
 
 ---
 
@@ -214,7 +250,7 @@ taşınmış anahtar adımından gelir; on dakikanın çok altındadır.
 | Rol | Makine | Notlar |
 |---|---|---|
 | SFU | Windows Server 2022/2025, 16 vCPU / 32 GB / 10 GbE | Yalnız LiveKit; başka rol yok |
-| Yük üreteci | Ayrı makine (Windows veya Linux), aynı L2/L3 | SFU'nun CPU'sunu kirletmemek için **asla** SFU üzerinde çalıştırılmaz |
+| Yük üreteci | Ayrı bir Windows makinesi (Windows PowerShell 5.1; ölçüm betiği `lk.exe`'yi indirir ve sayaçları Windows yollarıyla okur), aynı L2/L3. Linux'ta `lk load-test` elle çalıştırılabilir, ama betiğin denetimleri ve CSV'si o zaman yoktur | SFU'nun CPU'sunu kirletmemek için **asla** SFU üzerinde çalıştırılmaz |
 | Kısıtlı istemci | UDP'si tamamen engellenmiş bir VLAN'daki bir iş istasyonu | TURN/TLS geri dönüşünü ölçmek için |
 
 Kurulum:

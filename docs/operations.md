@@ -342,13 +342,18 @@ nadiren, LiveKit çıktıktan hemen sonra "The handle is invalid" ile çöker (b
 SCM bunu hata sayar ve servisi 5 sn sonra yeniden başlatır. Betiğin kendi durdurmaları
 (yeniden kurulum, `-Remove`) bu yüzden önce kurtarma eylemlerini kaldırır ve `stopwait` hata
 bildirse bile "servis Stopped, sarmalayıcı ve LiveKit süreci kalmadı" durumunu başarı sayar.
+Durdurma ya da kaydın silinmesi başarısız olursa ya da Ctrl+C ile kesilirse, servis hâlâ
+kayıtlıysa kurtarma eylemleri geri yüklenir (pencere kapatılır ya da süreç öldürülürse bu
+olamaz: betiği yeniden çalıştırın). WinSW ve `sc.exe` yalnızca çıkış koduna göre
+değerlendirilir; WinSW'nin stderr'e yazdığı bir log4net hatası (ör. log dosyasını başka bir
+süreç tutuyorsa) çalıştırmayı bitirmez.
 Elle yapılan bir `Stop-Service LiveKit` sonrasında servis nadiren 5 sn sonra kendiliğinden
 geri gelir: yeniden durdurun.
 
 `Install-LiveKitService.ps1` ve `Test-LiveKitInstall.ps1` yalnızca **Windows PowerShell 5.1**
 (Desktop sürümü) ile çalışır; ACL kodu yalnızca .NET Framework'te olan
 `FileInfo.GetAccessControl/SetAccessControl` yöntemlerini kullandığından PowerShell 7 baştan
-reddedilir (`#Requires -PSEdition Desktop`). `-WhatIf` yükseltilmemiş bir oturumda da çalışır;
+reddedilir (`#Requires -PSEdition Desktop`). `-WhatIf` `powershell.exe -File` ile de, yükseltilmemiş bir oturumda da çalışır;
 böyle bir oturumun okuyamadığı şeyler (betiğin kısıtladığı `livekit.yaml` ve log klasörü)
 sonda "Not previewed" olarak sayılır.
 
@@ -362,18 +367,23 @@ geçici bir adla doğrulanır ve ancak eşleşirse `livekit-service.exe` adını
 
 | Nesne | İzin | Neden |
 |---|---|---|
-| `livekit.yaml` (API sırrını tutar) | Devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı okuma (LocalSystem'de ek hesap yok) | Sıradan kullanıcılar sırrı okuyamasın. Dosyayı okumak/düzenlemek için yükseltilmiş oturum gerekir |
-| Varsayılan log klasörü (`%ProgramData%\Talky\logs\livekit`) | DACL'yi betik sahiplenir: devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı Değiştirme (Modify, dosyalara devredilir), başka kimse yok; sahibi SYSTEM ya da Administrators değilse Administrators yapılır | `%ProgramData%` her kullanıcıya dosya oluşturma hakkı verir; böyle biri log dosyalarını önceden oluşturup servisin onlara yazmasını engelleyebilirdi. Servis hesabı, daha önce LocalSystem'in ya da yükseltilmiş `install` komutunun oluşturduğu dosyalara yazabilmeli (yoksa sarmalayıcı `UnauthorizedAccessException` ile çöker) |
+| `livekit.yaml` (API sırrını tutar) | Devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı okuma (LocalSystem'de ek hesap yok). Hesap değişirken önceki hesap, servisi durdurulana kadar okumayı korur | Sıradan kullanıcılar sırrı okuyamasın. Dosyayı okumak/düzenlemek için yükseltilmiş oturum gerekir |
+| Varsayılan log klasörü (`%ProgramData%\Talky\logs\livekit`) | DACL'yi betik sahiplenir: devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı Değiştirme (Modify, dosyalara devredilir), başka kimse yok; sahibi SYSTEM ya da Administrators değilse Administrators yapılır. Klasörün kendisi bir bağlantıysa (junction, sembolik bağlantı) betik durur; `%ProgramData%` ile klasör arasındaki bir klasör bağlantıysa ya da sahibi SYSTEM, Administrators veya TrustedInstaller değilse uyarır (o klasörün sahibi log klasörünü taşıyabilir ya da yolu başka yere yönlendirebilir) | `%ProgramData%` her kullanıcıya dosya oluşturma hakkı verir; böyle biri log dosyalarını önceden oluşturup servisin onlara yazmasını engelleyebilirdi. Servis hesabı, daha önce LocalSystem'in ya da yükseltilmiş `install` komutunun oluşturduğu dosyalara yazabilmeli (yoksa sarmalayıcı `UnauthorizedAccessException` ile çöker) |
 | Özel bir `-LogDir` (zaten varsa) | Yalnızca servis hesabına Değiştirme eklenir; Users, Authenticated Users ya da Everyone orada dosya oluşturup değiştirebiliyorsa ya da sahibi SYSTEM/Administrators değilse uyarı | Klasörün sahibi operatördür |
 | `livekit.yaml` içindeki `turn.cert_file` ve `turn.key_file` | Servis hesabına okuma (yalnızca bir izin girdisi eklenir). Göreli yol `InstallDir`'e, sürücüsüz yol (`\certs\key.pem`) `InstallDir`'in sürücüsüne göredir, LiveKit'in çözdüğü gibi; `X:ad` biçimi uyarı verir | Gömülü TURN/TLS sertifikayı ve anahtarı okuyabilsin |
-| `turn.key_file` (özel anahtar), LocalSystem dahil her hesapta, çalıştırmanın bu dosyadaki son değişikliği olarak | Devralma her zaman kapatılır (devralınan girdiler açık girdi olarak kalır), sonra Users, Authenticated Users, Everyone, ALL APPLICATION PACKAGES ve ALL RESTRICTED APPLICATION PACKAGES izinleri silinir; diğer girdiler kalır | Şablonun önerdiği `C:\Program Files\LiveKit\` altında anahtar devralmayla Users'a ve AppContainer süreçlerine okunur olurdu. Klasöre **taşınan** bir anahtar eski DACL'sini taşır ve bu grupları göstermez; karar bu yüzden gösterilene değil, korumanın açık olup olmadığına göre verilir |
+| `turn.key_file` (özel anahtar), LocalSystem dahil her hesapta, servis hesabına okuma verilmeden **önce** | Devralma her zaman kapatılır (devralınan girdiler açık girdi olarak kalır), sonra Users, Authenticated Users, Everyone, ALL APPLICATION PACKAGES ve ALL RESTRICTED APPLICATION PACKAGES izinleri silinir; diğer girdiler kalır. Ardından SYSTEM ya da Administrators'ın dosyayı okuyabilen bir izin girdisi kalmadıysa ona tam denetim eklenir ve bu yazılır. Anahtar böylece iki yazma arasında hiç açık kalmaz; okuma verilemezse kapalı kalır | Şablonun önerdiği `C:\Program Files\LiveKit\` altında anahtar devralmayla Users'a ve AppContainer süreçlerine okunur olurdu. Klasöre **taşınan** bir anahtar eski DACL'sini taşır ve bu grupları göstermez; karar bu yüzden gösterilene değil, korumanın açık olup olmadığına göre verilir |
 | Servis hesabının "Log on as a service" hakkı (LocalSystem'de yok) | WinSW `install` sırasında verir (`livekit.xml` içinde `<allowservicelogon>`) | Servis o hesapla başlayabilsin. gMSA ya da etki alanı hesabında yerel güvenlik ilkesi değişir |
 
 `-ServiceAccount` mevcut servisin hesabından farklıysa betik, eski servisi durdurduktan sonra
 ve kaydını silmeden önce önceki hesap için eklediği girdileri geri alır: yalnızca betiğin
-oluşturduğunun tam aynısı olan açık bir girdiyi (log klasöründe devredilen Modify, TURN
-dosyasında okuma). O hesabın başka bir girdisi (örneğin operatörün verdiği ya da betiğin
-girdisiyle birleşmiş geniş bir izin) dokunulmadan kalır ve bir uyarıda adıyla anılır. Bu
+oluşturduğunun tam aynısı olan açık bir girdiyi (log klasöründe devredilen Modify, `livekit.yaml`'da
+ve TURN dosyasında okuma). O hesabın başka bir girdisi (örneğin operatörün verdiği ya da
+betiğin girdisiyle birleşmiş geniş bir izin) dokunulmadan kalır ve bir uyarıda adıyla anılır.
+Sınır: betiğinkiyle birebir aynı bir girdi ayırt edilemez ve kaldırılır; aynı devralma
+ayarlarıyla verilmiş daha dar bir girdi de (ör. log klasöründe `Read & execute`, TURN
+dosyasında yalnızca `ReadData`) betiğin girdisi eklenirken onunla birleşir ve onunla birlikte
+gider. O hesabı paylaşan başka bir kullanıcı (ör. aynı kimlikle çalışan bir log toplayıcı)
+varsa iznini hesap değişikliğinden sonra yeniden verin. Bu
 temizlik başarısız olursa uyarıdır, hata değil. Önceki hesabın "Log on as a service" hakkı
 geri alınmaz (başka servisler ona dayanıyor olabilir); gerekiyorsa yerel güvenlik ilkesinden
 elle kaldırın.
@@ -401,8 +411,8 @@ kurtarma eylemleri gerçekten kaldırılıp servis 35 sn Stopped kaldıysa yazı
 reddedildiyse (`-Confirm`), kurtarma eylemleri kaldırılamadıysa ya da servis artık kayıtlı
 değilse mesaj bunu söyler. Servis kayıtlı ama durmuş kalır: sebebi giderip betiği yeniden ya da
 `Start-Service LiveKit` çalıştırın. Başarısız bir başlatma bu beklemeler yüzünden bir ila iki
-dakika sürer; betiği yarıda kesmeyin (kesilirse kurtarma eylemleri kaldırılmış kalabilir:
-betiği yeniden çalıştırın, onları geri yükler).
+dakika sürer; Ctrl+C ile kesilirse kurtarma eylemleri geri yüklenir, pencere kapatılır ya da
+süreç öldürülürse kaldırılmış kalabilir: betiği yeniden çalıştırın, onları geri yükler.
 
 LiveKit bir başlangıç hatasını (yapılandırma, TURN sertifikası, kullanımda port) JSON
 logunda değil, `livekit-service.out.log` içinde **tek düz satır** olarak yazar, ör.
@@ -431,8 +441,9 @@ baştan sona sınar; servis kurup kaldırdığı için yalnızca atılabilir bir
 
 Şablonun doldurulmuş bir kopyasını `InstallDir`'e kendisi yazar (şablona dokunmaz), API sırrını
 makinede rastgele üretir (hiçbir yere yazdırmaz); `-KeyFile`'ın iki kopyasını `InstallDir`'e
-koyar (biri beş geniş grubun hepsine izin verir, diğeri oraya taşınmıştır), böylece anahtar
-denetimleri düzeltme olmadan geçemez. Dört adımı koşar: `-NoStart` kurulumu; **başarısız
+koyar (biri beş geniş grubun hepsine açık izin verir, diğeri oraya taşınmıştır), böylece anahtar
+denetimleri düzeltme olmadan ve `InstallDir` nerede olursa olsun geçemez; bu üç dosyayı
+çalıştırma başarılı da olsa başarısız da olsa sonda siler. Dört adımı koşar: `-NoStart` kurulumu; **başarısız
 başlatma** (kurallar silinir, `turn.cert_file` olmayan bir dosyayı gösterir: betik "did not stay
 up ... no restart pending" ile hata vermeli, `livekit-service.out.log` dosyayı anmalı, altı
 kural yeniden var olmalı, kurtarma eylemleri 5/10/30 sn'ye dönmeli ve 35 sn boyunca 7031/7034
@@ -442,10 +453,11 @@ ikinci kurulum (LiveKit Ctrl+C almış olmalı: logunda `exit requested, shuttin
 medya denetimi (`Invoke-LiveKitLoadTest.ps1 -SkipCpuCheck`, her abone izini almalı) ve olmayan
 bir odaya karşı mutlaka başarısız olması gereken negatif deneme; taşınmış anahtarla
 NetworkService'e geçiş ve 45 sn sonra aynı süreçle ayakta olması (7031 yok, anahtar kapalı),
-ardından LocalSystem'e dönüş (NETWORK SERVICE için hiçbir girdi kalmaz); `-Remove` (yine
-Ctrl+C). Her adımda bir PASS/FAIL satırı basar, ilk başarısız adımda durur ve 1 ile çıkar.
+ardından LocalSystem'e dönüş (NETWORK SERVICE için hiçbir girdi kalmaz); `-Remove`. Kurulum
+betiğinin çalışan düğümü durdurduğu dört yerin hepsinde (ikinci kurulum, iki hesap değişikliği,
+`-Remove`) LiveKit'in Ctrl+C almış olması denetlenir. Her adımda bir PASS/FAIL satırı basar, ilk başarısız adımda durur ve 1 ile çıkar.
 2026-11-25'te bir laboratuvar VM'inde (Windows Server 2025) bu haliyle LiveKit 1.13.6 ve
-1.13.11 ile tüm denetimler geçti (`docs/livekit-windows-spike.md` §1.4).
+1.13.11 ile tüm denetimler geçti (`docs/livekit-windows-spike.md` §1.5).
 
 `Invoke-LiveKitLoadTest.ps1` odayı kendisi oluşturur (`room.auto_create: false`) ve
 sonra siler; anahtar ve sır `lk`'ya yalnızca ortam değişkenleriyle (`LIVEKIT_URL`,
