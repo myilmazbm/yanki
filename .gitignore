@@ -71,3 +71,33 @@ desktop.ini
 !.env.example
 appsettings.Local.json
 appsettings.*.Local.json
+# pnpm 11 reads only auth/registry keys from .npmrc, so any .npmrc here is a token file.
+.npmrc
+# SSH keys (Hyper-V appliance break-glass access), signing keys, password stores.
+id_rsa*
+id_ed25519*
+*.ppk
+*.snk
+*.keystore
+*.kdbx
+*.rdp
+# Database backups and process dumps can carry token hashes and in-memory secrets.
+*.bak
+*.bacpac
+*.dmp
+# Browser and network captures carry session and LiveKit access tokens verbatim.
+*.har
+*.pcap
+*.pcapng
+# Push (FCM/APNs) and Expo EAS signing credentials.
+google-services.json
+GoogleService-Info.plist
+*service-account*.json
+*firebase-adminsdk*.json
+credentials.json
+# Filled-in copies of templates such as deploy/livekit/livekit.yaml.
+*.local.yaml
+
+# --- Local tooling ---
+.claude/settings.local.json
+.claude/worktrees/
