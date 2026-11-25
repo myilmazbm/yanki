@@ -117,10 +117,15 @@ if ($PSCmdlet.ShouldProcess('wix', 'dotnet tool restore')) {
     Invoke-Native dotnet @('tool', 'restore')
 }
 
-# WIX1149 warns that the MSI ServiceConfig / ServiceConfigFailureActions tables are
-# documented as unreliable. We keep them anyway because the WixToolset.Util alternative
-# cannot express graded recovery delays (5 s / 10 s / 30 s), and operations.md has a
-# post-install `sc.exe qfailure Talky` verification step.
+# WIX1149 warns that the MsiServiceConfig / MsiServiceConfigFailureActions tables are
+# documented as unreliable. Measured on Windows Server 2025 (lab VM, 2026-11-25):
+#   * MsiServiceConfig (ServiceConfig DelayedAutoStart="yes") works; the package keeps it.
+#   * MsiServiceConfigFailureActions does not: restart actions fail with
+#     "Failed to change current configuration of failure action ... Error: 5" and
+#     error 1939, rolling the install back. The package therefore has no
+#     ServiceConfigFailureActions; the custom action ConfigureServiceRecovery runs
+#     sc.exe failure instead (see Talky.Server.wxs).
+# The warning is still raised for ServiceConfig, hence -sw1149.
 $wixArgs = @(
     'wix', 'build',
     '-arch', 'x64',

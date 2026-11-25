@@ -11,7 +11,11 @@
     INSTALLFOLDER    install directory      (default %ProgramFiles%\Talky)
     DATADIR          data directory         (default %ProgramData%\Talky)
     SERVICE_ACCOUNT  service logon account   (default LocalSystem)
-    SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA)
+    SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA; never stored)
+
+  SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky: an upgrade, repair
+  or reinstall that does not pass them keeps the values of the previous install; a value
+  passed on the command line wins and becomes the new remembered value.
 
   The MSI lays down the files, registers the service STOPPED and creates the Windows
   Event Log source "Talky". It writes no appsettings.json and opens no firewall port;
@@ -56,9 +60,70 @@
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="MSIFASTINSTALL" Value="7" />
 
-    <!-- Service identity. Default LocalSystem so a lab install needs no arguments. -->
-    <Property Id="SERVICE_ACCOUNT" Value="LocalSystem" Secure="yes" />
+    <!-- Service identity. Default LocalSystem so a lab install needs no arguments.
+         SERVICE_PASSWORD is never stored anywhere by this package. -->
     <Property Id="SERVICE_PASSWORD" Secure="yes" Hidden="yes" />
+
+    <!-- Remembered properties: SERVICE_ACCOUNT and DATADIR.
+         A major upgrade deletes the old service and creates the new one from the properties of
+         the upgrading session, so the values of the first install are written to
+         HKLM\SOFTWARE\Talky (component RememberedProperties) and read back by AppSearch on
+         every later install. Precedence, highest first:
+           1. a value given on the msiexec command line (saved to CMDLINE_* before AppSearch,
+              which would otherwise overwrite it, and restored after it);
+           2. the remembered registry value;
+           3. the default (LocalSystem; DATADIR falls back to the Directory table default,
+              %ProgramData%\Talky).
+         The Save/Restore actions run in both sequences without firstSequence: when the UI
+         sequence ran, the execute sequence receives the final (secure) value, saves it,
+         lets AppSearch overwrite it and restores it, which leaves it unchanged. -->
+    <Property Id="SERVICE_ACCOUNT" Secure="yes">
+      <RegistrySearch Id="RememberedServiceAccount" Root="HKLM" Key="SOFTWARE\Talky"
+                      Name="ServiceAccount" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="DATADIR" Secure="yes">
+      <RegistrySearch Id="RememberedDataDir" Root="HKLM" Key="SOFTWARE\Talky"
+                      Name="DataDir" Type="raw" Bitness="always64" />
+    </Property>
+
+    <CustomAction Id="SaveCmdLineServiceAccount" Property="CMDLINE_SERVICE_ACCOUNT" Value="[SERVICE_ACCOUNT]" />
+    <CustomAction Id="RestoreCmdLineServiceAccount" Property="SERVICE_ACCOUNT" Value="[CMDLINE_SERVICE_ACCOUNT]" />
+    <CustomAction Id="DefaultServiceAccount" Property="SERVICE_ACCOUNT" Value="LocalSystem" />
+    <CustomAction Id="SaveCmdLineDataDir" Property="CMDLINE_DATADIR" Value="[DATADIR]" />
+    <CustomAction Id="RestoreCmdLineDataDir" Property="DATADIR" Value="[CMDLINE_DATADIR]" />
+
+    <!-- Recovery policy: restart after 5 s, 10 s, 30 s; the failure count resets daily.
+         Identical to what Install-Talky.ps1 configures on the script path. Not authored with
+         ServiceConfigFailureActions: on Windows Server 2025 the MsiServiceConfigFailureActions
+         table fails with error 1939 (access denied, 5) for restart actions. A deferred,
+         non-impersonated type 34 action runs the system sc.exe as LocalSystem instead;
+         Return="check" fails (and rolls back) the install if sc.exe exits non-zero. -->
+    <CustomAction Id="ConfigureServiceRecovery"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]sc.exe&quot; failure Talky reset= 86400 actions= restart/5000/restart/10000/restart/30000"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallUISequence>
+      <Custom Action="SaveCmdLineServiceAccount" Before="AppSearch" Condition="SERVICE_ACCOUNT" />
+      <Custom Action="SaveCmdLineDataDir" Before="AppSearch" Condition="DATADIR" />
+      <Custom Action="RestoreCmdLineServiceAccount" After="AppSearch" Condition="CMDLINE_SERVICE_ACCOUNT" />
+      <Custom Action="RestoreCmdLineDataDir" After="AppSearch" Condition="CMDLINE_DATADIR" />
+      <Custom Action="DefaultServiceAccount" After="RestoreCmdLineServiceAccount" Condition="NOT SERVICE_ACCOUNT" />
+    </InstallUISequence>
+
+    <InstallExecuteSequence>
+      <Custom Action="SaveCmdLineServiceAccount" Before="AppSearch" Condition="SERVICE_ACCOUNT" />
+      <Custom Action="SaveCmdLineDataDir" Before="AppSearch" Condition="DATADIR" />
+      <Custom Action="RestoreCmdLineServiceAccount" After="AppSearch" Condition="CMDLINE_SERVICE_ACCOUNT" />
+      <Custom Action="RestoreCmdLineDataDir" After="AppSearch" Condition="CMDLINE_DATADIR" />
+      <Custom Action="DefaultServiceAccount" After="RestoreCmdLineServiceAccount" Condition="NOT SERVICE_ACCOUNT" />
+      <!-- Install, repair and the new product of a major upgrade; never on uninstall (the
+           old product's removal during an upgrade runs with REMOVE=ALL as well). No rollback
+           action is needed: rolling back InstallServices deletes the service. -->
+      <Custom Action="ConfigureServiceRecovery" After="InstallServices" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
 
     <SummaryInformation Description="Talky Server (talky.exe) — chat, calls, meetings, files"
                         Manufacturer="Talky" />
@@ -78,7 +143,21 @@
       <ComponentGroupRef Id="ServerPayload" />
       <ComponentRef Id="TalkyServiceHost" />
       <ComponentGroupRef Id="DataDirectories" />
+      <ComponentRef Id="RememberedProperties" />
     </Feature>
+
+    <!-- Permanent, like DATADIR itself: the values outlive an uninstall so that a rollback
+         (msiexec /x of the new version, then /i of the old one) and a reinstall find the
+         same service account and data directory, where appsettings.json still lives.
+         Rewritten by every install, so a value deliberately passed on the command line
+         replaces the remembered one. -->
+    <Component Id="RememberedProperties" Directory="INSTALLFOLDER" Guid="5B0E2C55-3F4B-4C47-9F0B-6E1B7A2D9C31"
+               Permanent="yes" Bitness="always64">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Talky">
+        <RegistryValue Name="ServiceAccount" Type="string" Value="[SERVICE_ACCOUNT]" KeyPath="yes" />
+        <RegistryValue Name="DataDir" Type="string" Value="[DATADIR]" />
+      </RegistryKey>
+    </Component>
 
     <!-- Everything from `dotnet publish` except the host itself (declared below with
          the service) and build-time leftovers. -->
@@ -107,12 +186,7 @@
                       Vital="yes">
         <!-- Automatic (Delayed Start): the node waits for AD, DNS and SQL to settle. -->
         <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
-        <!-- Recovery: restart after 5 s, 10 s, 30 s; failure count resets daily. -->
-        <ServiceConfigFailureActions ResetPeriod="86400" OnInstall="yes" OnReinstall="yes">
-          <Failure Action="restart" Delay="5000" />
-          <Failure Action="restart" Delay="10000" />
-          <Failure Action="restart" Delay="30000" />
-        </ServiceConfigFailureActions>
+        <!-- Recovery actions: custom action ConfigureServiceRecovery (see above). -->
       </ServiceInstall>
 
       <!-- Never started by the MSI: the node has no configuration until

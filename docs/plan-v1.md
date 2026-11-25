@@ -289,13 +289,21 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
 | **M7 Sertleştirme + GA** (3 hf) | Ağ bozulma matrisi, AG failover tatbikatı, rolling upgrade tatbikatı, 24 s soak, yedek/geri yükleme, runbook'lar, çoklu sekme, 50k sentetik yük | Tüm SLO'lar staging'de; RC 1.0 imzalı MSI + istemci paketleri |
 | **v1.1** | Federasyon (mTLS gRPC, allowlist, ayna), SAML, mobil ekran paylaşımı, Egress kayıt, VP9 SVC, E2EE opsiyonu, misafir/lobi | — |
 
-**M0 durumu (2026-11-24).** M0 kapsamı teslim edildi, çıkış kriterleri henüz karşılanmadı; taş **açık**.
+**M0 durumu (2026-11-25).** M0 kapsamı teslim edildi; çıkış kriteri 1 karşılandı, diğerleri açık; taş **açık**.
 - Teslim edilenler: repo; `talky.exe` host'u ve CLI (`serve`, `migrate`, `doctor` — 7 kontrol, `config validate`);
   EF şema v0 (`docs/data-model.md`); `/ws` el sıkışması (Hello/Welcome, Ping/Pong, drain, bağlantı bütçesi;
   `docs/protocol.md`); proto→C#/TS üretimi ve drift kontrolü; MSI + Windows servis kaydı ve kurulum betikleri;
   `@talky/core` WS istemcisi ve fixture oynatıcısı; iki CI tanımı (GitHub Actions ve Azure DevOps).
-- Açık — çıkış kriteri 1 (`msiexec` ile kurulan servis `/api/v1/ping` döner): `deploy/windows/Test-TalkyInstall.ps1`
-  yükseltilmiş oturumda atılabilir bir VM'de çalıştırılana kadar açık; hiç çalıştırılmadı.
+- Karşılandı — çıkış kriteri 1 (`msiexec` ile kurulan servis `/api/v1/ping` döner): 2026-11-25'te WEB laboratuvar
+  VM'inde (Windows Server 2025 Datacenter, etki alanı üyesi, servis LocalSystem; SQL Server 2022 başka bir VM'de,
+  `TalkySmoke` veritabanı) `deploy/windows/Test-TalkyInstall.ps1` PowerShell Direct üzerinden, temiz bir sıfırlamadan
+  sonra `-MsiPath Talky.Server-0.1.0.msi -UpgradeMsiPath Talky.Server-0.1.1.msi` ile çalıştırıldı: betik yolu, MSI
+  yolu (`msiexec /i /qn` → gecikmeli başlatma ve 5/10/30 sn kurtarma → `-AclOnly`/`-ConfigOnly` → `talky migrate` →
+  `Start-Service` → `/api/v1/ping` düğüm kimliğini döndü → `msiexec /x`) ve yükseltme alt adımı (NetworkService ve
+  özel `DATADIR` ile kurulum, iki değer verilmeden yükseltme; hesap, `--data-dir` ve kurtarma korundu) — tüm
+  denetimler PASS, çıkış 0. Not: üretim hedefi SQL Server 2025'tir; laboratuvarda SQL Server 2022 vardı. İlk gerçek
+  çalıştırmada MSI 1603 ile geri alınıyordu (`MsiServiceConfigFailureActions`, hata 1939); kurtarma ayarı artık
+  `sc.exe` özel eylemiyle verilir ve MSI `SERVICE_ACCOUNT`/`DATADIR`'i hatırlar (`docs/operations.md` §4.1).
 - Açık — Spike A: yalnızca geliştirici makinesinde ön kontrol yapıldı (`docs/livekit-windows-spike.md`); gerçek
   Windows Server donanımında ölçüm bekliyor, kal / Hyper-V kararı M1 başında.
 - Açık — Spike B: çalıştırılmadı; iki forest'lı lab'de M1'in ilk işi.
