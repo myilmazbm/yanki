@@ -293,7 +293,7 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
 - Teslim edilenler: repo; `talky.exe` host'u ve CLI (`serve`, `migrate`, `doctor` — 7 kontrol, `config validate`);
   EF şema v0 (`docs/data-model.md`); `/ws` el sıkışması (Hello/Welcome, Ping/Pong, drain, bağlantı bütçesi;
   `docs/protocol.md`); proto→C#/TS üretimi ve drift kontrolü; MSI + Windows servis kaydı ve kurulum betikleri;
-  `@talky/core` WS istemcisi ve fixture oynatıcısı; iki CI tanımı (GitHub Actions ve Azure DevOps).
+  `@talky/core` WS istemcisi ve fixture oynatıcısı; CI tanımı (GitHub Actions, `.github/workflows/ci.yml`).
 - Karşılandı — çıkış kriteri 1 (`msiexec` ile kurulan servis `/api/v1/ping` döner): 2026-11-25'te WEB laboratuvar
   VM'inde (Windows Server 2025 Datacenter, etki alanı üyesi, servis LocalSystem; SQL Server 2022 başka bir VM'de,
   `TalkySmoke` veritabanı) `deploy/windows/Test-TalkyInstall.ps1` PowerShell Direct üzerinden, temiz bir sıfırlamadan
@@ -314,8 +314,8 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
   çok-forest kısmı bu spike yapılmadan "bitti" sayılmaz.
 - Açık — Spike C: çalıştırılmadı; M3 açılışına alınması önerildi, sahibinin kararı bekleniyor.
 - Açık — CI hiç çalışmadı: repo'nun uzak deposu henüz yok. Sahibin kararı (2026-11-25): depo GitHub'da ve herkese
-  açık olacak; yayın öncesi denetim (gizli bilgi, kişisel veri, lisans, CI) bittikten sonra açılır ve tek CI tanımı
-  (GitHub Actions) kalır.
+  açık olacak; yayın öncesi denetim (gizli bilgi, kişisel veri, lisans, CI) bittikten sonra açılır. Tek CI tanımı
+  GitHub Actions'tır (Azure DevOps tanımı silindi); iş akışı ilk kez ilk push'ta çalışacak.
 - Bilerek sonraya bırakılanlar: servis çıkış kodu / SCM kurtarma davranışı (gerçek servis kurulumu ister), rol
   kapılama (M2; roller bugün yalnızca raporlanır), encode-once fan-out (M2), SQL'e göre saat kayması `doctor`
   kontrolü (M2), OpenAPI üretimi (M1, ilk gerçek REST uç noktalarıyla). §5'teki AD/GC, pay ve LiveKit `doctor`
