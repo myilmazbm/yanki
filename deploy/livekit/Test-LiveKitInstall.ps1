@@ -21,12 +21,12 @@
     InstallDir itself (node IP, TURN domain, certificate and key paths, key "talky", an API
     secret generated on this machine); the template is never modified.
     The secret is never printed; it reaches lk only through the environment, and the
-    livekit.yaml holding it is deleted at the end of leg d, together with the two key
-    copies the test puts into InstallDir (-KeyFile itself is only read).
+    livekit.yaml holding it is deleted at the end, whether the run passed or failed, together
+    with the two key copies the test puts into InstallDir (-KeyFile itself is only read).
 
     Leg a: Get-LiveKit.ps1 (twice: the second run must say "current") -> the key the node
-    uses is a copy inside InstallDir that grants Users, Authenticated Users, Everyone and
-    both app-package groups (asserted) -> install with -NoStart: service registered and
+    uses is a copy inside InstallDir with explicit Read entries for Users, Authenticated
+    Users, Everyone and both app-package groups (asserted) -> install with -NoStart: service registered and
     Stopped, six firewall rules created -> failing start: the rules are removed and
     turn.cert_file names a missing file; the installer must fail with "did not stay up ...
     no restart pending", livekit-service.out.log must name the file, the six rules must
@@ -52,13 +52,13 @@
     Leg c: the node switches to a key moved into InstallDir from a folder without Users
     (unprotected, no broad entry visible: asserted; where Windows protects a moved file,
     as Server 2025 does, that stale DACL is written directly) -> re-install as
-    NT AUTHORITY\NetworkService over the LocalSystem install (log files created by
-    LocalSystem already exist) -> after 45 s (longer than the 5 s and 10 s restart delays)
-    the same wrapper process is still running, both processes run as NETWORK SERVICE, the
-    node answers, the System log has no event 7031 for LiveKit since the leg started, and
-    the moved key is protected with no broad entry -> re-install as LocalSystem: running as
-    LocalSystem, no entry for NETWORK SERVICE left on the log directory or the TURN files,
-    the moved key still closed.
+    NT AUTHORITY\NetworkService over the LocalSystem install (LiveKit got Ctrl+C; log
+    files created by LocalSystem already exist) -> after 45 s (longer than the 5 s and
+    10 s restart delays) the same wrapper process is still running, both processes run as
+    NETWORK SERVICE, the node answers, the System log has no event 7031 for LiveKit since
+    the leg started, and the moved key is protected with no broad entry -> re-install as
+    LocalSystem (LiveKit got Ctrl+C): running as LocalSystem, no entry for NETWORK SERVICE
+    left on the log directory or the TURN files, the moved key still closed.
 
     Leg d: Install-LiveKitService.ps1 -Remove -> LiveKit got Ctrl+C, no service, no rules,
     no livekit-server.exe from InstallDir.
@@ -304,6 +304,8 @@ $secret = -join ($bytes | ForEach-Object { $_.ToString('x2') })
 
 Write-Host "LiveKit install smoke on ${env:COMPUTERNAME}: LiveKit $LiveKitVersion, lk $CliVersion, node $NodeIp, TURN $TurnDomain"
 $started = Get-Date
+$keyA = $null
+$keyB = $null
 try {
     # --- leg a: Get-LiveKit + install as LocalSystem ------------------------------------
     Write-Host '--- leg a: Get-LiveKit.ps1 + Install-LiveKitService.ps1 as LocalSystem ---'
@@ -314,14 +316,13 @@ try {
     Write-Check ($again -match '(?m)^current\s') 'second Get-LiveKit.ps1 run reports the binary as current'
     Assert-Step 'Leg a'
 
-    # The key the node uses in legs a and b is a copy inside InstallDir, so it inherits what
-    # Program Files grants (Users and both app-package groups); Authenticated Users and
-    # Everyone get explicit entries. Every group the key check names is then present before
-    # the install, and the check cannot pass unless the installer removes them.
+    # The key the node uses in legs a and b is a copy inside InstallDir with an explicit Read
+    # entry for each of the five groups the key check names (whatever InstallDir passes on), so
+    # the check cannot pass unless the installer removes them. The finally block deletes it.
     $keyA = Join-Path $InstallDir 'turn-key-test.pem'
     Copy-Item -LiteralPath $KeyFile -Destination $keyA -Force
     $keyAcl = (Get-Item -LiteralPath $keyA).GetAccessControl('Access')
-    foreach ($sid in 'S-1-5-11', 'S-1-1-0') {
+    foreach ($sid in $BroadGroups + $AppPackages) {
         $keyAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'Read', 'Allow')))
     }
     (Get-Item -LiteralPath $keyA).SetAccessControl($keyAcl)
@@ -458,7 +459,9 @@ public static extern bool SetFileSecurity(string fileName, int securityInformati
     $null = Write-NodeConfig -Cert $CertFile -Key $keyB
     Assert-Step 'Leg c'
     $legStart = (Get-Date).AddSeconds(-1)
+    $errFrom = Get-LogLength $ErrLog
     & $Install -InstallDir $InstallDir -ServiceAccount $NetworkService -Confirm:$false
+    Test-GracefulStop -From $errFrom -When 'when the installer stopped the LocalSystem service to switch to NetworkService'
     $afterInstall = Get-WrapperProcessId
     Write-Host 'wait     45 s (longer than the 5 s and 10 s restart delays)'
     Start-Sleep -Seconds 45
@@ -479,7 +482,9 @@ public static extern bool SetFileSecurity(string fileName, int securityInformati
     Assert-Step 'Leg c'
 
     # Back to LocalSystem: the entries added for NETWORK SERVICE must go again.
+    $errFrom = Get-LogLength $ErrLog
     & $Install -InstallDir $InstallDir -Confirm:$false
+    Test-GracefulStop -From $errFrom -When 'when the installer stopped the NetworkService service to go back to LocalSystem'
     $null = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after going back to LocalSystem'
     foreach ($path in $LogDir, $CertFile, $keyB) {
         $left = @(Get-AllowEntry -Path $path -Sid 'S-1-5-20')
@@ -498,8 +503,6 @@ public static extern bool SetFileSecurity(string fileName, int securityInformati
     Write-Check (@(Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue).Count -eq 0) '-Remove: no rules in firewall group LiveKit'
     Write-Check (@(Get-ServerProcess).Count -eq 0) "-Remove: no livekit-server.exe from $InstallDir running"
     Write-Check (@(Get-Process -Name 'livekit-service' -ErrorAction SilentlyContinue).Count -eq 0) '-Remove: no livekit-service.exe running'
-    Remove-Item -LiteralPath $ConfigPath, $keyA, $keyB -Force
-    Write-Host "removed  $ConfigPath (it held this run's generated secret) and the test's key copies"
 }
 catch {
     Write-Host "FAIL  $($_.Exception.Message)"
@@ -508,6 +511,13 @@ catch {
 finally {
     foreach ($name in 'LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET') { Remove-Item -Path "Env:\$name" -ErrorAction SilentlyContinue }
     $secret = $null
+    # The generated secret and the key copies (one of them opened to everyone until the first
+    # install closes it) go in every exit path.
+    $copies = @($ConfigPath, $keyA, $keyB | Where-Object { $_ -and (Test-Path -LiteralPath $_) })
+    if ($copies) {
+        Remove-Item -LiteralPath $copies -Force
+        Write-Host "removed  $($copies -join ', ') (this run's generated secret and the test's key copies)"
+    }
 }
 
 Write-Host ''
