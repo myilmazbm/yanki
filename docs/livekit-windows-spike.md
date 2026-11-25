@@ -263,6 +263,22 @@ yalnızca Everyone'a açık; aynısı, sahibi LOCAL SERVICE; sertifika ve anahta
 
 Son kod değişikliğinden sonra, temiz sıfırlamadan tam kabul koşusu: LiveKit 1.13.11, 116 PASS,
 0 FAIL, çıkış 0, 278 sn.
+
+### 1.7 Altıncı tur: anahtarın girdileri saklandıkları gibi (2026-11-25)
+
+Beşinci turun denetimi, `Protect-PrivateKeyFile`'ın tuttuğu girdileri `FileSystemAccessRule` ile
+yeniden kurduğunu gösterdi: koşullu bir izin koşulsuz oluyor, reddetme ve izin maskelerinde
+SYNCHRONIZE biti değişiyor, yalnızca SYNCHRONIZE taşıyan bir reddetme girdisi betiği
+durduruyordu. İşlev artık yeni DACL'yi güvenlik tanımlayıcısında saklanan girdilerden kurar:
+geniş grupların izin girdileri (koşullu olanlar da) düşer, kalanlar bayt bayt kopyalanır (yalnızca
+devralındı bayrağı silinir), reddetme girdileri öne alınır, gerekirse SYSTEM ve Administrators
+eklenir, tek yazma. İnceleyicinin 21 durumluk matrisi, ikinci okuyucunun dokuz durumu (yerel,
+`powershell.exe`) ve §1.6'nın sekiz durumu (VM): her durumda korumalı, kurallı, 0 geniş girdi;
+tutulan her girdinin türü, maskesi ve koşulu öncekiyle bayt bayt aynı. Tek istisna yazma yolunun
+kendisinden: aynı tür, hesap ve bayraklı düz girdiler maskelerinin birleşimiyle tek girdi olur
+(bir durumda, `FullControl` ve `Modify` taşıyan aynı hesabın girdileri), bu aynı hakları verir.
+Son kod değişikliğinden sonra tam kabul koşusu: LiveKit 1.13.11, 116 PASS, 0 FAIL, çıkış 0, 278 sn.
+
 ---
 
 ## 2. Spike A kurulumu (gerçek donanım)
