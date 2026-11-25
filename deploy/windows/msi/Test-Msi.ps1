@@ -8,10 +8,16 @@
 
       * the administrative install succeeded (exit code 0);
       * the host executable and the harvested payload were laid down, without .pdb files;
-      * the MSI declares the "Talky" service with delayed automatic start and the
-        5 s / 10 s / 30 s recovery actions;
+      * the MSI declares the "Talky" service with delayed automatic start;
+      * the recovery policy (restart after 5 s / 10 s / 30 s, reset after a day) comes from
+        the deferred, non-impersonated custom action ConfigureServiceRecovery running
+        sc.exe after InstallServices, and NOT from the MsiServiceConfigFailureActions
+        table, which fails on Windows Server 2025 with error 1939;
+      * SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky (a permanent
+        component writes them, AppSearch reads them back) and a command-line value wins
+        over the remembered one; SERVICE_ACCOUNT falls back to LocalSystem;
       * the MSI opens no firewall port (Set-TalkyFirewall.ps1 owns the firewall);
-      * SERVICE_ACCOUNT defaults to LocalSystem and SERVICE_PASSWORD stays empty and hidden
+      * SERVICE_PASSWORD stays empty, hidden and is never written to the registry
         (gMSA accounts are passwordless);
       * UpgradeCode and ARP metadata are what operations expects.
 
@@ -142,14 +148,17 @@ Assert-True ($props.ContainsKey('UpgradeCode') -and $props['UpgradeCode'] -eq '{
 Assert-True ($props.ContainsKey('ProductVersion')) `
     ('ProductVersion present: ' + $(if ($props.ContainsKey('ProductVersion')) { $props['ProductVersion'] } else { 'MISSING' }))
 Assert-True ($props.ContainsKey('ALLUSERS') -and $props['ALLUSERS'] -eq '1') 'per-machine install (ALLUSERS=1)'
-Assert-True ($props.ContainsKey('SERVICE_ACCOUNT') -and $props['SERVICE_ACCOUNT'] -eq 'LocalSystem') `
-    'SERVICE_ACCOUNT defaults to LocalSystem'
+# SERVICE_ACCOUNT has no Property-table value: a static default would be indistinguishable
+# from a command-line value. The default comes from DefaultServiceAccount (checked below).
+Assert-True (-not $props.ContainsKey('SERVICE_ACCOUNT')) 'SERVICE_ACCOUNT has no static default in the Property table'
+Assert-True (-not $props.ContainsKey('DATADIR')) 'DATADIR has no static value in the Property table'
 Assert-True (-not $props.ContainsKey('SERVICE_PASSWORD') -or [string]::IsNullOrEmpty($props['SERVICE_PASSWORD'])) `
     'SERVICE_PASSWORD has no baked-in value (gMSA is passwordless)'
 Assert-True ($props.ContainsKey('MsiHiddenProperties') -and $props['MsiHiddenProperties'] -match 'SERVICE_PASSWORD') `
     'SERVICE_PASSWORD is hidden from the install log'
-Assert-True ($props.ContainsKey('SecureCustomProperties') -and $props['SecureCustomProperties'] -match 'SERVICE_ACCOUNT') `
-    'SERVICE_ACCOUNT is a secure custom property (survives elevation)'
+$secure = @(if ($props.ContainsKey('SecureCustomProperties')) { $props['SecureCustomProperties'] -split ';' })
+Assert-True ($secure -contains 'SERVICE_ACCOUNT') 'SERVICE_ACCOUNT is a secure custom property (survives elevation)'
+Assert-True ($secure -contains 'DATADIR') 'DATADIR is a secure custom property (survives elevation)'
 Assert-True ($props.ContainsKey('ARPHELPLINK') -and $props.ContainsKey('ARPURLINFOABOUT')) 'ARP metadata present'
 
 $upgrade = Get-MsiTable -Path $MsiPath -Query 'SELECT `UpgradeCode`,`ActionProperty` FROM `Upgrade`' -ColumnCount 2
@@ -176,18 +185,123 @@ Assert-True ($control.Count -ge 1 -and $control[0][0] -eq 'Talky') 'ServiceContr
 $cfg = Get-MsiTable -Path $MsiPath -Query 'SELECT `Name`,`ConfigType`,`Argument` FROM `MsiServiceConfig`' -ColumnCount 3
 Assert-True ($cfg.Count -ge 1 -and $cfg[0][1] -eq '3' -and $cfg[0][2] -eq '1') 'delayed automatic start configured'
 
-$fa = Get-MsiTable -Path $MsiPath `
-    -Query 'SELECT `Name`,`ResetPeriod`,`Actions`,`DelayActions` FROM `MsiServiceConfigFailureActions`' -ColumnCount 4
-Assert-True ($fa.Count -ge 1) 'failure actions configured'
-if ($fa.Count -ge 1) {
-    Assert-True ($fa[0][2] -eq 'restart[~]restart[~]restart') "recovery actions are restart x3 (actual: $($fa[0][2]))"
-    Assert-True ($fa[0][3] -eq '5000[~]10000[~]30000') "recovery delays are 5 s / 10 s / 30 s (actual: $($fa[0][3]))"
-    Assert-True ($fa[0][1] -eq '86400') 'failure count resets after one day'
+$tables = @((Get-MsiTable -Path $MsiPath -Query 'SELECT `Name` FROM `_Tables`' -ColumnCount 1) | ForEach-Object { $_[0] })
+
+# --- Recovery policy -------------------------------------------------------------------
+# The MsiServiceConfigFailureActions table fails on Windows Server 2025 (error 1939, access
+# denied) and rolls the install back, so it must not come back.
+$faRows = 0
+if ($tables -contains 'MsiServiceConfigFailureActions') {
+    $faRows = (Get-MsiTable -Path $MsiPath -Query 'SELECT `MsiServiceConfigFailureActions` FROM `MsiServiceConfigFailureActions`' -ColumnCount 1).Count
+}
+Assert-True ($faRows -eq 0) "no MsiServiceConfigFailureActions rows (actual: $faRows)"
+
+$customActions = @{}
+foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Action`,`Type`,`Source`,`Target` FROM `CustomAction`' -ColumnCount 4)) {
+    $customActions[$row[0]] = $row
+}
+$executeSeq = @{}
+foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Action`,`Condition`,`Sequence` FROM `InstallExecuteSequence`' -ColumnCount 3)) {
+    $executeSeq[$row[0]] = $row
+}
+$uiSeq = @{}
+foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Action`,`Condition`,`Sequence` FROM `InstallUISequence`' -ColumnCount 3)) {
+    $uiSeq[$row[0]] = $row
+}
+function Get-Seq {
+    param([hashtable] $Table, [string] $Action)
+    if ($Table.ContainsKey($Action)) { return [int]$Table[$Action][2] }
+    return -1
+}
+
+# Same policy Install-Talky.ps1 sets with sc.exe on the script path.
+$recoveryTarget = '"[System64Folder]sc.exe" failure Talky reset= 86400 actions= restart/5000/restart/10000/restart/30000'
+$ca = if ($customActions.ContainsKey('ConfigureServiceRecovery')) { $customActions['ConfigureServiceRecovery'] } else { $null }
+Assert-True ($null -ne $ca) 'custom action ConfigureServiceRecovery exists'
+if ($ca) {
+    # 3106 = 34 (exe, path in Target, working dir from Directory) + 0x400 deferred + 0x800 no
+    # impersonation; no 0x40 bit, so a non-zero sc.exe exit fails the install.
+    Assert-True ($ca[1] -eq '3106') "ConfigureServiceRecovery is type 34, deferred, not impersonated, return checked (Type 3106; actual: $($ca[1]))"
+    Assert-True ($ca[2] -eq 'System64Folder') "ConfigureServiceRecovery runs in System64Folder (actual: $($ca[2]))"
+    Assert-True ($ca[3] -ceq $recoveryTarget) "ConfigureServiceRecovery command line is: $recoveryTarget (actual: $($ca[3]))"
+}
+$caSeq = Get-Seq $executeSeq 'ConfigureServiceRecovery'
+$installServicesSeq = Get-Seq $executeSeq 'InstallServices'
+$finalizeSeq = Get-Seq $executeSeq 'InstallFinalize'
+Assert-True ($caSeq -gt $installServicesSeq -and $installServicesSeq -gt 0 -and $caSeq -lt $finalizeSeq) `
+    "ConfigureServiceRecovery runs after InstallServices and before InstallFinalize (sequence $caSeq; InstallServices $installServicesSeq)"
+Assert-True ($caSeq -gt 0 -and $executeSeq['ConfigureServiceRecovery'][1] -ceq 'NOT REMOVE~="ALL"') `
+    'ConfigureServiceRecovery is conditioned NOT REMOVE~="ALL" (install, repair, upgrade; not uninstall)'
+Assert-True (-not $uiSeq.ContainsKey('ConfigureServiceRecovery')) 'ConfigureServiceRecovery is not in the UI sequence'
+
+# --- Remembered SERVICE_ACCOUNT / DATADIR ------------------------------------------------
+$registry = Get-MsiTable -Path $MsiPath -Query 'SELECT `Root`,`Key`,`Name`,`Value`,`Component_` FROM `Registry`' -ColumnCount 5
+function Find-RegistryRow {
+    param([string] $Name)
+    # The leading comma keeps a one-row result an array of rows instead of unrolling it.
+    return , @($registry | Where-Object { $_[0] -eq '2' -and $_[1] -eq 'SOFTWARE\Talky' -and $_[2] -eq $Name })
+}
+$regAccount = Find-RegistryRow 'ServiceAccount'
+$regDataDir = Find-RegistryRow 'DataDir'
+Assert-True ($regAccount.Count -eq 1 -and $regAccount[0][3] -eq '[SERVICE_ACCOUNT]') 'HKLM\SOFTWARE\Talky\ServiceAccount is written from [SERVICE_ACCOUNT]'
+Assert-True ($regDataDir.Count -eq 1 -and $regDataDir[0][3] -eq '[DATADIR]') 'HKLM\SOFTWARE\Talky\DataDir is written from [DATADIR]'
+Assert-True (@($registry | Where-Object { $_[3] -match 'SERVICE_PASSWORD' }).Count -eq 0) 'SERVICE_PASSWORD is never written to the registry'
+
+$rememberComponent = if ($regAccount.Count -eq 1) { $regAccount[0][4] } else { '' }
+Assert-True ($regDataDir.Count -eq 1 -and $regDataDir[0][4] -eq $rememberComponent) 'both remembered values belong to one component'
+$comp = @((Get-MsiTable -Path $MsiPath -Query 'SELECT `Component`,`Attributes` FROM `Component`' -ColumnCount 2) |
+    Where-Object { $_[0] -eq $rememberComponent })
+if ($comp.Count -eq 1) {
+    $attr = [int]$comp[0][1]
+    # 0x10 msidbComponentAttributesPermanent, 0x100 msidbComponentAttributes64bit.
+    Assert-True (($attr -band 0x10) -ne 0) "remembered-values component $rememberComponent is permanent (Attributes $attr)"
+    Assert-True (($attr -band 0x100) -ne 0) "remembered-values component $rememberComponent writes the 64-bit registry view"
+}
+else {
+    Assert-True $false "remembered-values component found (got '$rememberComponent')"
+}
+
+$appSearch = @{}
+foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Property`,`Signature_` FROM `AppSearch`' -ColumnCount 2)) { $appSearch[$row[0]] = $row[1] }
+$locators = @{}
+foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Signature_`,`Root`,`Key`,`Name`,`Type` FROM `RegLocator`' -ColumnCount 5)) { $locators[$row[0]] = $row }
+foreach ($pair in @(@('SERVICE_ACCOUNT', 'ServiceAccount'), @('DATADIR', 'DataDir'))) {
+    $prop = $pair[0]; $valueName = $pair[1]
+    $loc = if ($appSearch.ContainsKey($prop) -and $locators.ContainsKey($appSearch[$prop])) { $locators[$appSearch[$prop]] } else { $null }
+    # Type 18 = msidbLocatorTypeRawValue (2) + msidbLocatorType64bit (16).
+    Assert-True ($null -ne $loc -and $loc[1] -eq '2' -and $loc[2] -eq 'SOFTWARE\Talky' -and $loc[3] -eq $valueName -and $loc[4] -eq '18') `
+        "AppSearch reads $prop from HKLM\SOFTWARE\Talky\$valueName (64-bit, raw)"
+}
+
+# Command line beats the remembered value; LocalSystem is the default of last resort.
+$expectedSetters = @(
+    @('SaveCmdLineServiceAccount', 'CMDLINE_SERVICE_ACCOUNT', '[SERVICE_ACCOUNT]', 'SERVICE_ACCOUNT', 'before'),
+    @('SaveCmdLineDataDir', 'CMDLINE_DATADIR', '[DATADIR]', 'DATADIR', 'before'),
+    @('RestoreCmdLineServiceAccount', 'SERVICE_ACCOUNT', '[CMDLINE_SERVICE_ACCOUNT]', 'CMDLINE_SERVICE_ACCOUNT', 'after'),
+    @('RestoreCmdLineDataDir', 'DATADIR', '[CMDLINE_DATADIR]', 'CMDLINE_DATADIR', 'after'),
+    @('DefaultServiceAccount', 'SERVICE_ACCOUNT', 'LocalSystem', 'NOT SERVICE_ACCOUNT', 'after')
+)
+foreach ($e in $expectedSetters) {
+    $id = $e[0]
+    $c = if ($customActions.ContainsKey($id)) { $customActions[$id] } else { $null }
+    # Type 51 = set property, immediate, no execution-scheduling bits (runs in both sequences).
+    Assert-True ($null -ne $c -and $c[1] -eq '51' -and $c[2] -eq $e[1] -and $c[3] -ceq $e[2]) "$id sets $($e[1]) = $($e[2]) (type 51)"
+    foreach ($seqName in 'InstallExecuteSequence', 'InstallUISequence') {
+        $table = if ($seqName -eq 'InstallUISequence') { $uiSeq } else { $executeSeq }
+        $s = Get-Seq $table $id
+        $appSearchSeq = Get-Seq $table 'AppSearch'
+        $positionOk = if ($e[4] -eq 'before') { $s -gt 0 -and $s -lt $appSearchSeq } else { $s -gt $appSearchSeq -and $s -lt (Get-Seq $table 'CostFinalize') }
+        Assert-True ($positionOk -and $table[$id][1] -ceq $e[3]) "$seqName`: $id runs $($e[4]) AppSearch with condition '$($e[3])' (sequence $s)"
+    }
+}
+foreach ($seqName in 'InstallExecuteSequence', 'InstallUISequence') {
+    $table = if ($seqName -eq 'InstallUISequence') { $uiSeq } else { $executeSeq }
+    Assert-True ((Get-Seq $table 'DefaultServiceAccount') -gt (Get-Seq $table 'RestoreCmdLineServiceAccount')) `
+        "$seqName`: the LocalSystem default is applied after the command-line value is restored"
 }
 
 # The firewall has one owner, Set-TalkyFirewall.ps1: the MSI must carry no firewall table.
-$fwTables = @((Get-MsiTable -Path $MsiPath -Query 'SELECT `Name` FROM `_Tables`' -ColumnCount 1) |
-    Where-Object { $_[0] -match 'FirewallException$' })
+$fwTables = @($tables | Where-Object { $_ -match 'FirewallException$' })
 Assert-True ($fwTables.Count -eq 0) 'the MSI opens no firewall port'
 
 if (-not $KeepWorkDir -and (Test-Path -LiteralPath $WorkDir)) {
