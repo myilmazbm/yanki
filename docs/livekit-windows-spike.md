@@ -292,8 +292,16 @@ bir nesne türü adlandıran nesne girdisi SYSTEM ve Administrators'ın okuması
 girdileri ve bayrak bitlerini de geri yazmaz; işlev açıklaması ve yardım metni bunu söyler.
 Kabul edilen sınır: .NET'in değiştiremediği bir girdi (bilinmeyen tür) taşıyan anahtara servis
 hesabının okuması eklenemez; betik dosyayı adıyla anan bir hatayla durur, anahtar kapalı kalır.
-İnceleyicinin durumları (t1, t2, t4: 58 durum; t3: 4; t5: 16 çağıran durumu; t7, t8), altıncı
-turun 21 durumu, ikinci okuyucunun 9 durumu ve VM'deki 8 durum yeniden koşuldu; sonuçlar raporda.
+Bilinen ve bırakılan bir sınır daha: bileşik (compound, iki SID'li) bir girdi taşıyan anahtarın
+izinlerini .NET okuyamaz; işlev dosyayı adıyla anmayan bir .NET hatasıyla durur ve anahtar
+olduğu gibi kalır (dosyalarda görülmesi beklenmeyen bir girdi türü).
+İnceleyicinin yaklaşık 75 durumu, altıncı turun 21 durumu, ikinci okuyucunun 9 durumu ve VM'deki
+8 durum son koda karşı yeniden koşuldu. Kapanan anahtarların hepsi korumalı, önce-deny sıralı ve
+geniş grup girdisiz bitti; tutulan girdiler yukarıda sayılan yazma yolu değişiklikleri dışında
+bayt düzeyinde aynı kaldı. Bitmeyenler: Windows'un kabul etmediği iki girdi türü hiç kurulamadı,
+bilinmeyen türde girdi taşıyan anahtarlar kapandı ama okuma izni eklenemedi (yukarıdaki kabul
+edilen sınır) ve bileşik girdili anahtar okunamadı. Sembolik bağ durumu, gereken ayrıcalık
+olmadığı için koşulamadı.
 Son kod değişikliğinden sonra tam kabul koşusu: LiveKit 1.13.11, 116 PASS, 0 FAIL, çıkış 0, 278 sn.
 
 ---
