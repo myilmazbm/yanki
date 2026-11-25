@@ -108,8 +108,10 @@
         APPLICATION PACKAGES and ALL RESTRICTED APPLICATION PACKAGES is removed (conditional
         ones too), deny entries come first, and SYSTEM or Administrators get Full Control if
         no unconditional entry of theirs can read the file any more. Every other entry is
-        kept as stored: type, rights mask and condition unchanged (plain entries of the
-        same type, account and flags may be combined into one with the same rights).
+        kept as stored: type, rights mask and condition unchanged. Plain entries of the
+        same type, account and flags may be combined into one with the same rights, and
+        entries or flag bits that have no effect on a file are not written back. A key
+        with no DACL at all (everyone full control) gets one.
     WinSW itself grants a non-LocalSystem account the "Log on as a service" right at
     `install` (<allowservicelogon> in livekit.xml).
     When -ServiceAccount differs from the account the existing service runs as, the entries
@@ -551,9 +553,12 @@ function Add-AllowRule {
         [Parameter(Mandatory)][Security.Principal.SecurityIdentifier] $Sid,
         [Parameter(Mandatory)][Security.AccessControl.FileSystemRights] $Rights
     )
-    $item = Get-Item -LiteralPath $Path
+    $item = Get-Item -LiteralPath $Path -Force
     $acl = $item.GetAccessControl('Access')
-    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($Sid, $Rights, (Get-InheritFlag $item), 'None', 'Allow')))
+    # .NET refuses to change a DACL it does not consider canonical (an entry type it does not
+    # know, for one); the operator must at least learn which file.
+    try { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($Sid, $Rights, (Get-InheritFlag $item), 'None', 'Allow'))) }
+    catch { throw "Cannot add $Rights for $(Format-Sid $Sid) to the permissions of ${Path}: $($_.Exception.GetBaseException().Message)" }
     # Setting the directory DACL also propagates the inheritable entry to existing files.
     $item.SetAccessControl($acl)
 }
@@ -569,7 +574,7 @@ function Remove-AllowRule {
         [Parameter(Mandatory)][Security.AccessControl.FileSystemRights] $Rights,
         [Parameter(Mandatory)][string] $AccountName
     )
-    $item = Get-Item -LiteralPath $Path
+    $item = Get-Item -LiteralPath $Path -Force
     $inherit = Get-InheritFlag $item
     $expected = [Security.AccessControl.FileSystemRights]([int]$Rights -bor [int][Security.AccessControl.FileSystemRights]::Synchronize)
     $acl = $item.GetAccessControl('Access')
@@ -596,31 +601,38 @@ function Remove-AllowRule {
 # inherited flag): every allow entry of the broad groups is dropped, conditional or not,
 # deny entries are put before allow entries, and Full Control for SYSTEM and
 # Administrators is appended if no unconditional allow entry of theirs reads the file.
-# Rebuilding entries through FileSystemAccessRule would drop conditions and rewrite the
-# SYNCHRONIZE bit. The one change the write path (FileSecurity) makes on its own: plain
-# entries of the same type, identity and flags become one entry with the union of their
-# masks, which allows and denies exactly the same. It is written once, so the key never
+# A missing DACL (everyone full control) is replaced. Rebuilding entries through
+# FileSystemAccessRule would drop conditions and rewrite the SYNCHRONIZE bit. What the write
+# path (FileSecurity) changes on its own, none of it changing who may do what on a file:
+# plain entries of the same type, identity and flags become one entry with the union of
+# their masks; entries without effect on a file (mask 0, inherit-only, entry types other
+# than allow and deny), inheritance and audit flag bits, bytes after the SID of a plain
+# entry and exact duplicates are not written back. It is written once, so the key never
 # has an empty or half-changed DACL on disk, and nothing is written when nothing changes.
 # Call it before granting the service account Read. Returns what it changed, or ''.
 function Protect-PrivateKeyFile {
     param([Parameter(Mandatory)][string] $Path)
-    $item = Get-Item -LiteralPath $Path
+    $item = Get-Item -LiteralPath $Path -Force
     $current = $item.GetAccessControl('Access')
     $raw = New-Object Security.AccessControl.RawSecurityDescriptor($current.GetSecurityDescriptorBinaryForm(), 0)
-    $revision = if ($raw.DiscretionaryAcl) { $raw.DiscretionaryAcl.Revision } else { 2 }
-    $aces = @($raw.DiscretionaryAcl | ForEach-Object { $_ })
+    $noDacl = $null -eq $raw.DiscretionaryAcl
+    $revision = if ($noDacl) { 2 } else { $raw.DiscretionaryAcl.Revision }
+    $aces = @(if (-not $noDacl) { $raw.DiscretionaryAcl | ForEach-Object { $_ } })
     # Allow and conditional allow (callback) entries; every other entry type is kept in front.
     $isAllow = { param($ace) $ace -is [Security.AccessControl.QualifiedAce] -and $ace.AceQualifier -eq [Security.AccessControl.AceQualifier]::AccessAllowed }
     $broad = @($aces | Where-Object { (& $isAllow $_) -and $_.SecurityIdentifier.Value -in $BroadSids })
     $kept = @($aces | Where-Object { $broad -notcontains $_ })
     $readMask = 0x1 -bor 0x10000000 -bor [int]0x80000000   # FILE_READ_DATA, GENERIC_ALL, GENERIC_READ
-    $readers = @($kept | Where-Object { (& $isAllow $_) -and -not $_.IsCallback -and ($_.AccessMask -band $readMask) -ne 0 } |
+    # An object entry that names an object type grants nothing on a file.
+    $readers = @($kept | Where-Object { (& $isAllow $_) -and -not $_.IsCallback -and ($_.AccessMask -band $readMask) -ne 0 -and
+            -not ($_ -is [Security.AccessControl.ObjectAce] -and ($_.ObjectAceFlags -band [Security.AccessControl.ObjectAceFlags]::ObjectAceTypePresent)) } |
         ForEach-Object { $_.SecurityIdentifier.Value })
     $missing = @($SystemSid, $AdminsSid | Where-Object { $readers -notcontains $_.Value })
     $ordered = @($kept | Where-Object { -not (& $isAllow $_) }) + @($kept | Where-Object { & $isAllow $_ })
     $reordered = $false
     for ($i = 0; $i -lt $kept.Count; $i++) { if (-not [object]::ReferenceEquals($kept[$i], $ordered[$i])) { $reordered = $true } }
     $changes = @()
+    if ($noDacl) { $changes += 'no DACL (everyone had full control) replaced' }
     if (-not $current.AreAccessRulesProtected) { $changes += 'inheritance off' }
     if ($broad.Count -gt 0) { $changes += 'Users / Authenticated Users / Everyone / app packages removed' }
     if ($missing.Count -gt 0) {
@@ -631,18 +643,20 @@ function Protect-PrivateKeyFile {
     $dacl = New-Object Security.AccessControl.RawAcl($revision, ($ordered.Count + $missing.Count))
     $n = 0
     foreach ($ace in $ordered) {
-        $ace.AceFlags = [Security.AccessControl.AceFlags]([int]$ace.AceFlags -band (-bnot [int][Security.AccessControl.AceFlags]::Inherited))
+        # [Enum]::ToObject: PowerShell's cast rejects flag bits the enum does not name.
+        $ace.AceFlags = [Enum]::ToObject([Security.AccessControl.AceFlags], ([int]$ace.AceFlags -band (-bnot [int][Security.AccessControl.AceFlags]::Inherited)))
         $dacl.InsertAce($n, $ace); $n++
     }
     foreach ($sid in $missing) {
         $dacl.InsertAce($n, (New-Object Security.AccessControl.CommonAce('None', 'AccessAllowed', 0x1F01FF, $sid, $false, $null))); $n++
     }
-    $sd = New-Object Security.AccessControl.RawSecurityDescriptor(([Security.AccessControl.ControlFlags]'DiscretionaryAclPresent'), $null, $null, $null, $dacl)
+    # The protected bit travels in the descriptor: SetAccessRuleProtection would run a
+    # canonical check that an unknown entry type fails.
+    $sd = New-Object Security.AccessControl.RawSecurityDescriptor(([Security.AccessControl.ControlFlags]'DiscretionaryAclPresent, DiscretionaryAclProtected'), $null, $null, $null, $dacl)
     $bytes = New-Object byte[] $sd.BinaryLength
     $sd.GetBinaryForm($bytes, 0)
     $acl = New-Object Security.AccessControl.FileSecurity
     $acl.SetSecurityDescriptorBinaryForm($bytes, 'Access')
-    $acl.SetAccessRuleProtection($true, $false)
     $item.SetAccessControl($acl)
     return ($changes -join ', ')
 }
