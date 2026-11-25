@@ -50,7 +50,9 @@
     lab VM); the SCM then counts a failure and would restart the service 5 s later. The
     script's own stops (re-create, -Remove) therefore remove the recovery actions first
     and accept "service Stopped, no wrapper and no LiveKit process left" as success even
-    when `stopwait` reports an error.
+    when `stopwait` reports an error; if the stop or the uninstall fails or is interrupted
+    (Ctrl+C) while the service is still registered, the recovery actions are restored.
+    WinSW and sc.exe are judged by their exit code only, never by what they write to stderr.
 
     How LiveKit reports a start-up error (rejected configuration, missing TURN certificate,
     port in use): one plain line on stdout, i.e. in livekit-service.out.log; its JSON log
@@ -75,7 +77,10 @@
     directory the script owns the DACL on every run: inheritance off, SYSTEM and
     Administrators Full Control, the service account Modify (inherited by the files),
     nobody else (%ProgramData% would otherwise let every user create files there), and an
-    owner other than SYSTEM or Administrators is replaced by Administrators. A custom LogDir
+    owner other than SYSTEM or Administrators is replaced by Administrators. A default
+    LogDir that is a junction or symbolic link is refused; a folder between %ProgramData%
+    and it that is a link or is owned by someone other than SYSTEM, Administrators or
+    TrustedInstaller is warned about. A custom LogDir
     that already exists is left as it is apart from the service account's entry; the
     script warns if Users, Authenticated Users or Everyone may create or change files in it
     or if its owner is not SYSTEM or Administrators.
@@ -86,7 +91,8 @@
     sets, on every run:
       - livekit.yaml (it holds the API secret): inheritance removed, SYSTEM and
         Administrators Full Control, plus Read for the service account if it is not
-        LocalSystem. Ordinary users can no longer read the secret;
+        LocalSystem (and, on an account change, Read for the previous account until its
+        service is stopped). Ordinary users can no longer read the secret;
       - LogDir: Modify for the service account, inherited by files and subfolders, so it
         can append to and roll log files that an earlier LocalSystem run or the elevated
         `livekit-service.exe install` created (without it the wrapper dies with
@@ -96,18 +102,19 @@
         and a path without a drive letter (\certs\key.pem) is on InstallDir's drive, as
         LiveKit (working directory InstallDir) resolves them; the drive-relative form
         'X:name' is warned about;
-      - turn.key_file only, for every account including LocalSystem, as the last change to
-        that file in the run: inheritance off (inherited entries are kept as explicit
-        ones), then the allow entries of Users, Authenticated Users, Everyone, ALL
-        APPLICATION PACKAGES and ALL RESTRICTED APPLICATION PACKAGES are removed. Every
-        other entry stays.
+      - turn.key_file only, for every account including LocalSystem, before the service
+        account's Read: inheritance off (inherited entries are kept as explicit ones), then
+        the allow entries of Users, Authenticated Users, Everyone, ALL APPLICATION PACKAGES
+        and ALL RESTRICTED APPLICATION PACKAGES are removed; SYSTEM or Administrators get
+        Full Control if no entry of theirs can read the file any more. Every other entry
+        stays.
     WinSW itself grants a non-LocalSystem account the "Log on as a service" right at
     `install` (<allowservicelogon> in livekit.xml).
     When -ServiceAccount differs from the account the existing service runs as, the entries
     this script added for the previous account are removed once the old service is stopped
     and before it is uninstalled: only an explicit entry that is exactly what this script
-    creates (Modify inherited on LogDir, Read on a TURN file); any other entry of that
-    account is left and named in a warning. Its "Log on as a service" right is not revoked:
+    creates (Modify inherited on LogDir, Read on livekit.yaml and on a TURN file); any other
+    entry of that account is left and named in a warning. Its "Log on as a service" right is not revoked:
     other services may rely on it. A failure of this clean-up is a warning, not an error.
 
 .PARAMETER WinSwVersion
@@ -306,11 +313,36 @@ function Test-FirewallProfileInUse {
     }
 }
 
+# Every native call (WinSW, sc.exe) goes through here and is judged by its exit code only.
+# In Windows PowerShell 5.1, 2>&1 under ErrorActionPreference Stop turns the first stderr
+# line into a terminating error whatever the exit code (WinSW writes log4net errors there
+# when it cannot append to its log), so the preference is lowered for the call. The output
+# goes to the verbose stream.
+function Invoke-Native {
+    [OutputType([int])]
+    param([Parameter(Mandatory)][string] $FilePath, [string[]] $ArgumentList = @())
+    $ErrorActionPreference = 'Continue'
+    & $FilePath @ArgumentList 2>&1 | ForEach-Object { Write-Verbose "$_" }
+    return $LASTEXITCODE
+}
+
 # Runs one WinSW command and throws on a non-zero exit code.
 function Invoke-WinSw {
     param([Parameter(Mandatory)][string] $Command)
-    & $WrapperExe $Command 2>&1 | Write-Verbose
-    if ($LASTEXITCODE -ne 0) { throw "WinSW $Command failed with exit code $LASTEXITCODE." }
+    $code = Invoke-Native -FilePath $WrapperExe -ArgumentList $Command
+    if ($code -ne 0) { throw "WinSW $Command failed with exit code $code." }
+}
+
+# SHA-256 of a file in lower case. Not Get-FileHash: in Windows PowerShell 5.1 that is a
+# script function which honours a global WhatIfPreference (powershell.exe -File ... -WhatIf)
+# and then returns nothing.
+function Get-Sha256 {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string] $Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($Path)
+    try { return (-join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') })) }
+    finally { $stream.Dispose(); $sha.Dispose() }
 }
 
 # 'uninstall' only marks the service for deletion; the SCM removes it once every handle
@@ -361,50 +393,81 @@ function Stop-OrphanedServer {
 # actions= "" means "no action"; Windows PowerShell drops a bare "" argument, hence '""'.
 function Set-RecoveryAction {
     param([switch] $Disable)
-    if ($Disable) { & $Sc failure $ServiceName reset= 0 actions= '""' 2>&1 | Write-Verbose }
-    else { & $Sc failure $ServiceName reset= $RecoveryResetSeconds actions= $RecoveryActions 2>&1 | Write-Verbose }
-    return ($LASTEXITCODE -eq 0)
+    $arguments = if ($Disable) { 'failure', $ServiceName, 'reset=', '0', 'actions=', '""' }
+    else { 'failure', $ServiceName, 'reset=', "$RecoveryResetSeconds", 'actions=', $RecoveryActions }
+    return ((Invoke-Native -FilePath $Sc -ArgumentList $arguments) -eq 0)
+}
+
+# Restores the recovery actions if the service is still registered; warns if that fails.
+function Restore-RecoveryAction {
+    if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) { return }
+    if (-not (Set-RecoveryAction)) {
+        Write-Warning ("sc.exe failure (restore the recovery actions) exited $LASTEXITCODE; run this script again so " +
+            "the restart policy 5 s / 10 s / 30 s is set.")
+    }
 }
 
 # Stops the service for a re-create or -Remove. WinSW sends LiveKit Ctrl+C and LiveKit
 # drains; WinSW 2.12.0 can then crash ("The handle is invalid") right after LiveKit exited,
 # which the SCM counts as a failure and answers with a restart after 5 s. The recovery
 # actions are therefore removed first, and "Stopped, no wrapper and no LiveKit process
-# left" is success even if stopwait reported an error. Throws otherwise, with the recovery
-# actions restored.
+# left" is success even if stopwait reported an error. Otherwise (failure, terminating
+# error, Ctrl+C) the recovery actions are restored on the way out. On success they stay
+# removed: the caller restores them unless the uninstall that follows succeeds.
 function Stop-ServiceForChange {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if (-not $svc) { return }
     $disabled = Set-RecoveryAction -Disable
     if (-not $disabled) { Write-Warning 'Could not remove the recovery actions before the stop; a wrapper crash during the stop could restart the service.' }
-    $code = 0
-    if ($svc.Status -ne 'Stopped') {
-        & $WrapperExe stopwait 2>&1 | Write-Verbose
-        $code = $LASTEXITCODE
-    }
-    $deadline = (Get-Date).AddSeconds(60)
-    while ((Get-Date) -lt $deadline) {
-        $svc.Refresh()
-        if ($svc.Status -eq 'Stopped') { break }
-        if ($svc.Status -in 'Running', 'StartPending') { & $Sc stop $ServiceName 2>&1 | Write-Verbose }
-        Start-Sleep -Milliseconds 250
-    }
-    Stop-OrphanedServer
-    $svc.Refresh()
-    $wrappers = @(Get-InstalledProcess -Name 'livekit-service.exe')
-    $servers = @(Get-InstalledProcess)
-    if ($svc.Status -eq 'Stopped' -and $wrappers.Count -eq 0 -and $servers.Count -eq 0) {
-        if ($code -ne 0) {
-            Write-Warning ("WinSW stopwait reported exit code $code, but the service is Stopped and no wrapper or LiveKit " +
-                'process is left (WinSW 2.12.0 can crash right after LiveKit exited); continuing.')
+    $stopped = $false
+    try {
+        $code = 0
+        if ($svc.Status -ne 'Stopped') { $code = Invoke-Native -FilePath $WrapperExe -ArgumentList 'stopwait' }
+        $deadline = (Get-Date).AddSeconds(60)
+        while ((Get-Date) -lt $deadline) {
+            $svc.Refresh()
+            if ($svc.Status -eq 'Stopped') { break }
+            if ($svc.Status -in 'Running', 'StartPending') { $null = Invoke-Native -FilePath $Sc -ArgumentList 'stop', $ServiceName }
+            Start-Sleep -Milliseconds 250
         }
-        Write-Host "stopped  service $ServiceName"
-        return
+        Stop-OrphanedServer
+        $svc.Refresh()
+        $wrappers = @(Get-InstalledProcess -Name 'livekit-service.exe')
+        $servers = @(Get-InstalledProcess)
+        if ($svc.Status -eq 'Stopped' -and $wrappers.Count -eq 0 -and $servers.Count -eq 0) {
+            if ($code -ne 0) {
+                Write-Warning ("WinSW stopwait reported exit code $code, but the service is Stopped and no wrapper or LiveKit " +
+                    'process is left (WinSW 2.12.0 can crash right after LiveKit exited); continuing.')
+            }
+            Write-Host "stopped  service $ServiceName"
+            $stopped = $true
+            return
+        }
+        throw ("Service $ServiceName could not be stopped: status $($svc.Status), wrapper processes $($wrappers.Count), " +
+            "livekit-server.exe processes $($servers.Count), WinSW stopwait exit code $code. Its recovery actions were restored. " +
+            "Stop it with Stop-Service $ServiceName and run this script again.")
     }
-    if ($disabled) { $null = Set-RecoveryAction }
-    throw ("Service $ServiceName could not be stopped: status $($svc.Status), wrapper processes $($wrappers.Count), " +
-        "livekit-server.exe processes $($servers.Count), WinSW stopwait exit code $code. Its recovery actions were restored. " +
-        "Stop it with Stop-Service $ServiceName and run this script again.")
+    finally {
+        if ($disabled -and -not $stopped) { Restore-RecoveryAction }
+    }
+}
+
+# Stop-ServiceForChange, then WinSW uninstall until the SCM has deleted the service. The
+# recovery actions come back if anything on the way fails or the run is interrupted while
+# the service is still registered.
+function Remove-ServiceForChange {
+    param([scriptblock] $AfterStop = {})
+    $removed = $false
+    try {
+        Stop-ServiceForChange
+        & $AfterStop
+        Invoke-WinSw uninstall
+        Wait-ServiceDeleted
+        $removed = $true
+    }
+    finally {
+        if (-not $removed) { Restore-RecoveryAction }
+    }
 }
 
 # Ends the SCM restart loop of a failing service and returns what it could establish:
@@ -445,7 +508,7 @@ function Stop-ServiceUntilQuiet {
                 $stoppedSince = $null
                 if ($svc.Status -in 'Running', 'StartPending', 'Paused') {
                     # sc.exe fails harmlessly while the service cannot accept a stop yet; retry.
-                    & $Sc stop $ServiceName 2>&1 | Write-Verbose
+                    $null = Invoke-Native -FilePath $Sc -ArgumentList 'stop', $ServiceName
                 }
             }
             Start-Sleep -Milliseconds 250
@@ -453,14 +516,7 @@ function Stop-ServiceUntilQuiet {
         Write-Warning "Service $ServiceName did not stay Stopped within $([int](4 * $quietSeconds)) s."
         return 'NotQuiet'
     }
-    finally {
-        if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-            if (-not (Set-RecoveryAction)) {
-                Write-Warning ("sc.exe failure (restore the recovery actions) exited $LASTEXITCODE; run this script again so " +
-                    "the restart policy 5 s / 10 s / 30 s is set.")
-            }
-        }
-    }
+    finally { Restore-RecoveryAction }
 }
 
 function Resolve-AccountSid {
@@ -528,7 +584,9 @@ function Remove-AllowRule {
 # the folder's entries, and the next write of an unprotected DACL brings them back. So
 # inheritance is turned off whenever it is still on (inherited entries become explicit
 # ones), then the allow entries of the broad groups are removed; everything else stays.
-# Call it as the last DACL change to the key in a run. Returns what it changed, or ''.
+# SYSTEM and Administrators get Full Control if they have no allow entry left that reads
+# the file. Call it before granting the service account Read: once the DACL is protected,
+# no later write can bring the folder's entries back. Returns what it changed, or ''.
 function Protect-PrivateKeyFile {
     param([Parameter(Mandatory)][string] $Path)
     $item = Get-Item -LiteralPath $Path
@@ -550,6 +608,16 @@ function Protect-PrivateKeyFile {
         }
         $item.SetAccessControl($acl)
         $changes += 'Users / Authenticated Users / Everyone / app packages removed'
+        $acl = $item.GetAccessControl('Access')
+    }
+    $readers = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+        Where-Object { $_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band [int][Security.AccessControl.FileSystemRights]::ReadData) -ne 0 } |
+        ForEach-Object { $_.IdentityReference.Value })
+    $missing = @($SystemSid, $AdminsSid | Where-Object { $readers -notcontains $_.Value })
+    if ($missing.Count -gt 0) {
+        foreach ($sid in $missing) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'Allow'))) }
+        $item.SetAccessControl($acl)
+        $changes += "$(($missing | ForEach-Object { if ($_.Value -eq $SystemSid.Value) { 'SYSTEM' } else { 'Administrators' } }) -join ' and ') full control added (no entry of theirs could read it)"
     }
     return ($changes -join ', ')
 }
@@ -608,13 +676,22 @@ function Set-LogDirectoryAcl {
         }
         if (-not $ownerOk) { $acl.SetOwner($AdminsSid) }
         $item.SetAccessControl($acl)
-        Write-Host ("acl      $LogDir (inheritance off; SYSTEM, Administrators full" + $(if ($Accounts) { "; $Accounts modify" }) +
-            $(if (-not $ownerOk) { "; owner $owner replaced by Administrators" }) + ')')
+        # This line describes the folder's own DACL; its parents are judged by Test-DefaultLogDirectoryPath.
+        Write-Host ("acl      $LogDir (this folder: inheritance off; SYSTEM, Administrators full" + $(if ($Accounts) { "; $Accounts modify" }) +
+            $(if (-not $ownerOk) { "; owner $(Format-Sid $owner) replaced by Administrators" }) +
+            $(if ($logPathWarned) { '; its parent folders are not trusted, see the warning above' }) + ')')
         # Log files are owned by whoever created them: SYSTEM/Administrators, or the service
         # account that wrote them (NETWORK SERVICE, LOCAL SERVICE, a gMSA given Modify here).
         $expectedOwners = @($SystemSid.Value, $AdminsSid.Value, 'S-1-5-19', 'S-1-5-20') + @($ModifySid | ForEach-Object { $_.Value })
         foreach ($file in @(Get-ChildItem -LiteralPath $LogDir -Force)) {
-            $fileAcl = $file.GetAccessControl('Owner, Access')
+            try {
+                $fileAcl = $file.GetAccessControl('Owner, Access')
+            }
+            catch {
+                Write-Warning ("Cannot read the permissions of $($file.FullName) ($($_.Exception.GetBaseException().Message)); " +
+                    'someone other than this script created it. Take ownership and delete it unless you know who created it.')
+                continue
+            }
             $fileOwner = $fileAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
             if ($fileAcl.AreAccessRulesProtected -or $fileOwner -notin $expectedOwners) {
                 Write-Warning ("$($file.FullName) does not take its permissions from $LogDir (owner $fileOwner, inheritance " +
@@ -629,12 +706,63 @@ function Set-LogDirectoryAcl {
         Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -in $BroadSids[0..2] -and ([int]$_.FileSystemRights -band $writeMask) -ne 0 })
     if ($open.Count -gt 0) {
         Write-Warning ("Users, Authenticated Users or Everyone may create or change files in $LogDir " +
-            "($(($open | ForEach-Object { "$($_.IdentityReference.Translate([Security.Principal.NTAccount])): $($_.FileSystemRights)" }) -join '; ')). " +
+            "($(($open | ForEach-Object { "$(Format-Sid $_.IdentityReference): $($_.FileSystemRights)" }) -join '; ')). " +
             'Anyone who can do that can pre-create the log files and stop the service from writing them. Restrict it, or use the default LogDir.')
     }
     if (-not $ownerOk) {
-        Write-Warning "$LogDir is owned by $($owner.Translate([Security.Principal.NTAccount])), not by SYSTEM or Administrators; that owner can change its permissions."
+        Write-Warning "$LogDir is owned by $(Format-Sid $owner), not by SYSTEM or Administrators; that owner can change its permissions."
     }
+}
+
+# An account name for a SID, or the SID itself when it does not translate (deleted
+# account, foreign machine, domain not reachable).
+function Format-Sid {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][Security.Principal.SecurityIdentifier] $Sid)
+    try { return $Sid.Translate([Security.Principal.NTAccount]).Value }
+    catch { return $Sid.Value }
+}
+
+# The default LogDir lies under %ProgramData%, where Users may create folders. Its own DACL
+# is replaced by Set-LogDirectoryAcl; what that cannot cover is checked here: a leaf that
+# is a junction or symbolic link (its DACL would be set on the link, and the logs would go
+# where it points) is refused; a folder between %ProgramData% and the leaf that is a link or
+# is owned by someone other than SYSTEM, Administrators or TrustedInstaller is warned about,
+# because its owner can move the leaf away or re-point the path. Returns $true when such a
+# warning was given.
+function Test-DefaultLogDirectoryPath {
+    [OutputType([bool])]
+    param()
+    $trusted = @($SystemSid.Value, $AdminsSid.Value, 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+    $leaf = Get-Item -LiteralPath $LogDir -Force -ErrorAction SilentlyContinue
+    if ($leaf -and ($leaf.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw ("$LogDir is a junction or symbolic link. The log folder must be a real folder: remove the link (the folder " +
+            'it points to stays), then run this script again.')
+    }
+    $warned = $false
+    $base = [Environment]::GetFolderPath('CommonApplicationData').TrimEnd('\')
+    $parent = Split-Path -Parent $LogDir
+    while ($parent -and $parent.Length -gt $base.Length) {
+        $folder = Get-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+        if ($folder) {
+            $problem = $null
+            if ($folder.Attributes -band [IO.FileAttributes]::ReparsePoint) { $problem = 'is a junction or symbolic link' }
+            else {
+                try {
+                    $owner = $folder.GetAccessControl('Owner').GetOwner([Security.Principal.SecurityIdentifier])
+                    if ($trusted -notcontains $owner.Value) { $problem = "is owned by $(Format-Sid $owner)" }
+                }
+                catch { $problem = "has an owner that cannot be read ($($_.Exception.GetBaseException().Message))" }
+            }
+            if ($problem) {
+                Write-Warning ("$parent $problem, not by SYSTEM, Administrators or TrustedInstaller: whoever controls it can move " +
+                    "$LogDir away or re-point it. Make Administrators its owner (and remove the link), or use another -LogDir.")
+                $warned = $true
+            }
+        }
+        $parent = Split-Path -Parent $parent
+    }
+    return $warned
 }
 
 # Removes the entries this script added for a previous service account (exactly those) and
@@ -649,6 +777,9 @@ function Remove-PreviousAccountEntry {
         if ((Test-Path -LiteralPath $LogDir) -and (Remove-AllowRule -Path $LogDir -Sid $Sid -Rights 'Modify' -AccountName $AccountName)) {
             Write-Host "acl      $LogDir ($AccountName modify removed)"
         }
+        if ((Test-Path -LiteralPath $ConfigTarget) -and (Remove-AllowRule -Path $ConfigTarget -Sid $Sid -Rights 'Read' -AccountName $AccountName)) {
+            Write-Host "acl      $ConfigTarget ($AccountName read removed)"
+        }
         foreach ($turnFile in $TurnFiles) {
             if (-not (Test-Path -LiteralPath $turnFile.Path)) { continue }
             if (Remove-AllowRule -Path $turnFile.Path -Sid $Sid -Rights 'Read' -AccountName $AccountName) {
@@ -662,7 +793,7 @@ function Remove-PreviousAccountEntry {
     }
     catch {
         Write-Warning ("Could not remove the entries added for the previous service account $AccountName ($($_.Exception.Message)). " +
-            "Check $LogDir and the TURN files and remove its entries by hand.")
+            "Check $LogDir, $ConfigTarget and the TURN files and remove its entries by hand.")
     }
 }
 
@@ -691,15 +822,7 @@ if ($Remove) {
         throw "Service $ServiceName exists but $WrapperExe is missing; remove it with sc.exe delete $ServiceName."
     }
     elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Stop and uninstall the WinSW service')) {
-        Stop-ServiceForChange
-        try {
-            Invoke-WinSw uninstall
-            Wait-ServiceDeleted
-        }
-        catch {
-            if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) { $null = Set-RecoveryAction }
-            throw
-        }
+        Remove-ServiceForChange
         Write-Host "removed  service $ServiceName"
     }
     Stop-OrphanedServer
@@ -727,7 +850,7 @@ if (-not (Test-Path -LiteralPath $ServerExe) -and -not $WhatIfPreference) {
 # (Get-FileHash) before changing $WinSwSha256.
 if (Test-Path -LiteralPath $WrapperExe) {
     # What gets executed is hashed on every run, not only when it was downloaded.
-    $actual = (Get-FileHash -LiteralPath $WrapperExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256 -Path $WrapperExe
     if ($actual -ne $WinSwSha256.ToLowerInvariant()) {
         throw ("$WrapperExe does not match the pinned SHA-256 of WinSW $WinSwVersion (expected $WinSwSha256, got $actual). " +
             'If it is another WinSW release on purpose, pass -WinSwVersion and -WinSwSha256 for that release; otherwise ' +
@@ -752,7 +875,7 @@ elseif ($PSCmdlet.ShouldProcess($WrapperExe, "Download WinSW $WinSwVersion")) {
     # them the name WinSW is executed by.
     $staged = "$WrapperExe.new"
     Copy-Item -LiteralPath $cached -Destination $staged -Force
-    $actual = (Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256 -Path $staged
     if ($actual -ne $WinSwSha256.ToLowerInvariant()) {
         Remove-Item -LiteralPath $staged, $cached -Force -ErrorAction SilentlyContinue
         $left = @($staged, $cached | Where-Object { Test-Path -LiteralPath $_ })
@@ -793,6 +916,8 @@ if ($PSCmdlet.ShouldProcess($WrapperXml, 'Write WinSW configuration')) {
     Write-Host "config   $WrapperXml (account: $ServiceAccount)"
 }
 
+$logPathWarned = $false
+if ($IsDefaultLogDir) { $logPathWarned = Test-DefaultLogDirectoryPath }
 if (-not (Test-Path -LiteralPath $LogDir)) {
     if ($PSCmdlet.ShouldProcess($LogDir, 'Create log directory')) {
         New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
@@ -840,12 +965,18 @@ if ((Test-Path -LiteralPath $ConfigTarget) -and $PSCmdlet.ShouldProcess($ConfigT
     $acl.SetAccessRuleProtection($true, $false)
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($SystemSid, 'FullControl', 'Allow')))
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($AdminsSid, 'FullControl', 'Allow')))
+    $readers = @()
     if (-not $isLocalSystem) {
         $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($accountSid, 'Read', 'Allow')))
+        $readers += $ServiceAccount
+    }
+    # The running old service keeps its Read until it is stopped in step 6, like LogDir.
+    if ($previous) {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($previous.Sid, 'Read', 'Allow')))
+        $readers += "$($previous.Name) (until its service is stopped)"
     }
     (Get-Item -LiteralPath $ConfigTarget).SetAccessControl($acl)
-    $readers = if ($isLocalSystem) { '' } else { "; $ServiceAccount read" }
-    Write-Host "acl      $ConfigTarget (SYSTEM, Administrators full$readers)"
+    Write-Host "acl      $ConfigTarget (SYSTEM, Administrators full$(if ($readers) { "; $($readers -join ', ') read" }))"
 }
 
 if (Test-Path -LiteralPath $LogDir) {
@@ -870,14 +1001,15 @@ foreach ($turnFile in $turnFiles) {
         Write-Warning "TURN file $($turnFile.Path) ($($turnFile.Kind) in livekit.yaml) does not exist; LiveKit will not start."
         continue
     }
-    if (-not $isLocalSystem -and $PSCmdlet.ShouldProcess($turnFile.Path, "Grant $ServiceAccount Read")) {
-        Add-AllowRule -Path $turnFile.Path -Sid $accountSid -Rights 'Read'
-        Write-Host "acl      $($turnFile.Path) ($ServiceAccount read)"
-    }
-    # Last change to the key in this step; step 6 calls it again after its clean-up.
+    # The key is closed before the account's grant, so it is never open between two writes
+    # and a failed grant leaves it closed; step 6 closes it again after its clean-up.
     if ($turnFile.Kind -eq 'key_file' -and $PSCmdlet.ShouldProcess($turnFile.Path, 'Turn inheritance off and remove Users, Authenticated Users, Everyone and app packages')) {
         $changed = Protect-PrivateKeyFile -Path $turnFile.Path
         Write-Host "acl      $($turnFile.Path) (private key: $(if ($changed) { $changed } else { 'already closed' }))"
+    }
+    if (-not $isLocalSystem -and $PSCmdlet.ShouldProcess($turnFile.Path, "Grant $ServiceAccount Read")) {
+        Add-AllowRule -Path $turnFile.Path -Sid $accountSid -Rights 'Read'
+        Write-Host "acl      $($turnFile.Path) ($ServiceAccount read)"
     }
 }
 
@@ -911,15 +1043,8 @@ else {
 # the uninstall and the start apart from the service operations themselves.
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
     if ($PSCmdlet.ShouldProcess($ServiceName, 'Re-create the existing WinSW service registration (stop, uninstall, install)')) {
-        Stop-ServiceForChange
-        if ($previous) { Remove-PreviousAccountEntry -AccountName $previous.Name -Sid $previous.Sid -TurnFiles $turnFiles }
-        try {
-            Invoke-WinSw uninstall
-            Wait-ServiceDeleted
-        }
-        catch {
-            if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) { $null = Set-RecoveryAction }
-            throw
+        Remove-ServiceForChange -AfterStop {
+            if ($previous) { Remove-PreviousAccountEntry -AccountName $previous.Name -Sid $previous.Sid -TurnFiles $turnFiles }
         }
         Stop-OrphanedServer
         Invoke-WinSw install
