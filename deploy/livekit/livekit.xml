@@ -22,23 +22,37 @@
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
 
-  <!-- Same recovery ladder as the Talky service: 5 s, 10 s, then 30 s. -->
+  <!-- Same recovery ladder as the Talky service: 5 s, 10 s, then 30 s (the last one
+       repeats). Install-LiveKitService.ps1 restores exactly this with sc.exe after a
+       failed start ($RecoveryActions there); keep both in step. -->
+
   <onfailure action="restart" delay="5 sec" />
   <onfailure action="restart" delay="10 sec" />
   <onfailure action="restart" delay="30 sec" />
   <resetfailure>1 day</resetfailure>
 
   <!-- LiveKit writes its structured JSON log to stderr, so it lands in
-       livekit-service.err.log; livekit-service.out.log stays empty and
-       livekit-service.wrapper.log is WinSW's own log. Keep 10 files of 50 MB. -->
+       livekit-service.err.log. A start-up error (configuration, TURN certificate, port in
+       use) is printed as one plain line on stdout and lands in livekit-service.out.log,
+       which is otherwise empty. livekit-service.wrapper.log is WinSW's own log. Up to
+       LiveKit 1.13.9 such an error ends with exit code 0, which WinSW reports as a normal
+       stop (no event 7031, no restart); from 1.13.10 the exit code is 1 and the recovery
+       ladder above applies. Keep 10 files of 50 MB. -->
   <logpath>__LOGDIR__</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>51200</sizeThreshold>
     <keepFiles>10</keepFiles>
   </log>
 
-  <!-- Ctrl+C lets LiveKit drain its sessions before the process is killed. -->
-  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <!-- On stop WinSW sends Ctrl+C, which lets LiveKit drain its sessions, and kills the
+       process after stoptimeout. That happens in either order of this setting; it only
+       says whether child processes are listed after (true) or before (false) LiveKit is
+       stopped, and livekit-server.exe starts none. It must be false: with true, WinSW
+       2.12.0 lists them after LiveKit has exited, reads StartTime of the exited process
+       (ProcessHelper.GetChildren) and, now and then (a race, most likely with its own exit
+       handler), the wrapper dies with "The handle is invalid" - a plain stop then becomes a crash, event
+       7031 and an SCM restart (seen once on a lab VM with LiveKit 1.13.11). -->
+  <stopparentprocessfirst>false</stopparentprocessfirst>
   <stoptimeout>30 sec</stoptimeout>
 
   <!-- Media threads should not lose the CPU to background maintenance work. -->
@@ -47,7 +61,8 @@
   <!-- Install-LiveKitService.ps1 removes this block entirely when the service runs as
        LocalSystem (WinSW's default) and fills in the account otherwise. Element names
        follow WinSW 2.12.0 (doc/xmlConfigFile.md): domain + user, no password for a gMSA
-       or a built-in account. -->
+       or a built-in account. allowservicelogon makes WinSW grant the account the
+       "Log on as a service" right at install. -->
   <serviceaccount>
     <domain>__SERVICE_DOMAIN__</domain>
     <user>__SERVICE_USER__</user>
