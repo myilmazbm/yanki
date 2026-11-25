@@ -15,8 +15,14 @@
       2. render deploy\livekit\livekit.xml into InstallDir\livekit-service.xml;
       3. copy deploy\livekit\livekit.yaml next to the binary if it is not there yet
          (an existing file is never overwritten - it holds the node's keys);
-      4. `livekit-service.exe install` and, unless -NoStart, `start`;
-      5. add the inbound firewall rules in the "LiveKit" group:
+      4. set the file permissions the service account needs (see -ServiceAccount);
+      5. `livekit-service.exe install` and, unless -NoStart, `start`. The start only counts
+         once the same wrapper process and its livekit-server.exe child are still running a
+         few seconds after the service reported Running. If not, the script stops the
+         service until it stays Stopped for longer than the longest restart delay (so no
+         SCM restart loop is left behind), stops orphaned processes and fails; the service
+         stays registered;
+      6. add the inbound firewall rules in the "LiveKit" group:
             UDP 7882  media (SRTP/ICE)
             UDP 3478  embedded TURN
             UDP 30000-40000 TURN relay allocations (turn.relay_range_* in livekit.yaml)
@@ -27,6 +33,12 @@
     Idempotent: an already installed service is reconfigured and restarted rather than
     duplicated; existing firewall rules are updated in place.
 
+    WinSW does not tie livekit-server.exe to its own lifetime: when the wrapper dies, the
+    child keeps running and keeps the ports. After the service is stopped or uninstalled
+    (re-create, -Remove, a failed start) every livekit-server.exe whose executable lies
+    under InstallDir and whose parent is not the running service is stopped. LiveKit
+    processes started from other directories are never touched.
+
 .PARAMETER InstallDir
     Directory holding livekit-server.exe. Default C:\Program Files\LiveKit.
 
@@ -34,9 +46,19 @@
     Service log directory. Default %ProgramData%\Talky\logs\livekit.
 
 .PARAMETER ServiceAccount
-    'LocalSystem' (default) or an account such as 'NT AUTHORITY\NetworkService'.
-    NetworkService is the hardened choice; the TURN certificate and key files must then
-    be readable by it.
+    'LocalSystem' (default) or an account such as 'NT AUTHORITY\NetworkService' or a gMSA
+    ('CORP\livekit$'). NetworkService is the hardened choice. For any account the script
+    sets, on every run:
+      - livekit.yaml (it holds the API secret): inheritance removed, SYSTEM and
+        Administrators Full Control, plus Read for the service account if it is not
+        LocalSystem. Ordinary users can no longer read the secret;
+      - LogDir: Modify for the service account, inherited by files and subfolders, so it
+        can append to and roll log files that an earlier LocalSystem run or the elevated
+        `livekit-service.exe install` created (without it the wrapper dies with
+        UnauthorizedAccessException on livekit-service.err.log);
+      - turn.cert_file and turn.key_file named in livekit.yaml: Read for the service
+        account (an explicit allow entry; nothing else on those files is changed).
+    Nothing is granted for LocalSystem beyond the livekit.yaml ACL.
 
 .PARAMETER WinSwVersion
     WinSW release to download. Default 2.12.0. The WinSW project publishes neither a
@@ -60,7 +82,8 @@
     Do not touch the firewall.
 
 .PARAMETER Remove
-    Stop, uninstall and unregister the service and remove the firewall rules.
+    Stop, uninstall and unregister the service, stop any livekit-server.exe left running
+    from InstallDir and remove the firewall rules. Files in InstallDir and LogDir stay.
 
 .EXAMPLE
     .\Install-LiveKitService.ps1 -WhatIf
@@ -98,6 +121,14 @@ $WrapperExe = Join-Path $InstallDir 'livekit-service.exe'
 $WrapperXml = Join-Path $InstallDir 'livekit-service.xml'
 $ServerExe = Join-Path $InstallDir 'livekit-server.exe'
 $ConfigTarget = Join-Path $InstallDir 'livekit.yaml'
+$WinSwCache = Join-Path $env:TEMP 'winsw-download'
+# A crash shows up a few seconds after Running (the wrapper opens its log files and
+# starts livekit-server.exe only then); 8 s covers that with margin.
+$StartSettleSeconds = 8
+# Longest delay of the restart ladder in livekit.xml (5 s / 10 s / 30 s). After a failed
+# start the service only counts as quiet once it stayed Stopped for longer than that, since
+# a restart may be pending.
+$RestartLadderMaxSeconds = 30
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -156,6 +187,122 @@ function Invoke-WinSw {
     if ($LASTEXITCODE -ne 0) { throw "WinSW $Command failed with exit code $LASTEXITCODE." }
 }
 
+# 'uninstall' only marks the service for deletion; the SCM removes it once every handle
+# to it is closed, and 'install' fails while it still exists.
+function Wait-ServiceDeleted {
+    $deadline = (Get-Date).AddSeconds(60)
+    while (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+        if ((Get-Date) -ge $deadline) {
+            throw ("Service $ServiceName is still registered 60 s after 'WinSW uninstall' (marked for " +
+                "deletion while something holds a handle to it, e.g. services.msc). Close it and run this script again.")
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# Process id of the running service wrapper, or 0.
+function Get-WrapperProcessId {
+    $svc = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'"
+    if ($svc -and $svc.State -eq 'Running') { return [int]$svc.ProcessId }
+    return 0
+}
+
+# livekit-server.exe processes started from InstallDir (never those from elsewhere).
+function Get-InstalledServerProcess {
+    $prefix = $InstallDir.TrimEnd('\') + '\'
+    return @(Get-CimInstance -ClassName Win32_Process -Filter "Name='livekit-server.exe'" |
+        Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })
+}
+
+# Stops every livekit-server.exe from InstallDir that is not the child of the running
+# service wrapper. A wrapper that crashes leaves its child behind, still holding the ports.
+function Stop-OrphanedServer {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
+    $wrapperPid = Get-WrapperProcessId
+    foreach ($proc in (Get-InstalledServerProcess)) {
+        if ($wrapperPid -ne 0 -and [int]$proc.ParentProcessId -eq $wrapperPid) { continue }
+        if ($PSCmdlet.ShouldProcess("livekit-server.exe ($($proc.ProcessId))", 'Stop orphaned process')) {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Wait-Process -Id $proc.ProcessId -Timeout 15 -ErrorAction SilentlyContinue
+            Write-Host "stopped  orphaned livekit-server.exe ($($proc.ProcessId), parent $($proc.ParentProcessId) gone)"
+        }
+    }
+}
+
+# Ends the SCM restart loop of a crashing service: stops it whenever it is starting or
+# running (a recovery restart may be pending or may just have fired) until it has stayed
+# Stopped for longer than the longest restart delay. A stop requested through the SCM is
+# not a failure, so it triggers no further recovery action.
+function Stop-ServiceUntilQuiet {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess($ServiceName, 'Stop the service and end its restart loop')) { return }
+    $quietSeconds = $RestartLadderMaxSeconds + 5
+    $deadline = (Get-Date).AddSeconds(4 * $quietSeconds)
+    $stoppedSince = $null
+    while ((Get-Date) -lt $deadline) {
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if (-not $svc) { return }
+        if ($svc.Status -eq 'Stopped') {
+            if (-not $stoppedSince) { $stoppedSince = Get-Date }
+            if (((Get-Date) - $stoppedSince).TotalSeconds -ge $quietSeconds) {
+                Write-Host "stopped  service $ServiceName (stayed Stopped for $quietSeconds s, restart loop ended)"
+                return
+            }
+        }
+        else {
+            $stoppedSince = $null
+            if ($svc.Status -in 'Running', 'StartPending', 'Paused') {
+                # sc.exe fails harmlessly while the service cannot accept a stop yet; retry.
+                & "$env:SystemRoot\System32\sc.exe" stop $ServiceName 2>&1 | Write-Verbose
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    Write-Warning "Service $ServiceName did not stay Stopped within $([int](4 * $quietSeconds)) s; stop it with Stop-Service $ServiceName."
+}
+
+function Resolve-AccountSid {
+    param([Parameter(Mandatory)][string] $Account)
+    # The built-in service accounts go by several spellings; use their well-known SIDs.
+    switch -Regex ($Account) {
+        '^(NT AUTHORITY\\)?(NetworkService|Network Service)$' { return New-Object Security.Principal.SecurityIdentifier('S-1-5-20') }
+        '^(NT AUTHORITY\\)?(LocalService|Local Service)$' { return New-Object Security.Principal.SecurityIdentifier('S-1-5-19') }
+    }
+    return (New-Object Security.Principal.NTAccount($Account)).Translate([Security.Principal.SecurityIdentifier])
+}
+
+# Adds one allow entry for $Sid to the DACL of a file or directory; existing entries stay.
+function Add-AllowRule {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][Security.Principal.SecurityIdentifier] $Sid,
+        [Parameter(Mandatory)][Security.AccessControl.FileSystemRights] $Rights
+    )
+    $item = Get-Item -LiteralPath $Path
+    $inherit = if ($item.PSIsContainer) { 'ContainerInherit, ObjectInherit' } else { 'None' }
+    $acl = $item.GetAccessControl('Access')
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($Sid, $Rights, $inherit, 'None', 'Allow')))
+    # Setting the directory DACL also propagates the inheritable entry to existing files.
+    $item.SetAccessControl($acl)
+}
+
+# turn.cert_file / turn.key_file from livekit.yaml, unless still placeholders or empty.
+function Get-TurnFilePath {
+    param([Parameter(Mandatory)][string] $ConfigPath)
+    $paths = @()
+    foreach ($line in (Get-Content -LiteralPath $ConfigPath)) {
+        if ($line -notmatch '^\s+(cert_file|key_file):\s*(?<v>.+?)\s*$') { continue }
+        $value = $Matches['v']
+        if ($value -match '^"(?<s>.*)"') { $value = $Matches['s'].Replace('\\', '\') }      # YAML double-quoted
+        elseif ($value -match "^'(?<s>.*)'") { $value = $Matches['s'].Replace("''", "'") }  # YAML single-quoted
+        else { $value = ($value -split '\s+#', 2)[0].Trim() }
+        if ($value -and -not $value.StartsWith('<')) { $paths += $value }
+    }
+    return $paths
+}
+
 # --- preconditions --------------------------------------------------------------------
 
 if (-not (Test-Elevated)) {
@@ -175,8 +322,10 @@ if ($Remove) {
         if ($PSCmdlet.ShouldProcess($ServiceName, 'Stop and uninstall the WinSW service')) {
             $current = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
             if ($current) {
-                if ($current.Status -ne 'Stopped') { Invoke-WinSw stop }
+                # 'stop' only requests the stop; 'stopwait' returns once the service is Stopped.
+                if ($current.Status -ne 'Stopped') { Invoke-WinSw stopwait }
                 Invoke-WinSw uninstall
+                Wait-ServiceDeleted
                 Write-Host "removed  service $ServiceName"
             }
             else {
@@ -187,6 +336,7 @@ if ($Remove) {
     else {
         Write-Host "absent   $WrapperExe"
     }
+    Stop-OrphanedServer
     if (-not $SkipFirewall) {
         foreach ($rule in @(Get-NetFirewallRule -Group $FirewallGroup -ErrorAction SilentlyContinue)) {
             if ($PSCmdlet.ShouldProcess($rule.DisplayName, 'Remove inbound rule')) {
@@ -213,17 +363,25 @@ elseif ($PSCmdlet.ShouldProcess($WrapperExe, "Download WinSW $WinSwVersion")) {
     if (-not (Test-Path -LiteralPath $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
-    $url = "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe"
-    Invoke-WebRequest -Uri $url -OutFile $WrapperExe -UseBasicParsing -Headers @{ 'User-Agent' = 'talky-deploy' }
+    # The download is cached like Get-LiveKit.ps1 does; the hash is checked on every use.
+    $cached = Join-Path $WinSwCache "WinSW-x64-$WinSwVersion.exe"
+    $verb = 'cached  '
+    if (-not (Test-Path -LiteralPath $cached)) {
+        New-Item -ItemType Directory -Path $WinSwCache -Force | Out-Null
+        $url = "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe"
+        Invoke-WebRequest -Uri $url -OutFile $cached -UseBasicParsing -Headers @{ 'User-Agent' = 'talky-deploy' }
+        $verb = 'fetched '
+    }
     # WinSW ships no checksums file and WinSW-x64.exe is not Authenticode signed, so the
     # only integrity check available is a hash pinned here. Verify a new release by hand
     # (Get-FileHash) before changing $WinSwSha256.
-    $actual = (Get-FileHash -LiteralPath $WrapperExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $WinSwSha256.ToLowerInvariant()) {
-        Remove-Item -LiteralPath $WrapperExe -Force -ErrorAction SilentlyContinue
-        throw "SHA-256 mismatch for WinSW-x64.exe ${WinSwVersion}: expected $WinSwSha256, got $actual. The download was deleted."
+        Remove-Item -LiteralPath $cached -Force -ErrorAction SilentlyContinue
+        throw "SHA-256 mismatch for WinSW-x64.exe ${WinSwVersion}: expected $WinSwSha256, got $actual. The file was deleted."
     }
-    Write-Host ("fetched  WinSW-x64.exe {0} ({1:N1} MB), SHA-256 verified" -f $WinSwVersion, ((Get-Item -LiteralPath $WrapperExe).Length / 1MB))
+    Copy-Item -LiteralPath $cached -Destination $WrapperExe
+    Write-Host ("{0} WinSW-x64.exe {1} ({2:N1} MB), SHA-256 verified" -f $verb, $WinSwVersion, ((Get-Item -LiteralPath $WrapperExe).Length / 1MB))
 }
 
 # --- 2. wrapper configuration ---------------------------------------------------------
@@ -275,7 +433,46 @@ else {
     }
 }
 
-# --- 4. service -----------------------------------------------------------------------
+# --- 4. permissions -------------------------------------------------------------------
+
+$isLocalSystem = $ServiceAccount -eq 'LocalSystem'
+$accountSid = if ($isLocalSystem) { $null } else { Resolve-AccountSid -Account $ServiceAccount }
+
+if ((Test-Path -LiteralPath $ConfigTarget) -and $PSCmdlet.ShouldProcess($ConfigTarget, 'Restrict to SYSTEM, Administrators and the service account')) {
+    # livekit.yaml holds the API secret: no inherited Users read.
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+        (New-Object Security.Principal.SecurityIdentifier('S-1-5-18')), 'FullControl', 'Allow')))
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+        (New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')), 'FullControl', 'Allow')))
+    if (-not $isLocalSystem) {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($accountSid, 'Read', 'Allow')))
+    }
+    (Get-Item -LiteralPath $ConfigTarget).SetAccessControl($acl)
+    $readers = if ($isLocalSystem) { '' } else { "; $ServiceAccount read" }
+    Write-Host "acl      $ConfigTarget (SYSTEM, Administrators full$readers)"
+}
+
+if (-not $isLocalSystem) {
+    if ((Test-Path -LiteralPath $LogDir) -and $PSCmdlet.ShouldProcess($LogDir, "Grant $ServiceAccount Modify (inherited)")) {
+        Add-AllowRule -Path $LogDir -Sid $accountSid -Rights 'Modify'
+        Write-Host "acl      $LogDir ($ServiceAccount modify, inherited by its files)"
+    }
+    if (Test-Path -LiteralPath $ConfigTarget) {
+        foreach ($turnFile in (Get-TurnFilePath -ConfigPath $ConfigTarget)) {
+            if (-not (Test-Path -LiteralPath $turnFile)) {
+                Write-Warning "TURN file $turnFile named in livekit.yaml does not exist; LiveKit will not start."
+            }
+            elseif ($PSCmdlet.ShouldProcess($turnFile, "Grant $ServiceAccount Read")) {
+                Add-AllowRule -Path $turnFile -Sid $accountSid -Rights 'Read'
+                Write-Host "acl      $turnFile ($ServiceAccount read)"
+            }
+        }
+    }
+}
+
+# --- 5. service -----------------------------------------------------------------------
 
 # WinSW 2.12.0 has no `refresh`: an existing registration is re-created with
 # uninstall + install so the rendered XML takes effect.
@@ -285,21 +482,14 @@ if ($existingService) {
         # 'stop' only requests the stop; 'stopwait' returns once the service is Stopped.
         if ($existingService.Status -ne 'Stopped') { Invoke-WinSw stopwait }
         Invoke-WinSw uninstall
-        # 'uninstall' only marks the service for deletion; the SCM removes it once every
-        # handle to it is closed, and 'install' fails while it still exists.
-        $deadline = (Get-Date).AddSeconds(60)
-        while (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-            if ((Get-Date) -ge $deadline) {
-                throw ("Service $ServiceName is still registered 60 s after 'WinSW uninstall' (marked for " +
-                    "deletion while something holds a handle to it, e.g. services.msc). Close it and run this script again.")
-            }
-            Start-Sleep -Milliseconds 500
-        }
+        Wait-ServiceDeleted
+        Stop-OrphanedServer
         Invoke-WinSw install
         Write-Host "recreated service $ServiceName"
     }
 }
 elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Install the WinSW service')) {
+    Stop-OrphanedServer
     Invoke-WinSw install
     Write-Host "created  service $ServiceName"
 }
@@ -311,10 +501,30 @@ elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
     Invoke-WinSw start
     $started = Get-Service -Name $ServiceName
     $started.WaitForStatus('Running', [TimeSpan]::FromSeconds(60))
-    Write-Host "started  service $ServiceName ($($started.Status))"
+    # Running is reported as soon as the wrapper starts, before it opens its log files and
+    # launches livekit-server.exe; a wrapper that cannot write its logs, or a LiveKit that
+    # rejects its configuration, dies a moment later and the SCM restarts it. Require the
+    # same wrapper process and a livekit-server.exe child to be still running after a
+    # settle (a recovery restart would be a new process).
+    $wrapperPid = Get-WrapperProcessId
+    Start-Sleep -Seconds $StartSettleSeconds
+    $started.Refresh()
+    $wrapperPidNow = Get-WrapperProcessId
+    $child = @(Get-InstalledServerProcess | Where-Object { [int]$_.ParentProcessId -eq $wrapperPidNow })
+    if ($started.Status -ne 'Running' -or $wrapperPid -eq 0 -or $wrapperPidNow -ne $wrapperPid -or $child.Count -eq 0) {
+        Stop-ServiceUntilQuiet
+        Stop-OrphanedServer
+        throw ("Service $ServiceName reported Running but did not stay up (status $($started.Status) " +
+            "$StartSettleSeconds s later, wrapper process $wrapperPid -> $wrapperPidNow, livekit-server.exe children: $($child.Count)). " +
+            "See $LogDir (livekit-service.err.log is LiveKit's own log, livekit-service.wrapper.log WinSW's) and the event logs: " +
+            "System (source Service Control Manager, event 7031) and Application (source .NET Runtime, livekit-service.exe). " +
+            "The service was left registered but stopped (its restart loop was ended); fix the cause, then run " +
+            "Start-Service $ServiceName or this script again.")
+    }
+    Write-Host "started  service $ServiceName ($($started.Status), wrapper $wrapperPid, livekit-server.exe $($child[0].ProcessId), stable for $StartSettleSeconds s)"
 }
 
-# --- 5. firewall ----------------------------------------------------------------------
+# --- 6. firewall ----------------------------------------------------------------------
 
 if ($SkipFirewall) {
     Write-Host 'firewall skipped (-SkipFirewall).'

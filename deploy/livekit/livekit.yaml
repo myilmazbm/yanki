@@ -57,13 +57,15 @@ keys:
   "<talky>": "<api-secret-at-least-32-chars>"
 
 # Room lifecycle events (participant joined/left, room finished, track published) are
-# posted to the Talky API (endpoint planned, M5), which is how the backend learns a room is empty and frees the
-# node for the next meeting.
-webhook:
-  # Must be one of the keys above; LiveKit signs the webhook with it.
-  api_key: "<talky>"
-  urls:
-    - https://talky.corp/internal/livekit/webhook
+# posted to the Talky API, which is how the backend learns a room is empty and frees the
+# node for the next meeting. DISABLED until M5: the endpoint does not exist yet, and with
+# the block active every room event logs "failed to send webhook" and is retried. M5
+# enables it by removing the first "# " on each line of the block below.
+# webhook:
+#   # Must be one of the keys above; LiveKit signs the webhook with it.
+#   api_key: "<talky>"
+#   urls:
+#     - https://talky.corp/internal/livekit/webhook
 
 room:
   # Close a room 60 s after it was created if nobody ever joined.

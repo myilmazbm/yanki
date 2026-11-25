@@ -110,8 +110,9 @@ Set-Acl -Path $keyPath -AclObject $acl
    söyler ve açacak komutu verir: `Set-TalkyFirewall.ps1 -EnableHttp -HttpPort <port>`.
 
 LiveKit'in gömülü TURN'ü ayrı bir **PEM** çifti ister (`turn.cert_file` / `turn.key_file`)
-ve bunlar dosya olarak durur; TLS'i yük dengeleyici sonlandırıyorsa `external_tls: true`
-kullanın ve dosyaları hiç oluşturmayın.
+ve bunlar dosya olarak durur; LiveKit servis hesabı ikisini de okuyabilmelidir
+(`Install-LiveKitService.ps1` okuma iznini kendisi ekler, bölüm 4.2 "Medya düğümü"). TLS'i yük dengeleyici
+sonlandırıyorsa `external_tls: true` kullanın ve dosyaları hiç oluşturmayın.
 
 ---
 
@@ -291,8 +292,64 @@ Medya düğümü:
 ```powershell
 .\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
 # livekit.yaml içindeki "<...>" yer tutucularını doldurun
-.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress 10.20.30.0/24 `
+    -ServiceAccount 'NT AUTHORITY\NetworkService'
 ```
+
+LiveKit bir konsol programıdır; WinSW 2.12.0 sarmalayıcısıyla (`livekit-service.exe`)
+`LiveKit` adlı Windows servisi olur: gecikmeli otomatik başlatma, 5/10/30 sn'de yeniden
+başlatma, `livekit-server.exe` yüksek öncelikte. Betik idempotent'tir; ikinci çalıştırma
+servisi yeniden oluşturur ve kuralları günceller.
+
+**Servis hesabı.** Varsayılan `LocalSystem`'dir; önerilen `NT AUTHORITY\NetworkService`
+(ya da bir gMSA). Betik her çalıştırmada şu izinleri kendisi verir, başka bir şey vermez:
+
+| Nesne | İzin | Neden |
+|---|---|---|
+| `livekit.yaml` (API sırrını tutar) | Devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı okuma (LocalSystem'de ek hesap yok) | Sıradan kullanıcılar sırrı okuyamasın. Dosyayı okumak/düzenlemek için yükseltilmiş oturum gerekir |
+| Log klasörü (`%ProgramData%\Talky\logs\livekit`) | Servis hesabına Değiştirme (Modify), dosya ve alt klasörlere devredilir | Daha önce LocalSystem'in ya da yükseltilmiş `install` komutunun oluşturduğu log dosyalarına yazabilsin ve döndürebilsin. Bu izin olmadan sarmalayıcı `UnauthorizedAccessException` ile çöker ve SCM yeniden başlatma döngüsüne girer |
+| `livekit.yaml` içindeki `turn.cert_file` ve `turn.key_file` | Servis hesabına okuma (yalnızca bir izin girdisi eklenir) | Gömülü TURN/TLS sertifikayı ve anahtarı okuyabilsin |
+
+Betik servisi ancak sarmalayıcı süreç ve onun `livekit-server.exe` alt süreci, "Running"
+bildiriminden 8 sn sonra hâlâ aynıysa başlamış sayar. Değilse servisi durdurur ve en uzun
+yeniden başlatma gecikmesinden (30 sn) uzun süre Stopped kalmasını bekler, böylece SCM'nin
+yeniden başlatma döngüsü geride kalmaz; ardından log klasörünü ve olay günlüklerini
+göstererek hata verir. Servis kayıtlı ama durmuş kalır: sebebi giderip `Start-Service LiveKit`
+ya da betiği yeniden çalıştırın. WinSW çöktüğünde `livekit-server.exe` sahipsiz kalır ve
+portları tutmaya devam eder; betik servisi durdurduğu/kaldırdığı her yolda (yeniden kurulum,
+`-Remove`, başarısız başlatma) `InstallDir` altından çalışan ve servisin alt süreci olmayan
+`livekit-server.exe`'leri durdurur. Başka klasördeki LiveKit süreçlerine dokunmaz.
+
+`-Remove` servisi ve "LiveKit" güvenlik duvarı grubunu kaldırır; `InstallDir` ve log
+klasöründeki dosyalar kalır.
+
+`livekit.yaml` şablonunda webhook bloğu M5'e kadar yorum satırıdır (uç nokta henüz yok;
+açık kalırsa her oda olayı `failed to send webhook` uyarısı ve yeniden deneme üretir).
+
+**Kabul testi.** `deploy\livekit\Test-LiveKitInstall.ps1` bir medya düğümünün kurulumunu
+baştan sona sınar; servis kurup kaldırdığı için yalnızca atılabilir bir VM'de çalıştırın:
+
+```powershell
+.\deploy\livekit\Test-LiveKitInstall.ps1 -AcknowledgeServiceInstall `
+    -NodeIp 10.20.30.41 -TurnDomain media-01.talky.corp `
+    -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
+```
+
+Şablonu kendisi doldurur, API sırrını makinede rastgele üretir (hiçbir yere yazdırmaz) ve
+dört adımı koşar: LocalSystem kurulumu, ikinci kurulum, `livekit-server.exe` öldürülünce
+20 sn içinde toparlanma; 1 yayıncı / 4 aboneyle 30 sn'lik medya denetimi
+(`Invoke-LiveKitLoadTest.ps1`, her abone izini almalı) ve olmayan bir odaya karşı mutlaka
+başarısız olması gereken negatif deneme; LocalSystem kurulumunun üzerine NetworkService ile
+yeniden kurulum ve 45 sn sonra aynı süreçle ayakta olması (7031 olayı yok); `-Remove`.
+Her adımda bir PASS/FAIL satırı basar, ilk başarısız adımda durur ve 1 ile çıkar.
+2026-11-25'te WEB laboratuvar VM'inde (Windows Server 2025) tüm denetimler geçti
+(`docs/livekit-windows-spike.md` §1.2).
+
+`Invoke-LiveKitLoadTest.ps1` odayı kendisi oluşturur (`room.auto_create: false`) ve
+sonra siler; anahtar ve sır `lk`'ya yalnızca ortam değişkenleriyle (`LIVEKIT_URL`,
+`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`) geçer. Katılımcılardan biri bağlanamazsa, bir
+abone izlerin hepsini almazsa ya da kayıp %1'i aşarsa FAIL basar ve 0 dışı kodla çıkar; CPU
+yalnızca yük gerçekten koştuysa değerlendirilir.
 
 ### 4.3 Portlar
 
@@ -462,7 +519,8 @@ pay geri yükleme).
 |---|---|
 | Talky düğümü (JSON, günlük döner, son 30 dosya tutulur — `Talky:Logging:RetainedFileCount`) | `<DataDir>\logs\talky<yyyyMMdd>.log`, ör. `talky20261124.log` |
 | Talky uyarı ve hataları | Windows Olay Günlüğü → Application, kaynak `Talky` (her iki kurulum yolu da kaynağı oluşturur) |
-| LiveKit (WinSW sarmalayıcı, 50 MB × 10) | `%ProgramData%\Talky\logs\livekit\` |
+| LiveKit (JSON, WinSW boyuta göre döndürür, 50 MB × 10) | `%ProgramData%\Talky\logs\livekit\livekit-service.err.log` — LiveKit kendi logunu stderr'e yazar; `livekit-service.out.log` boş kalır, `livekit-service.wrapper.log` WinSW'nin kendi logudur |
+| LiveKit servisinin çökmeleri | Olay Günlüğü → System, kaynak `Service Control Manager`, olay 7031 ("terminated unexpectedly"); sarmalayıcının kendi hatası Application, kaynak `.NET Runtime` (`livekit-service.exe`) |
 | MSI kurulumu | `msiexec /l*v <dosya>` ile verdiğiniz yol |
 | Arama indeksi (log değil, veri) | `<DataDir>\index` |
 
@@ -518,7 +576,10 @@ demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğ�
 | (M2) Mesajlar geliyor ama gecikmeli, farklı düğümlerde | Mesh kurulmamış | Admin panelinde (M3) mesh eş durumu; `Test-NetConnection <eş> -Port 9443` |
 | (M3) Aramada yeni mesajlar çıkmıyor | İndeksleme `jobs` gecikmesi ya da `search` düğümü kapalı | Admin panelinde `jobs` gecikmesi; `search` düğümünde `doctor` |
 | Toplantıda bağlanıyor ama ses/görüntü yok | TURN aktarım aralığı (30000–40000/UDP) kapalı; ya da `node_ip` yanlış | `Get-NetFirewallRule -Group LiveKit`; `livekit.yaml` içinde `rtc.node_ip` |
-| Toplantıya hiç katılınamıyor | 7880 proxy'si veya LiveKit servisi kapalı | `Get-Service LiveKit`, `%ProgramData%\Talky\logs\livekit\` |
+| Toplantıya hiç katılınamıyor | 7880 proxy'si veya LiveKit servisi kapalı | `Get-Service LiveKit`, `%ProgramData%\Talky\logs\livekit\livekit-service.err.log` |
+| LiveKit servisi birkaç saniyede bir yeniden başlıyor (System günlüğünde 7031) | Servis hesabı log dosyalarına yazamıyor (Application günlüğünde `.NET Runtime`, `UnauthorizedAccessException` … `livekit-service.err.log`) ya da LiveKit yapılandırmayı/TURN sertifikasını reddediyor | `Install-LiveKitService.ps1`'i aynı `-ServiceAccount` ile yeniden çalıştırın (izinleri yeniden verir); düzelmezse `livekit-service.err.log` |
+| LiveKit servisi durmuş ama 7880 hâlâ yanıt veriyor | Çöken sarmalayıcıdan kalan sahipsiz `livekit-server.exe` | `Install-LiveKitService.ps1` (yeniden kurulum) ya da `-Remove` onu durdurur |
+| Yük testinde her katılımcı `could not connect … not found` | Oda yok: `room.auto_create: false` | `Invoke-LiveKitLoadTest.ps1` odayı kendisi oluşturur; `lk load-test`'i elle çalıştırıyorsanız önce `lk room create <oda>` |
 | (M4) Dosya yüklenmiyor | Pay erişimi ya da AMSI karantinası | Pay denetimi (M4 ile `doctor`'a gelir); `jobs` tablosunda tarama işleri |
 | Yeniden başlatmadan sonra herkes aynı anda bağlanıyor | `Reconnect{delayMs}` gönderilmeden servis durdurulmuş | Boşaltmayı bölüm 6'daki sıraya göre yapın |
 

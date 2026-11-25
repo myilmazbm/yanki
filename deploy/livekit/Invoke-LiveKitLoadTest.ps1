@@ -1,25 +1,35 @@
 <#
 .SYNOPSIS
-    Runs the LiveKit load test against a media node and records host CPU and network
-    counters to CSV.
+    Runs the LiveKit load test against a media node, records host CPU and network counters
+    to CSV and fails unless every participant connected and received its tracks.
 
 .DESCRIPTION
     This is the measurement half of Spike A (docs\livekit-windows-spike.md). It:
 
       1. downloads the official livekit-cli release (`lk`) and verifies its SHA-256
          against the release checksums.txt;
-      2. starts `lk load-test` with the spike profile - by default 8 video publishers and
+      2. creates the room with `lk room create` (our livekit.yaml sets
+         room.auto_create: false, so a participant cannot create it by joining);
+      3. starts `lk load-test` with the spike profile - by default 8 video publishers and
          100 subscribers in room "spike" for 10 minutes;
-      3. samples the SFU host every -SampleIntervalSeconds while the test runs and writes
+      4. samples the SFU host every -SampleIntervalSeconds while the test runs and writes
          one row per sample to a CSV: total CPU %, livekit-server process CPU % and
          working set, and network bytes in/out per second;
-      4. prints a summary against the spike's pass criteria (SFU CPU < 60 %).
+      5. reads lk's "Subscriber summaries" table and prints one PASS/FAIL line per check:
+         every participant connected (no "could not connect", error count 0), every
+         subscriber received every published track, packet loss below 1 % for every
+         subscriber, and - only when the load actually ran - peak host CPU below 60 %;
+      6. deletes the room again (best effort).
+
+    The URL, key and secret are handed to lk through LIVEKIT_URL / LIVEKIT_API_KEY /
+    LIVEKIT_API_SECRET in the environment of the child processes, never on a command line.
+    The previous values of those variables are restored afterwards.
 
     Counters are read with Get-Counter using the English counter paths, falling back to
     the locale-independent Win32_PerfFormattedData_* CIM classes on a localised Windows.
 
-    Packet loss and join success are reported by `lk` itself; its full output is written
-    next to the CSV. Read both before filling in the spike results table.
+    Exit code 0 when every check passed, 1 otherwise (lk itself exits 0 even when no
+    participant could connect, so its exit code is not used).
 
 .PARAMETER Url
     Signalling URL of the node under test, e.g. ws://media-01.talky.corp:7880.
@@ -43,7 +53,8 @@
     Publishing participants. Default 8.
 
 .PARAMETER Subscribers
-    Subscribing participants. Default 100.
+    Subscribing participants. Default 100. At least 1: the pass criteria are read from the
+    subscribers' side.
 
 .PARAMETER Duration
     Test duration as accepted by lk, e.g. 10m, 30s, 1h. Default 10m.
@@ -59,6 +70,11 @@
 
 .PARAMETER SkipDownload
     Use an `lk` already on PATH or already cached.
+
+.PARAMETER SkipRoomCreate
+    Do not create (or delete) the room; only for a node configured with
+    room.auto_create: true. Against a Talky node every participant then fails with
+    "not found", which Test-LiveKitInstall.ps1 uses as its negative check.
 
 .EXAMPLE
     $env:LIVEKIT_API_SECRET = '...'
@@ -80,13 +96,14 @@ param(
     [string] $ApiSecret = $env:LIVEKIT_API_SECRET,
     [string] $NodeComputerName = $env:COMPUTERNAME,
     [string] $Room = 'spike',
-    [int] $VideoPublishers = 8,
-    [int] $Subscribers = 100,
+    [ValidateRange(1, 10000)][int] $VideoPublishers = 8,
+    [ValidateRange(1, 100000)][int] $Subscribers = 100,
     [string] $Duration = '10m',
     [string] $OutputDir,
     [ValidateRange(1, 300)][int] $SampleIntervalSeconds = 5,
     [string] $CliVersion = '2.18.6',
-    [switch] $SkipDownload
+    [switch] $SkipDownload,
+    [switch] $SkipRoomCreate
 )
 
 Set-StrictMode -Version Latest
@@ -99,11 +116,20 @@ $ErrorActionPreference = 'Stop'
 $CliRepo = 'livekit/livekit-cli'
 $UserAgent = 'talky-deploy'
 $CpuPassThreshold = 60
+$LossPassThresholdPercent = 1
+$Utf8 = New-Object System.Text.UTF8Encoding($false)
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if (-not $OutputDir) {
     $OutputDir = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'artifacts\livekit-spike'
+}
+
+$script:Failed = 0
+function Write-Check {
+    param([Parameter(Mandatory)][bool] $Condition, [Parameter(Mandatory)][string] $Message)
+    if ($Condition) { Write-Host "PASS  $Message" }
+    else { Write-Host "FAIL  $Message"; $script:Failed++ }
 }
 
 function ConvertFrom-GoDuration {
@@ -174,6 +200,67 @@ function Install-LiveKitCli {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
     if (-not (Test-Path -LiteralPath $exe)) { throw "lk.exe not found in $archive." }
     return $exe
+}
+
+# Runs a short lk command (room create/delete) and returns its exit code and output.
+# The output is not printed: `lk room create` echoes the room including its TURN password.
+function Invoke-LkCommand {
+    param([Parameter(Mandatory)][string[]] $Arguments)
+    $out = Join-Path $OutputDir ("lk-cmd-{0}.out" -f [guid]::NewGuid().ToString('n'))
+    $err = "$out.err"
+    try {
+        $proc = Start-Process -FilePath $lk -ArgumentList $Arguments -PassThru -NoNewWindow -Wait `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+        $text = ''
+        foreach ($f in $out, $err) {
+            if (Test-Path -LiteralPath $f) { $text += [IO.File]::ReadAllText($f, $Utf8) }
+        }
+        return [pscustomobject]@{ ExitCode = $proc.ExitCode; Output = $text }
+    }
+    finally {
+        Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Reads lk load-test's "Subscriber summaries" table (box drawing, or '|' in plain output).
+function Read-LkSummary {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+    # U+2502 BOX DRAWINGS LIGHT VERTICAL; written as a code point so this file stays ASCII
+    # (Windows PowerShell reads a BOM-less script in the ANSI code page).
+    $bar = [char]0x2502
+    $lines = $Text -split "`r?`n"
+    $connectFailures = @($lines | Where-Object { $_ -match '^could not connect' })
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^Subscriber summaries') { $start = $i; break } }
+    $rows = @()
+    $header = $null
+    if ($start -ge 0) {
+        for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i].Trim()
+            if ($line -eq '') { if ($header) { break } else { continue } }
+            if ($line -notmatch "^[$bar|]") { continue }   # border lines
+            $cells = @($line.Trim($bar, '|') -split "[$bar|]" | ForEach-Object { $_.Trim() })
+            if (-not $header) { $header = $cells; continue }
+            $row = @{}
+            for ($c = 0; $c -lt [Math]::Min($header.Count, $cells.Count); $c++) { $row[$header[$c]] = $cells[$c] }
+            $rows += [pscustomobject]$row
+        }
+    }
+    $total = $null
+    $subs = @()
+    foreach ($row in $rows) {
+        if (-not ($row.PSObject.Properties['Tester'] -and $row.PSObject.Properties['Tracks'])) { continue }
+        $received = -1; $expected = -1
+        if ($row.Tracks -match '^(\d+)/(\d+)$') { $received = [int]$Matches[1]; $expected = [int]$Matches[2] }
+        $loss = $null
+        if ($row.PSObject.Properties['Total Pkt. Loss'] -and $row.'Total Pkt. Loss' -match '\((?<p>[\d.]+)%\)') {
+            $loss = [double]$Matches['p']
+        }
+        $errorText = if ($row.PSObject.Properties['Error']) { $row.Error } else { '' }
+        $entry = [pscustomobject]@{ Tester = $row.Tester; Received = $received; Expected = $expected; LossPercent = $loss; Error = $errorText }
+        if ($row.Tester -eq 'Total') { $total = $entry } elseif ($row.Tester -like 'Sub *') { $subs += $entry }
+    }
+    return [pscustomobject]@{ Found = ($null -ne $total); Total = $total; Subscribers = $subs; ConnectFailures = $connectFailures }
 }
 
 function Get-NodeSample {
@@ -272,9 +359,6 @@ $logPath = Join-Path $OutputDir "livekit-load-$stamp.log"
 
 $lkArgs = @(
     'load-test',
-    '--url', $Url,
-    '--api-key', $ApiKey,
-    '--api-secret', $ApiSecret,
     '--room', $Room,
     '--video-publishers', $VideoPublishers,
     '--subscribers', $Subscribers,
@@ -289,65 +373,137 @@ Write-Host "  csv        $csvPath"
 Write-Host "  log        $logPath"
 Write-Host ''
 
-if (-not $PSCmdlet.ShouldProcess($Url, "Run lk load-test for $Duration and sample counters")) {
+if (-not $PSCmdlet.ShouldProcess($Url, "Create room $Room, run lk load-test for $Duration and sample counters")) {
     Write-Host 'Dry run: nothing was started.'
     return
 }
 
+$savedEnv = @{}
+foreach ($name in 'LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET') {
+    $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
 $samples = New-Object System.Collections.Generic.List[psobject]
-$process = Start-Process -FilePath $lk -ArgumentList $lkArgs -PassThru -NoNewWindow `
-    -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
-
+$loadRan = $false
+$roomCreated = $false
 try {
-    $deadline = (Get-Date).Add($span).AddMinutes(2)   # lk stops on its own; this is a guard
-    while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
-        $sample = Get-NodeSample -ComputerName $NodeComputerName
-        if ($sample) {
-            $samples.Add($sample)
-            $sample | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Append
-        }
-        Start-Sleep -Seconds $SampleIntervalSeconds
+    # lk reads these; child processes inherit them, so nothing secret is on a command line.
+    $env:LIVEKIT_URL = $Url
+    $env:LIVEKIT_API_KEY = $ApiKey
+    $env:LIVEKIT_API_SECRET = $ApiSecret
+
+    if ($SkipRoomCreate) {
+        Write-Host "room     $Room not created (-SkipRoomCreate)"
     }
-    if (-not $process.HasExited) {
-        Write-Warning "lk did not exit within $Duration + 2 min; stopping it."
-        Stop-Process -Id $process.Id -Force
+    else {
+        $created = Invoke-LkCommand -Arguments @('room', 'create', $Room)
+        $roomCreated = $created.ExitCode -eq 0
+        $reason = (@($created.Output -split "`r?`n" | Where-Object { $_ -match 'error' }) -join ' ').Trim()
+        Write-Check $roomCreated "lk room create $Room (exit $($created.ExitCode)$(if ($reason) { ": $reason" }))"
+    }
+
+    if ($SkipRoomCreate -or $roomCreated) {
+        $process = Start-Process -FilePath $lk -ArgumentList $lkArgs -PassThru -NoNewWindow `
+            -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
+        try {
+            $deadline = (Get-Date).Add($span).AddMinutes(2)   # lk stops on its own; this is a guard
+            while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
+                $sample = Get-NodeSample -ComputerName $NodeComputerName
+                if ($sample) {
+                    $samples.Add($sample)
+                    $sample | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Append
+                }
+                Start-Sleep -Seconds $SampleIntervalSeconds
+            }
+            $loadRan = $process.HasExited
+            Write-Check $loadRan "lk load-test finished within $Duration + 2 min"
+        }
+        finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    if ($roomCreated) {
+        $deleted = Invoke-LkCommand -Arguments @('room', 'delete', $Room)
+        if ($deleted.ExitCode -eq 0) { Write-Host "room     $Room deleted" }
+        else { Write-Warning "lk room delete $Room exited $($deleted.ExitCode); the node closes it after room.empty_timeout." }
     }
 }
 finally {
-    if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    foreach ($name in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process') }
 }
 
 # --- summary --------------------------------------------------------------------------
 
-Write-Host ''
-Write-Host '--- lk output (tail) ---'
-Get-Content -LiteralPath $logPath -Tail 30 -ErrorAction SilentlyContinue
+$lkText = ''
+if (Test-Path -LiteralPath $logPath) {
+    # lk writes UTF-8 (its tables use box-drawing characters); Windows PowerShell would
+    # otherwise read the file in the ANSI code page.
+    $lkText = [IO.File]::ReadAllText($logPath, $Utf8)
+    Write-Host ''
+    Write-Host 'lk output (tail):'
+    $lkLines = @($lkText.TrimEnd() -split "`r?`n")
+    $lkLines | Select-Object -Last 40 | ForEach-Object { Write-Host "  $_" }
+}
 if ((Test-Path -LiteralPath "$logPath.err") -and (Get-Item -LiteralPath "$logPath.err").Length -gt 0) {
-    Write-Host '--- lk stderr (tail) ---'
-    Get-Content -LiteralPath "$logPath.err" -Tail 20
+    Write-Host 'lk stderr (tail):'
+    @([IO.File]::ReadAllText("$logPath.err", $Utf8).TrimEnd() -split "`r?`n") | Select-Object -Last 20 | ForEach-Object { Write-Host "  $_" }
+}
+Write-Host ''
+
+$loadOk = $false
+if ($loadRan) {
+    $summary = Read-LkSummary -Text $lkText
+    $expectedTracks = $Subscribers * $VideoPublishers
+    Write-Check $summary.Found 'lk printed its subscriber summary table'
+    if ($summary.Found) {
+        $errorCount = 0
+        if (-not [int]::TryParse($summary.Total.Error, [ref]$errorCount)) { $errorCount = if ($summary.Total.Error -eq '-') { 0 } else { -1 } }
+        $connected = $summary.ConnectFailures.Count -eq 0 -and $errorCount -eq 0
+        Write-Check $connected ("every participant connected ({0} 'could not connect', subscriber errors {1})" -f $summary.ConnectFailures.Count, $summary.Total.Error)
+        foreach ($line in ($summary.ConnectFailures | Select-Object -First 3)) { Write-Host "      $line" }
+
+        $short = @($summary.Subscribers | Where-Object { $_.Received -ne $VideoPublishers -or $_.Expected -ne $VideoPublishers })
+        $tracksOk = $summary.Subscribers.Count -eq $Subscribers -and $short.Count -eq 0 -and
+            $summary.Total.Received -eq $expectedTracks -and $summary.Total.Expected -eq $expectedTracks
+        Write-Check $tracksOk ("every subscriber received its tracks: {0}/{1} total, expected {2} ({3} of {4} subscriber rows short)" -f
+            $summary.Total.Received, $summary.Total.Expected, $expectedTracks, $short.Count, $summary.Subscribers.Count)
+
+        $losses = @($summary.Subscribers | Where-Object { $null -ne $_.LossPercent } | ForEach-Object { $_.LossPercent })
+        $worst = if ($losses.Count -gt 0) { ($losses | Measure-Object -Maximum).Maximum } else { $null }
+        $lossOk = $losses.Count -eq $summary.Subscribers.Count -and $losses.Count -gt 0 -and $worst -lt $LossPassThresholdPercent
+        Write-Check $lossOk ("packet loss below {0} % for every subscriber (worst {1})" -f $LossPassThresholdPercent,
+            $(if ($null -ne $worst) { "$worst %" } else { 'not reported' }))
+        $loadOk = $connected -and $tracksOk
+    }
 }
 
-if ($samples.Count -eq 0) {
-    Write-Warning 'No counter samples were collected; check -NodeComputerName and remote registry/WMI access.'
-    return
+if ($samples.Count -gt 0) {
+    $cpuStats = $samples | Measure-Object -Property TotalCpuPercent -Average -Maximum
+    $lkCpuStats = $samples | Measure-Object -Property LiveKitCpuPercent -Average -Maximum
+    $inStats = $samples | Measure-Object -Property NetworkInMbps -Maximum
+    $outStats = $samples | Measure-Object -Property NetworkOutMbps -Maximum
+    Write-Host ''
+    Write-Host 'host counters:'
+    Write-Host ("  samples          {0} every {1} s" -f $samples.Count, $SampleIntervalSeconds)
+    Write-Host ("  total CPU        avg {0:N1} %, peak {1:N1} %" -f $cpuStats.Average, $cpuStats.Maximum)
+    Write-Host ("  livekit-server   avg {0:N1} %, peak {1:N1} % of one core-equivalent" -f $lkCpuStats.Average, $lkCpuStats.Maximum)
+    Write-Host ("  network peak     {0:N1} Mbps in, {1:N1} Mbps out" -f $inStats.Maximum, $outStats.Maximum)
+    Write-Host ''
+    if ($loadOk) {
+        Write-Check ($cpuStats.Maximum -lt $CpuPassThreshold) ("peak host CPU {0:N1} % is below the {1} % spike threshold" -f $cpuStats.Maximum, $CpuPassThreshold)
+    }
+    else {
+        Write-Host 'CPU      not judged: the load did not run as configured, so the counters say nothing about the SFU.'
+    }
 }
-
-$cpuStats = $samples | Measure-Object -Property TotalCpuPercent -Average -Maximum
-$lkCpuStats = $samples | Measure-Object -Property LiveKitCpuPercent -Average -Maximum
-$inStats = $samples | Measure-Object -Property NetworkInMbps -Maximum
-$outStats = $samples | Measure-Object -Property NetworkOutMbps -Maximum
+elseif ($loadRan) {
+    Write-Check $false 'counter samples collected (check -NodeComputerName and remote registry/WMI access)'
+}
 
 Write-Host ''
-Write-Host '--- host counters ---'
-Write-Host ("  samples          {0} every {1} s" -f $samples.Count, $SampleIntervalSeconds)
-Write-Host ("  total CPU        avg {0:N1} %, peak {1:N1} %" -f $cpuStats.Average, $cpuStats.Maximum)
-Write-Host ("  livekit-server   avg {0:N1} %, peak {1:N1} % of one core-equivalent" -f $lkCpuStats.Average, $lkCpuStats.Maximum)
-Write-Host ("  network peak     {0:N1} Mbps in, {1:N1} Mbps out" -f $inStats.Maximum, $outStats.Maximum)
-Write-Host ''
-if ($cpuStats.Maximum -lt $CpuPassThreshold) {
-    Write-Host ("PASS  peak host CPU {0:N1} % is below the {1} % spike threshold." -f $cpuStats.Maximum, $CpuPassThreshold)
+if ($script:Failed -gt 0) {
+    Write-Host "Load test FAILED ($($script:Failed) failed check(s)). lk log: $logPath"
+    exit 1
 }
-else {
-    Write-Host ("FAIL  peak host CPU {0:N1} % reached the {1} % spike threshold." -f $cpuStats.Maximum, $CpuPassThreshold)
-}
-Write-Host 'Packet loss and join success come from the lk output above; record both in docs\livekit-windows-spike.md.'
+Write-Host 'Load test PASSED. Record the numbers in docs\livekit-windows-spike.md.'
+exit 0
