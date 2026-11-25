@@ -7,9 +7,9 @@
 .DESCRIPTION
     STATUS: executed on 2026-11-25 on a lab VM (Windows Server 2025 Datacenter,
     2 vCPU / 4 GB, domain member, self-signed lab TURN certificate), driven over
-    PowerShell Direct from a clean reset, in this form with LiveKit 1.13.6 once and 1.13.11
-    twice: all 102 checks passed each time, 158 s each (docs/livekit-windows-spike.md,
-    section 1.3). That is a functional check, not the Spike A hardware measurement.
+    PowerShell Direct from a clean reset, in this form with LiveKit 1.13.11 twice and
+    1.13.6 once; results in docs/livekit-windows-spike.md, section 1.4. That is a
+    functional check, not the Spike A hardware measurement.
 
     It installs and removes the LiveKit service and its firewall rules, so run it only on
     a throw-away VM, elevated, with -AcknowledgeServiceInstall. The machine must not
@@ -21,18 +21,27 @@
     InstallDir itself (node IP, TURN domain, certificate and key paths, key "talky", an API
     secret generated on this machine); the template is never modified.
     The secret is never printed; it reaches lk only through the environment, and the
-    livekit.yaml holding it is deleted at the end of leg d.
+    livekit.yaml holding it is deleted at the end of leg d, together with the two key
+    copies the test puts into InstallDir (-KeyFile itself is only read).
 
-    Leg a: Get-LiveKit.ps1 (twice: the second run must say "current") -> install with
-    -NoStart: service registered and Stopped, the six firewall rules already there ->
-    install as LocalSystem -> service Running, Automatic (Delayed Start), restart after
-    5 s / 10 s / 30 s with reset 86400 s, livekit-server.exe a High-priority child of the
-    wrapper under InstallDir, TCP 7880/7881/5349 listening, UDP 3478 and 7882 bound by it,
-    GET http://127.0.0.1:7880/ returns 200 "OK", six enabled rules in the "LiveKit"
-    firewall group, livekit.yaml not readable by Users / Authenticated Users / Everyone,
-    the TURN private key not by those nor by the app-package groups -> second installer
-    run while running (new wrapper process, same checks) -> kill livekit-server.exe,
-    recovery within 20 s.
+    Leg a: Get-LiveKit.ps1 (twice: the second run must say "current") -> the key the node
+    uses is a copy inside InstallDir that grants Users, Authenticated Users, Everyone and
+    both app-package groups (asserted) -> install with -NoStart: service registered and
+    Stopped, six firewall rules created -> failing start: the rules are removed and
+    turn.cert_file names a missing file; the installer must fail with "did not stay up ...
+    no restart pending", livekit-service.out.log must name the file, the six rules must
+    exist again (created before the start), the recovery actions must be back to
+    5/10/30 s, and 35 s later the service is Stopped with no LiveKit process and no event
+    7031/7034 -> install as LocalSystem -> service Running, Automatic (Delayed Start),
+    restart after 5 s / 10 s / 30 s with reset 86400 s, livekit-server.exe a High-priority
+    child of the wrapper under InstallDir, TCP 7880/7881/5349 listening, UDP 3478 and 7882
+    bound by it, GET http://127.0.0.1:7880/ returns 200 "OK", six enabled rules in the
+    "LiveKit" firewall group, livekit.yaml not readable by Users / Authenticated Users /
+    Everyone, none of the five groups left on the key, the default log directory with
+    inheritance off and only SYSTEM and Administrators -> second installer run while
+    running: LiveKit got Ctrl+C ("exit requested, shutting down" in its log, not a hard
+    kill), new wrapper process, same checks -> kill livekit-server.exe, recovery within
+    20 s.
 
     Leg b: Invoke-LiveKitLoadTest.ps1 with 1 video publisher and 4 subscribers for 30 s
     and -SkipCpuCheck (generator on the node: a functional check, not a measurement) must
@@ -40,15 +49,19 @@
     -SkipRoomCreate (room.auto_create is false, so nobody can join) must exit non-zero and
     say that not every participant connected.
 
-    Leg c: re-install as NT AUTHORITY\NetworkService over the LocalSystem install (log
-    files created by LocalSystem already exist) -> after 45 s (longer than the 5 s and
-    10 s restart delays) the same wrapper process is still running, both processes run as
-    NETWORK SERVICE, the node answers, and the System log has no event 7031 for LiveKit
-    since the leg started -> re-install as LocalSystem: running as LocalSystem, and no
-    entry for NETWORK SERVICE left on the log directory or the TURN files.
+    Leg c: the node switches to a key moved into InstallDir from a folder without Users
+    (unprotected, no broad entry visible: asserted; where Windows protects a moved file,
+    as Server 2025 does, that stale DACL is written directly) -> re-install as
+    NT AUTHORITY\NetworkService over the LocalSystem install (log files created by
+    LocalSystem already exist) -> after 45 s (longer than the 5 s and 10 s restart delays)
+    the same wrapper process is still running, both processes run as NETWORK SERVICE, the
+    node answers, the System log has no event 7031 for LiveKit since the leg started, and
+    the moved key is protected with no broad entry -> re-install as LocalSystem: running as
+    LocalSystem, no entry for NETWORK SERVICE left on the log directory or the TURN files,
+    the moved key still closed.
 
-    Leg d: Install-LiveKitService.ps1 -Remove -> no service, no rules, no livekit-server.exe
-    from InstallDir.
+    Leg d: Install-LiveKitService.ps1 -Remove -> LiveKit got Ctrl+C, no service, no rules,
+    no livekit-server.exe from InstallDir.
 
     Every check also requires that no orphaned livekit-server.exe (one whose parent is not
     the running service) exists. Prints one PASS/FAIL line per check and exits 1 on the
@@ -107,7 +120,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Absolute with backslashes, as Install-LiveKitService.ps1 does: process paths are compared as text.
-$InstallDir = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)).TrimEnd('\')
+$InstallDir = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir))
+if ($InstallDir -ne [IO.Path]::GetPathRoot($InstallDir)) { $InstallDir = $InstallDir.TrimEnd('\') }
 $GetLiveKit = Join-Path $PSScriptRoot 'Get-LiveKit.ps1'
 $Install = Join-Path $PSScriptRoot 'Install-LiveKitService.ps1'
 $LoadTest = Join-Path $PSScriptRoot 'Invoke-LiveKitLoadTest.ps1'
@@ -115,6 +129,8 @@ $Template = Join-Path $PSScriptRoot 'livekit.yaml'
 $ConfigPath = Join-Path $InstallDir 'livekit.yaml'
 $ServerExe = Join-Path $InstallDir 'livekit-server.exe'
 $LogDir = Join-Path $env:ProgramData 'Talky\logs\livekit'
+$ErrLog = Join-Path $LogDir 'livekit-service.err.log'
+$OutLog = Join-Path $LogDir 'livekit-service.out.log'
 $NetworkService = 'NT AUTHORITY\NetworkService'
 $RootUrl = 'http://127.0.0.1:7880/'
 $script:Failed = 0
@@ -227,6 +243,38 @@ function Test-Node {
     return [pscustomobject]@{ WrapperPid = $wrapperPid; ServerPid = $serverPid }
 }
 
+# Writes InstallDir\livekit.yaml from the template with this run's values. YAML
+# double-quoted strings escape '\'.
+function Write-NodeConfig {
+    param([Parameter(Mandatory)][string] $Cert, [Parameter(Mandatory)][string] $Key)
+    $quote = { param($p) '"' + $p.Replace('\', '\\') + '"' }
+    $yaml = [IO.File]::ReadAllText($Template)
+    $yaml = $yaml.Replace('"<10.20.30.41>"', "`"$NodeIp`"").Replace('"<media-01.talky.corp>"', "`"$TurnDomain`"")
+    $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-cert.pem>"', (& $quote $Cert))
+    $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-key.pem>"', (& $quote $Key))
+    $yaml = $yaml.Replace('"<talky>": "<api-secret-at-least-32-chars>"', "`"talky`": `"$secret`"")
+    [IO.File]::WriteAllText($ConfigPath, $yaml, (New-Object System.Text.UTF8Encoding($false)))
+    return @($yaml -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '"<[^"]*>"' }).Count
+}
+
+# Text appended to a log file since $From (the wrapper keeps it open, so share it).
+function Read-LogSince {
+    param([Parameter(Mandatory)][string] $Path, [long] $From = 0)
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+    try { [void]$fs.Seek([Math]::Min($From, $fs.Length), 'Begin'); return (New-Object IO.StreamReader($fs)).ReadToEnd() }
+    finally { $fs.Dispose() }
+}
+function Get-LogLength { param([string] $Path) if (Test-Path -LiteralPath $Path) { (Get-Item -LiteralPath $Path).Length } else { 0 } }
+
+# A stop of a running node must reach LiveKit as Ctrl+C: LiveKit then logs this line and
+# drains. A hard kill (WinSW stopping conhost.exe first) leaves no line at all.
+function Test-GracefulStop {
+    param([Parameter(Mandatory)][long] $From, [Parameter(Mandatory)][string] $When)
+    $text = Read-LogSince -Path $ErrLog -From $From
+    Write-Check ($text -match '"msg":"exit requested, shutting down"') "LiveKit got Ctrl+C and shut down cleanly $When ('exit requested, shutting down' in livekit-service.err.log)"
+}
+
 # --- preconditions ----------------------------------------------------------------------
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -266,36 +314,78 @@ try {
     Write-Check ($again -match '(?m)^current\s') 'second Get-LiveKit.ps1 run reports the binary as current'
     Assert-Step 'Leg a'
 
-    # Fill the template's placeholders. YAML double-quoted strings escape '\'.
-    $yamlPath = { param($p) '"' + $p.Replace('\', '\\') + '"' }
-    $yaml = [IO.File]::ReadAllText($Template)
-    $yaml = $yaml.Replace('"<10.20.30.41>"', "`"$NodeIp`"").Replace('"<media-01.talky.corp>"', "`"$TurnDomain`"")
-    $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-cert.pem>"', (& $yamlPath $CertFile))
-    $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-key.pem>"', (& $yamlPath $KeyFile))
-    $yaml = $yaml.Replace('"<talky>": "<api-secret-at-least-32-chars>"', "`"talky`": `"$secret`"")
-    $left = @($yaml -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '"<[^"]*>"' })
-    Write-Check ($left.Count -eq 0) "livekit.yaml filled from the template, no placeholder left ($($left.Count) left)"
-    [IO.File]::WriteAllText($ConfigPath, $yaml, (New-Object System.Text.UTF8Encoding($false)))
+    # The key the node uses in legs a and b is a copy inside InstallDir, so it inherits what
+    # Program Files grants (Users and both app-package groups); Authenticated Users and
+    # Everyone get explicit entries. Every group the key check names is then present before
+    # the install, and the check cannot pass unless the installer removes them.
+    $keyA = Join-Path $InstallDir 'turn-key-test.pem'
+    Copy-Item -LiteralPath $KeyFile -Destination $keyA -Force
+    $keyAcl = (Get-Item -LiteralPath $keyA).GetAccessControl('Access')
+    foreach ($sid in 'S-1-5-11', 'S-1-1-0') {
+        $keyAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)), 'Read', 'Allow')))
+    }
+    (Get-Item -LiteralPath $keyA).SetAccessControl($keyAcl)
+    $present = @(Get-AllowEntry -Path $keyA -Sid ($BroadGroups + $AppPackages) | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+    Write-Check ($present.Count -eq 5) "precondition: the test key $keyA grants Users, Authenticated Users, Everyone and both app-package groups ($($present.Count) of 5)"
+    $left = Write-NodeConfig -Cert $CertFile -Key $keyA
+    Write-Check ($left -eq 0) "livekit.yaml filled from the template, no placeholder left ($left left)"
     Assert-Step 'Leg a'
 
-    # -NoStart first, as on a new node: the firewall rules must exist before any start, so a
-    # node whose first start fails is reachable once its configuration is fixed.
+    # -NoStart first, as on a new node.
     & $Install -InstallDir $InstallDir -NoStart -Confirm:$false
     $svc = Get-Service -Name LiveKit -ErrorAction SilentlyContinue
     $rules = @(Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue)
     Write-Check ($null -ne $svc -and $svc.Status -eq 'Stopped' -and $rules.Count -eq 6) `
-        "install -NoStart: service registered and Stopped, six firewall rules already present (status $(if ($svc) { $svc.Status } else { 'absent' }), $($rules.Count) rules)"
+        "install -NoStart: service registered and Stopped, six firewall rules created (status $(if ($svc) { $svc.Status } else { 'absent' }), $($rules.Count) rules)"
     Assert-Step 'Leg a'
 
+    # Failing start on the fresh node: the only automated guard of "rules before the start"
+    # (they are removed first, so the failing run must create them itself) and of the
+    # failed-start path ending the SCM restart loop.
+    Write-Host '--- leg a: failing start (turn.cert_file names a missing file) ---'
+    Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction Stop
+    $null = Write-NodeConfig -Cert (Join-Path $InstallDir 'missing-turn-cert.pem') -Key $keyA
+    $outFrom = Get-LogLength $OutLog
+    $failure = ''
+    $failStart = Get-Date
+    try { & $Install -InstallDir $InstallDir -Confirm:$false }
+    catch { $failure = $_.Exception.Message }
+    $returned = Get-Date
+    Write-Check ($failure -match 'did not stay up' -and $failure -match 'no restart pending') `
+        ("installer fails with 'did not stay up ... no restart pending' after {0:N0} s (got: '{1}')" -f ($returned - $failStart).TotalSeconds, $(if ($failure.Length -gt 160) { $failure.Substring(0, 160) + '...' } else { $failure }))
+    Write-Check ((Read-LogSince -Path $OutLog -From $outFrom) -match 'missing-turn-cert\.pem') 'livekit-service.out.log names the missing certificate (the reason the failure message points to)'
+    $rules = @(Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue)
+    Write-Check ($rules.Count -eq 6) "six firewall rules exist although the start failed: created before the start ($($rules.Count) rules)"
+    $qf = & "$env:SystemRoot\System32\sc.exe" qfailure LiveKit | Out-String
+    $delays = @([regex]::Matches($qf, 'RESTART -- Delay = (\d+)') | ForEach-Object { $_.Groups[1].Value })
+    Write-Check (($delays -join '/') -eq '5000/10000/30000') "recovery actions restored after the failed start (got '$($delays -join '/')')"
+    Write-Host 'wait     35 s (longer than the longest restart delay, 30 s)'
+    Start-Sleep -Seconds 35
+    $svc = Get-Service -Name LiveKit -ErrorAction SilentlyContinue
+    $procs = @(Get-ServerProcess) + @(Get-Process -Name 'livekit-service' -ErrorAction SilentlyContinue)
+    $restarts = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; Id = 7031, 7034; StartTime = $returned } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match 'LiveKit' })
+    Write-Check ($null -ne $svc -and $svc.Status -eq 'Stopped' -and $procs.Count -eq 0 -and $restarts.Count -eq 0) `
+        "35 s after the failed start: service registered and Stopped, no LiveKit process, no event 7031/7034 since the installer returned (status $(if ($svc) { $svc.Status } else { 'absent' }), processes $($procs.Count), events $($restarts.Count))"
+    $null = Write-NodeConfig -Cert $CertFile -Key $keyA
+    Assert-Step 'Leg a'
+
+    Write-Host '--- leg a: install as LocalSystem ---'
     & $Install -InstallDir $InstallDir -Confirm:$false
     $first = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after the first install'
     $acl = (Get-Item -LiteralPath $ConfigPath).GetAccessControl('Access')
     $usersAce = @(Get-AllowEntry -Path $ConfigPath -Sid $BroadGroups)
     Write-Check ($acl.AreAccessRulesProtected -and $usersAce.Count -eq 0) 'livekit.yaml (holds the secret): inheritance off, no access for Users / Authenticated Users / Everyone'
-    $keyAce = @(Get-AllowEntry -Path $KeyFile -Sid ($BroadGroups + $AppPackages))
-    Write-Check ($keyAce.Count -eq 0) "TURN private key $KeyFile not readable by Users / Authenticated Users / Everyone / app packages ($($keyAce.Count) entries)"
+    $keyAce = @(Get-AllowEntry -Path $keyA -Sid ($BroadGroups + $AppPackages))
+    Write-Check ($keyAce.Count -eq 0) "TURN private key: the 5 groups present before the install are gone ($($keyAce.Count) entries left)"
+    $logAcl = (Get-Item -LiteralPath $LogDir).GetAccessControl('Access')
+    $logSids = @($logAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+    Write-Check ($logAcl.AreAccessRulesProtected -and @($logSids | Where-Object { $_ -notin 'S-1-5-18', 'S-1-5-32-544' }).Count -eq 0) `
+        "$LogDir (default): inheritance off, only SYSTEM and Administrators (got $($logSids -join ', '))"
 
+    $errFrom = Get-LogLength $ErrLog
     & $Install -InstallDir $InstallDir -Confirm:$false
+    Test-GracefulStop -From $errFrom -When 'when the installer re-created the running service'
     $second = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after a second installer run while running'
     Write-Check ($second.WrapperPid -ne $first.WrapperPid) "second run re-created the service (wrapper $($first.WrapperPid) -> $($second.WrapperPid))"
     Assert-Step 'Leg a'
@@ -335,7 +425,38 @@ try {
     Assert-Step 'Leg b'
 
     # --- leg c: NetworkService over the LocalSystem install ------------------------------
-    Write-Host "--- leg c: re-install as $NetworkService (log files from the LocalSystem run exist) ---"
+    Write-Host "--- leg c: re-install as $NetworkService (log files from the LocalSystem run exist; moved key) ---"
+    # A key moved into InstallDir from a folder without Users keeps its old DACL: no broad
+    # entry is visible, but the next write of an unprotected DACL re-applies Program Files'
+    # Users and app-package entries. The NetworkService run writes it (Read for the account).
+    $staging = Join-Path $WorkDir 'key-staging'
+    New-Item -ItemType Directory -Path $staging -Force | Out-Null
+    $keyB = Join-Path $InstallDir 'turn-key-moved.pem'
+    [IO.File]::WriteAllBytes((Join-Path $staging 'turn-key-moved.pem'), [IO.File]::ReadAllBytes($KeyFile))
+    Move-Item -LiteralPath (Join-Path $staging 'turn-key-moved.pem') -Destination $keyB -Force
+    if ((Get-Item -LiteralPath $keyB).GetAccessControl('Access').AreAccessRulesProtected) {
+        # Some Windows builds (Server 2025 in the lab) turn a moved file's inherited entries
+        # into explicit ones and protect the DACL, so the move alone does not leave the
+        # stale state. Write that state as a move leaves it elsewhere: unprotected, the
+        # staging folder's entries flagged inherited. SetFileSecurity stores the DACL as
+        # given; the .NET and SetNamedSecurityInfo paths would re-apply the parent's entries.
+        Add-Type -Namespace TalkyTest -Name Native -MemberDefinition @'
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool SetFileSecurity(string fileName, int securityInformation, byte[] securityDescriptor);
+'@
+        $sd = New-Object Security.AccessControl.RawSecurityDescriptor('D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)')
+        $bytes = New-Object byte[] $sd.BinaryLength
+        $sd.GetBinaryForm($bytes, 0)
+        if (-not [TalkyTest.Native]::SetFileSecurity($keyB, 4, $bytes)) { throw "SetFileSecurity failed ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))." }
+        Write-Host "moved    $keyB (this Windows protected the moved file; stale unprotected DACL written directly)"
+    }
+    $movedAcl = (Get-Item -LiteralPath $keyB).GetAccessControl('Access')
+    $parentInherits = @((Get-Item -LiteralPath $InstallDir).GetAccessControl('Access').GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+        Where-Object { $_.IdentityReference.Value -eq 'S-1-5-32-545' -and ($_.InheritanceFlags -band [Security.AccessControl.InheritanceFlags]::ObjectInherit) })
+    Write-Check (-not $movedAcl.AreAccessRulesProtected -and @(Get-AllowEntry -Path $keyB -Sid ($BroadGroups + $AppPackages)).Count -eq 0 -and $parentInherits.Count -gt 0) `
+        'precondition: moved key not protected, no broad entry visible, InstallDir passes Users on to files'
+    $null = Write-NodeConfig -Cert $CertFile -Key $keyB
+    Assert-Step 'Leg c'
     $legStart = (Get-Date).AddSeconds(-1)
     & $Install -InstallDir $InstallDir -ServiceAccount $NetworkService -Confirm:$false
     $afterInstall = Get-WrapperProcessId
@@ -352,26 +473,33 @@ try {
     $logAce = @((Get-Item -LiteralPath $LogDir).GetAccessControl('Access').Access | Where-Object {
             $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-20' -and ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Modify) -eq [Security.AccessControl.FileSystemRights]::Modify })
     Write-Check ($logAce.Count -gt 0) "$LogDir grants NETWORK SERVICE Modify"
+    $keyBAce = @(Get-AllowEntry -Path $keyB -Sid ($BroadGroups + $AppPackages))
+    Write-Check ((Get-Item -LiteralPath $keyB).GetAccessControl('Access').AreAccessRulesProtected -and $keyBAce.Count -eq 0) `
+        "moved TURN private key after the NetworkService install: inheritance off, no broad entry ($($keyBAce.Count) entries)"
     Assert-Step 'Leg c'
 
     # Back to LocalSystem: the entries added for NETWORK SERVICE must go again.
     & $Install -InstallDir $InstallDir -Confirm:$false
     $null = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after going back to LocalSystem'
-    foreach ($path in $LogDir, $CertFile, $KeyFile) {
+    foreach ($path in $LogDir, $CertFile, $keyB) {
         $left = @(Get-AllowEntry -Path $path -Sid 'S-1-5-20')
         Write-Check ($left.Count -eq 0) "no entry for NETWORK SERVICE left on $path after going back to LocalSystem ($($left.Count) left)"
     }
+    $keyBAce = @(Get-AllowEntry -Path $keyB -Sid ($BroadGroups + $AppPackages))
+    Write-Check ($keyBAce.Count -eq 0) "moved TURN private key still closed after the clean-up ($($keyBAce.Count) entries)"
     Assert-Step 'Leg c'
 
     # --- leg d: removal -------------------------------------------------------------------
     Write-Host '--- leg d: Install-LiveKitService.ps1 -Remove ---'
+    $errFrom = Get-LogLength $ErrLog
     & $Install -InstallDir $InstallDir -Remove -Confirm:$false
+    Test-GracefulStop -From $errFrom -When 'when -Remove stopped the running service'
     Write-Check ($null -eq (Get-Service -Name LiveKit -ErrorAction SilentlyContinue)) '-Remove: no LiveKit service'
     Write-Check (@(Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue).Count -eq 0) '-Remove: no rules in firewall group LiveKit'
     Write-Check (@(Get-ServerProcess).Count -eq 0) "-Remove: no livekit-server.exe from $InstallDir running"
     Write-Check (@(Get-Process -Name 'livekit-service' -ErrorAction SilentlyContinue).Count -eq 0) '-Remove: no livekit-service.exe running'
-    Remove-Item -LiteralPath $ConfigPath -Force
-    Write-Host "removed  $ConfigPath (it held this run's generated secret)"
+    Remove-Item -LiteralPath $ConfigPath, $keyA, $keyB -Force
+    Write-Host "removed  $ConfigPath (it held this run's generated secret) and the test's key copies"
 }
 catch {
     Write-Host "FAIL  $($_.Exception.Message)"
