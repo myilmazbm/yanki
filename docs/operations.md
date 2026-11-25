@@ -346,7 +346,8 @@ Durdurma ya da kaydın silinmesi başarısız olursa ya da Ctrl+C ile kesilirse,
 kayıtlıysa kurtarma eylemleri geri yüklenir (pencere kapatılır ya da süreç öldürülürse bu
 olamaz: betiği yeniden çalıştırın). WinSW ve `sc.exe` yalnızca çıkış koduna göre
 değerlendirilir; WinSW'nin stderr'e yazdığı bir log4net hatası (ör. log dosyasını başka bir
-süreç tutuyorsa) çalıştırmayı bitirmez.
+süreç tutuyorsa) çalıştırmayı bitirmez, başlatılamayan bir program (engellenmiş, karantinaya
+alınmış) bitirir.
 Elle yapılan bir `Stop-Service LiveKit` sonrasında servis nadiren 5 sn sonra kendiliğinden
 geri gelir: yeniden durdurun.
 

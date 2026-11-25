@@ -211,8 +211,9 @@ taşınmış anahtar adımından gelir; on dakikanın çok altındadır.
 
 ### 1.5 Dördüncü tur: düşük önemli bulgular (2026-11-25)
 
-Üçüncü turun bağımsız incelemesi ikinci turun bütün bulgularını kapanmış buldu ve 16 düşük
-önemli yeni bulgu doğruladı. Önce üçüncü tur koduyla, sonra düzeltmeyle:
+Üçüncü turun bağımsız incelemesi ikinci tur bulgularından H, I ve J'yi tam kapanmamış saydı ve
+16 düşük önemli bulgu doğruladı; bunların ikisi ikinci tur bulgularının kalan kısımlarıydı,
+ikisi üçüncü turdan eskiydi. Önce üçüncü tur koduyla, sonra düzeltmeyle:
 
 | Deneme | Düzeltmeden önce | Düzeltmeden sonra |
 |---|---|---|
@@ -243,6 +244,25 @@ işlev düzeyinde bir kesinti kullanıldı.
 | 1.13.6 | 116 PASS, 0 FAIL, çıkış 0, 269 sn | Başarısız başlatma adımı 76 sn; gerisi aynı |
 | 1.13.11, `-InstallDir C:\LiveKitAlt` (Program Files dışında) | 116 PASS, 0 FAIL, çıkış 0, 278 sn | Ön koşul 5/5; test sonunda `livekit.yaml` ve iki anahtar kopyası silindi |
 
+### 1.6 Beşinci tur: dördüncü turun dar denetimi (2026-11-25)
+
+Dördüncü turun dar denetimi altı düşük önemli bulgu doğruladı; üçü dördüncü turun
+getirdiği gerilemelerdi. Önce dördüncü tur koduyla, sonra düzeltmeyle:
+
+| Deneme | Düzeltmeden önce | Düzeltmeden sonra |
+|---|---|---|
+| Başlatılamayan WinSW (geçerli olmayan ya da olmayan program), önceki bir yerel komut 0 ile çıkmış (yerel, betiğin çağırma biçimi) | Hata yalnızca basıldı, eski 0 döndü: `WinSW install` başarılı sayıldı | Çalıştırma "could not be started" ile biter; stderr'e yazıp 0 ile çıkan bir komut yine zararsız |
+| `Get-LiveKit.ps1 -DownloadDir .\cache`, PowerShell konumu süreç dizininden farklı (yerel) | `OpenRead` süreç dizinine göre çözdü: "Could not find a part of the path" | Yol PowerShell'in yaptığı gibi çözülür; karma `Get-FileHash` ile aynı |
+| `cert_file` ve `key_file` aynı PEM, NetworkService (yerel) | Taşınmış PEM'de okuma kapatmadan önce yazıldı ve kapatma sorusu beklerken 3 geniş grup açıktı; Deny taşıyan klasörde "not in canonical form", 3 geniş grup kaldı | Önce bütün anahtarlar kapatılır, sonra her dosyaya bir kez okuma verilir; iki durumda da sonunda 0 geniş grup |
+| `Protect-PrivateKeyFile`, inceleyicilerin durum matrisi (VM, `powershell.exe`, yükseltilmiş) | Klasörden devralınan Deny ve anahtarda açık bir Allow: "not in canonical form", 3 geniş grup kaldı. Yalnızca Everyone'a açık ve sahibi LOCAL SERVICE olan anahtar: boşaltılmış DACL yazıldı, yeniden okuma başarısız oldu, anahtar boş DACL ile kaldı | Yeni DACL bellekte kurallı sırayla kurulur ve bir kez yazılır: sekiz durumun hepsi korumalı, kurallı, 0 geniş grup, SYSTEM ve Administrators okuyabiliyor |
+| Test betiğinin STATUS başlığı | §1.4'ü gösteriyordu | Bu bölümü ve §1.5'i gösterir |
+
+Matrisin sekiz durumu: yerinde oluşturulmuş ve beş gruba açık; eski DACL ile taşınmış; zaten
+korumalı; salt okunur öznitelik; klasörden devralınan Deny ile anahtarda açık bir Allow;
+yalnızca Everyone'a açık; aynısı, sahibi LOCAL SERVICE; sertifika ve anahtar aynı dosya.
+
+Son kod değişikliğinden sonra, temiz sıfırlamadan tam kabul koşusu: LiveKit 1.13.11, 116 PASS,
+0 FAIL, çıkış 0, 278 sn.
 ---
 
 ## 2. Spike A kurulumu (gerçek donanım)
