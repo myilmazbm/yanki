@@ -1,6 +1,6 @@
-# Not run yet: the repository has no remote and the owner has not chosen the hosting
-# platform (GitHub or Azure DevOps Server). azure-pipelines.yml is the twin; keep the two in
-# step until one of them is dropped.
+# Builds and tests the server (Windows), the clients (Linux) and the deployment scripts on
+# every push to main and every pull request into main; builds the MSI on release tags and on
+# manual runs.
 
 name: CI
 
@@ -10,6 +10,8 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  # Manual run, mainly to rehearse the MSI job without a release tag.
+  workflow_dispatch:
 
 # One run per ref. A new push supersedes the one in flight.
 concurrency:
@@ -26,7 +28,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # global.json only states a minimum (rollForward latestMajor), and the Windows image
       # ships newer SDKs in C:\Program Files\dotnet. Installing into a job-private directory
@@ -34,7 +36,7 @@ jobs:
       # directory first on PATH and sets DOTNET_ROOT for the later steps. (The runner
       # context is not available in job-level env, so the variable sits on this step.)
       - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         env:
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
@@ -42,15 +44,6 @@ jobs:
 
       - name: Show SDK
         run: dotnet --version
-
-      # SQL Server Express LocalDB ships with the windows runner image. Integration tests
-      # use it instead of a container, since production is SQL Server and there is no
-      # Docker anywhere in this project.
-      - name: Start SQL Server LocalDB
-        shell: pwsh
-        run: |
-          sqllocaldb start MSSQLLocalDB
-          sqllocaldb info MSSQLLocalDB
 
       - name: Restore
         run: dotnet restore server/Talky.slnx
@@ -60,12 +53,23 @@ jobs:
       - name: Build
         run: dotnet build server/Talky.slnx --no-restore -warnaserror -m:1 -p:NodeReuse=false
 
+      # SQL Server Express LocalDB comes with Visual Studio on the windows runner image.
+      # Integration tests use it instead of a container, since production is SQL Server and
+      # there is no Docker anywhere in this project. Started right before the tests because
+      # an idle LocalDB instance shuts itself down after a few minutes.
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          sqllocaldb versions
+          sqllocaldb start MSSQLLocalDB
+          sqllocaldb info MSSQLLocalDB
+
       - name: Test
         run: dotnet test server/Talky.slnx --no-build --logger trx --results-directory artifacts/test-results -m:1
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-test-results
           path: artifacts/test-results/*.trx
@@ -79,17 +83,18 @@ jobs:
       run:
         working-directory: clients
     steps:
-      # buf breaking compares against a local main branch, so the history is needed.
-      - uses: actions/checkout@v4
+      # buf breaking compares against an earlier commit, so the full history is needed.
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # pnpm comes from the packageManager field in clients/package.json.
-      - name: Enable corepack
-        run: corepack enable
-        working-directory: .
+      # Installs the pnpm version named in the packageManager field of clients/package.json.
+      # Must run before setup-node, whose pnpm cache asks pnpm for its store path.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: clients/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -106,22 +111,33 @@ jobs:
       - name: buf lint
         run: pnpm --filter @talky/protocol run lint:proto
 
-      # Contracts are additive only. Skipped on main, where there is nothing to compare to.
-      # PR and tag checkouts have a detached HEAD and only origin/main, so create main first.
+      # Contracts are additive only. Pull requests compare against main; pushes to main
+      # compare against the commit before the push. Skipped on tags (the tagged commit is
+      # already on main), on manual runs, and on the very first push, which has no previous
+      # commit. A branch is used because buf reads git inputs by branch.
       - name: buf breaking
-        if: github.ref != 'refs/heads/main'
+        if: >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          BUF_BASE: ${{ github.event_name == 'pull_request' && 'origin/main' || github.event.before }}
         run: |
-          git branch -f main origin/main
-          pnpm --filter @talky/protocol run breaking:proto
+          git branch -f buf-base "$BUF_BASE"
+          pnpm --filter @talky/protocol exec buf breaking ../../../api/proto --against '../../../.git#branch=buf-base,subdir=api/proto'
 
       - name: Generate protocol code
         run: pnpm gen
 
-      # The generated TypeScript is committed. If regenerating changes it, the commit is
-      # stale and the client and server contracts have drifted apart.
+      # The generated TypeScript is committed. If regenerating changes it, or produces a file
+      # that was never committed, the commit is stale and the client and server contracts
+      # have drifted apart. --intent-to-add makes git diff see new, untracked files; --text
+      # overrides the -diff attribute in .gitattributes so the log shows the actual change.
       - name: Check generated code is up to date
-        run: git diff --exit-code clients/packages/protocol/src/gen
         working-directory: .
+        run: |
+          git add --intent-to-add clients/packages/protocol/src/gen
+          git diff --exit-code --text -- clients/packages/protocol/src/gen
 
       - name: Typecheck
         run: pnpm typecheck
@@ -133,17 +149,17 @@ jobs:
         run: pnpm test
 
   msi:
-    name: msi (windows, tags only)
+    name: msi (windows, tags and manual runs)
     runs-on: windows-latest
     needs: [server, clients]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Same job-private SDK directory as the server job.
       - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         env:
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
@@ -153,22 +169,29 @@ jobs:
         run: dotnet --version
 
       # Publishes win-x64 self-contained single file, restores the wix local tool and
-      # builds artifacts/Talky.Server-<version>.msi.
+      # builds artifacts/Talky.Server-<version>.msi. A tag v1.2.3 gives ProductVersion
+      # 1.2.3; a manual run passes no version, so Build-Msi.ps1 uses VersionPrefix from
+      # server/Directory.Build.props.
       - name: Build MSI
         shell: pwsh
-        run: |
-          # Tag v1.2.3 -> MSI ProductVersion 1.2.3.
-          $version = '${{ github.ref_name }}' -replace '^v', ''
-          ./deploy/windows/msi/Build-Msi.ps1 -Version $version -Verbose
         env:
           CI: 'true'
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:REF_TYPE -eq 'tag') {
+            ./deploy/windows/msi/Build-Msi.ps1 -Version ($env:REF_NAME -replace '^v', '') -Verbose
+          }
+          else {
+            ./deploy/windows/msi/Build-Msi.ps1 -Verbose
+          }
 
       - name: Validate MSI
         shell: pwsh
         run: ./deploy/windows/msi/Test-Msi.ps1
 
       - name: Upload MSI
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Talky.Server-msi
           path: artifacts/*.msi
@@ -179,12 +202,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # Pinned so a new analyzer release cannot turn main red without a commit. 1.25.0 is
+      # also the version the windows image ships.
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -SkipPublisherCheck
 
       - name: Analyze
         shell: pwsh
+        env:
+          CI: 'true'
         run: ./scripts/Invoke-ScriptAnalyzer.ps1

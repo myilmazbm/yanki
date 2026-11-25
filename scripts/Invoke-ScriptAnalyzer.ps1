@@ -5,6 +5,8 @@
 .DESCRIPTION
     Used by CI and locally before committing changes under deploy\. Fails (exit 1) on any
     Error or Warning diagnostic. Information-level rules are reported but do not fail the run.
+    A missing analyzer module is a warning and exit 0 locally, but exit 1 when $env:CI is
+    'true'.
 
     Install the analyzer first if it is missing:
         Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
@@ -46,6 +48,11 @@ if (-not $Path) {
 }
 
 if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+    # Locally a missing analyzer is a hint; in CI it would make the check pass vacuously.
+    if ($env:CI -eq 'true') {
+        Write-Host 'PSScriptAnalyzer is not installed; failing because CI is true.'
+        exit 1
+    }
     Write-Warning 'PSScriptAnalyzer is not installed. Run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force'
     exit 0
 }
