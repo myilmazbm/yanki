@@ -31,8 +31,8 @@
     GET http://127.0.0.1:7880/ returns 200 "OK", six enabled rules in the "LiveKit"
     firewall group, livekit.yaml not readable by Users / Authenticated Users / Everyone,
     the TURN private key not by those nor by the app-package groups -> second installer
-    run while running (new wrapper
-    process, same checks) -> kill livekit-server.exe, recovery within 20 s.
+    run while running (new wrapper process, same checks) -> kill livekit-server.exe,
+    recovery within 20 s.
 
     Leg b: Invoke-LiveKitLoadTest.ps1 with 1 video publisher and 4 subscribers for 30 s
     and -SkipCpuCheck (generator on the node: a functional check, not a measurement) must

@@ -25,7 +25,6 @@
   <!-- Same recovery ladder as the Talky service: 5 s, 10 s, then 30 s (the last one
        repeats). Install-LiveKitService.ps1 restores exactly this with sc.exe after a
        failed start ($RecoveryActions there); keep both in step. -->
-
   <onfailure action="restart" delay="5 sec" />
   <onfailure action="restart" delay="10 sec" />
   <onfailure action="restart" delay="30 sec" />
@@ -50,8 +49,8 @@
        stopped, and livekit-server.exe starts none. It must be false: with true, WinSW
        2.12.0 lists them after LiveKit has exited, reads StartTime of the exited process
        (ProcessHelper.GetChildren) and, now and then (a race, most likely with its own exit
-       handler), the wrapper dies with "The handle is invalid" - a plain stop then becomes a crash, event
-       7031 and an SCM restart (seen once on a lab VM with LiveKit 1.13.11). -->
+       handler), the wrapper dies with "The handle is invalid" - a plain stop then becomes
+       a crash, event 7031 and an SCM restart (seen once on a lab VM with LiveKit 1.13.11). -->
   <stopparentprocessfirst>false</stopparentprocessfirst>
   <stoptimeout>30 sec</stoptimeout>
 
