@@ -9,7 +9,8 @@ mühürlü bir Linux cihaza taşınır (`deploy/hyperv/`) ve müşteri yine yaln
 olduğu hipervizörü yönetir.
 
 **Durum:** Geliştirme makinesinde ön doğrulama (§1) ve 2026-11-25'te Windows Server 2025
-laboratuvar VM'inde kurulum + işlev denetimi (§1.2) yapıldı. Spike A'nın asıl konusu olan
+laboratuvar VM'inde kurulum + işlev denetimi (§1.2), ardından bağımsız bir incelemenin
+bulgularıyla ikinci tur ve LiveKit 1.13.11 (§1.3) yapıldı. Spike A'nın asıl konusu olan
 gerçek sunucu donanımında yük ölçümü (§2–§4) **açık**.
 
 ---
@@ -103,8 +104,51 @@ sonra koşuldu; **tüm denetimler PASS, çıkış 0, toplam 144 sn**:
 Bir önceki tam koşu (aynı gün) de yeşildi: toparlanma 5,9 sn, CPU tepe %8,9.
 Hatanın gerçekten yakalandığı da ayrıca denendi: LocalSystem kurulumundan sonra
 `livekit-service.err.log` NetworkService'e kapatılıp NetworkService kurulumu yapıldığında
-betik 10,3 sn'de "did not stay up" ile hata verdi ve sahipsiz `livekit-server.exe`'yi
-durdurdu.
+betiğin son hali yaklaşık 57 sn'de "did not stay up" ile hata verdi (8 sn bekleme, ardından
+servisin en az 35 sn Stopped kalması beklenir). Servis kayıtlı ama Stopped kaldı, sahipsiz
+`livekit-server.exe` durduruldu, betik döndükten sonra 60 sn boyunca yeni 7031 olmadı ve
+LiveKit süreci kalmadı.
+
+### 1.3 İkinci tur: bağımsız inceleme bulguları ve LiveKit 1.13.11 (2026-11-25)
+
+Aynı laboratuvar VM'inde, bağımsız bir incelemenin bulguları önce düzeltilmemiş betiklerle
+denendi, sonra düzeltmeyle yeniden koşuldu.
+
+| Deneme | Düzeltmeden önce | Düzeltmeden sonra |
+|---|---|---|
+| `Invoke-LiveKitLoadTest.ps1` 8 yayıncı / 2 abone / 30 sn, sağlıklı düğüm | Abone başına `6/8`, toplam `12/16`, %0 kayıp, ama "every subscriber received its tracks" FAIL, CPU değerlendirilmedi, çıkış 1. Sebep: `lk`'nın varsayılan "speaker" düzeni her aboneyi en çok 6 katılımcıya abone eder; Spike A'nın varsayılan profili (8 yayıncı) hiç geçemezdi | Beklenen abone başına `min(yayıncı, 6)`: PASS, toplam 12/12, `livekit-server.exe` 6 örneğin 6'sında görüldü, CPU tepe %12,1, çıkış 0 |
+| 1.13.6, `turn.cert_file` olmayan bir dosya, kurulum betiği (2 kez) | İkisinde de 61 sn sonra ham `WaitForStatus … Time out has expired`; servis yalnızca ~40 ms Running kaldı ve normal biçimde durdu (7031 yok, yeniden başlatma yok); sebep tek satır olarak `livekit-service.out.log`'da: `TURN tls cert required: open C:\nope\missing.pem: …` | İki koşuda da betik "did not stay up" ile hata verdi ve `out.log`'u gösterdi (o sürüm kodunda ~106 sn: 60 sn `WaitForStatus` + 8 sn + 35 sn sessizlik; bekleme sonra 30 sn'ye indirildi); servis Stopped, 7031 yok, kurtarma eylemleri yerinde |
+| 1.13.11, aynı bozuk sertifika yolu (3 kez) | Üçünde de SCM döngüsü sürdü: her 30 sn'de bir 7031, servis her seferinde ~45 ms Running; betik dönüşünden sonra 3–4 yeni 7031 ve döngü sonsuz. Betik 1. koşuda "restart loop was ended" dedi (500 ms'lik yoklama hiçbir Running anını yakalamadı), 2. koşuda ham zaman aşımıyla düştü, 3. koşuda "did not stay Stopped within 140 s" uyarısının ardından yine "restart loop was ended" dedi | Üç koşuda da: betik kurtarma eylemlerini kaldırdı, önceden kuyruğa girmiş tek bir yeniden başlatma yine geldi (7034 "no corrective action" ya da yakalanıp düzgün durduruldu), servis 35 sn Stopped kaldıktan sonra "no restart pending" diyerek hata verdi (~114 sn); dönüşten sonra 100 sn boyunca 7031/7034 yok, LiveKit süreci yok, `sc qfailure` yine 5/10/30 sn |
+
+Sürümler arasındaki fark: 1.13.6 bir başlangıç hatasından sonra 0 koduyla çıkar (WinSW bunu
+normal durma olarak bildirir); 1.13.11 1 koduyla çıkar ve SCM'nin 5/10/30 sn kurtarma
+merdiveni devreye girer, son adım sonsuza dek tekrarlanır. İkisinde de sebep JSON logda
+değil, `livekit-service.out.log`'daki düz satırdadır. Düzeltilmiş betikte kurtarma eylemleri
+beklerken kaldırılıp sonra geri yüklendiği için ikisinde de servis kayıtlı ve Stopped kalır;
+son kod (30 sn başlatma sınırı) 1.13.11'de 84 sn'de hata verdi.
+
+Ek olarak denendi: `-InstallDir 'C:/Program Files/LiveKit'` (eğik çizgiyle), göreli TURN
+yolları (`cert_file: turn-cert.pem`, yorumlu ve tırnaklı `key_file`) ve betik `C:\`'den
+başlatılınca NetworkService kurulumu sağlıklı başladı; dosyalar `InstallDir` altında bulundu,
+anahtar yalnızca SYSTEM, Administrators ve servis hesabına açık kaldı (Program Files'ın verdiği
+Users ve uygulama paketi okumaları silindi).
+
+**Sürümler ve tam kabul koşuları.** `Get-LiveKit.ps1` artık varsayılan olarak `latest`'i değil,
+tam kabul koşusunu geçen en yeni sürümü kurar. Düzeltilmiş betiklerle, temiz sıfırlamadan sonra:
+
+| Sürüm | Sonuç | Notlar |
+|---|---|---|
+| 1.13.6 | 102 PASS, 0 FAIL, çıkış 0, 158 sn | Toparlanma 5,8 sn; 4/4 iz, 1,3 Mbps/abone, %0 kayıp; CPU tepe %6,0 (değerlendirilmedi, `-SkipCpuCheck`) |
+| 1.13.11 (yeni varsayılan) | İki koşu, ikisi de 102 PASS, 0 FAIL, çıkış 0, 158 sn | Toparlanma 5,9 sn; 4/4 iz, 1,3 Mbps/abone, %0 kayıp; CPU tepe %9,4 (değerlendirilmedi) |
+
+Farklar: başlangıç hatasında çıkış kodu (yukarıda). Bunun dışında kabul testinin gördüğü
+davranış aynı. Bir ara koşuda (`stopparentprocessfirst` henüz true iken) 1.13.11 düğümünde bir
+`stopwait`, WinSW 2.12.0'ın `ProcessHelper.GetChildren` içinde çıkmış sürecin `StartTime`'ını
+okurken "The handle is invalid" ile çökmesine yol açtı; durdurma 7031 ve SCM yeniden
+başlatmasına döndü. 132 ayrı durdurma/başlatma döngüsünde (120 boşta, 12 yük testinin hemen
+ardından) yeniden üretilemedi; bu yüzden düzeltme kaynak koda dayanır: `stopparentprocessfirst`
+false yapıldı, böylece alt süreç listesi LiveKit henüz çalışırken alınır (LiveKit alt süreç
+başlatmaz; Ctrl+C ile boşaltma iki ayarda da aynı). Yukarıdaki üç kabul koşusu bu ayarla yapıldı.
 
 ---
 
@@ -120,7 +164,7 @@ Kurulum:
 
 ```powershell
 # SFU düğümünde, yükseltilmiş oturum
-.\deploy\livekit\Get-LiveKit.ps1 -Version 1.13.6
+.\deploy\livekit\Get-LiveKit.ps1    # varsayılan: kabul testini geçen en yeni sürüm (§1.3)
 # Şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
 .\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR> -NoStart
 # O kopyadaki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys);
