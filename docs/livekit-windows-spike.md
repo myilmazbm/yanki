@@ -8,8 +8,9 @@ Server 2022/2025 üzerinde, hedef yükte kabul edilebilir kalitede çalışır m
 mühürlü bir Linux cihaza taşınır (`deploy/hyperv/`) ve müşteri yine yalnızca zaten sahip
 olduğu hipervizörü yönetir.
 
-**Durum:** Geliştirme makinesinde ön doğrulama yapıldı (aşağıda). Gerçek Windows Server
-donanımında ölçüm bekliyor.
+**Durum:** Geliştirme makinesinde ön doğrulama (§1) ve 2026-11-25'te Windows Server 2025
+laboratuvar VM'inde kurulum + işlev denetimi (§1.2) yapıldı. Spike A'nın asıl konusu olan
+gerçek sunucu donanımında yük ölçümü (§2–§4) **açık**.
 
 ---
 
@@ -47,6 +48,63 @@ Linux cihaz alternatifinde bu sınırlama yok.
 güvenlik duvarında açık değilse TURN el sıkışması başarılı olur ama medya akmaz — klasik
 "bağlandı, ses yok" arızası. Aralık artık `livekit.yaml` içinde açıkça sabitlendi ve
 `Install-LiveKitService.ps1` kuralı otomatik ekliyor.
+
+### 1.2 Windows Server 2025 laboratuvar VM'i (2026-11-25)
+
+**Bu bir işlev denetimidir, Spike A ölçümü değildir.** Makine 2 vCPU / 4 GB'lık bir
+Hyper-V VM'idir (WEB: Windows Server 2025 Datacenter, etki alanı üyesi, düğüm IP'si
+10.0.0.16, kısa ömürlü öz-imzalı TURN sertifikası) ve yük üreteci SFU'nun kendisinde
+çalıştı. Aşağıdaki CPU sayıları yalnızca "kurulum çalışıyor ve medya akıyor" demektir; §3
+ölçütleri için §2'deki donanım ve ayrı yük üreteci gerekir.
+
+Önce betikler `main`'deki halleriyle elle çalıştırıldı (ekip lideri):
+
+| Adım | Sonuç |
+|---|---|
+| `Get-LiveKit.ps1 -Version 1.13.6` | 17,8 MB indirildi, `checksums.txt`'e karşı SHA-256 doğrulandı, 32 sn; ikinci çalıştırma "already current" |
+| `Install-LiveKitService.ps1` (LocalSystem) | WinSW 2.12.0 SHA-256 doğrulandı; servis Running, gecikmeli otomatik başlatma, `sc qfailure` 5000/10000/30000 ms, sıfırlama 86400 sn; `livekit-server.exe` önceliği High; TCP 7880/7881/5349 dinliyor, UDP 3478 ve 10.0.0.16:7882 bağlı; `GET /` → 200 "OK"; "LiveKit" grubunda altı kural |
+| Çalışırken ikinci kurulum | 3,5 sn'de yeniden oluşturuldu, Running |
+| `livekit-server.exe` öldürüldü | 5,6 sn sonra yeniden yanıt veriyor; `Stop-Service` 0,3 sn |
+| Elle oda + `lk load-test` (1 yayıncı, 4 abone, 30 sn) | 4/4 iz, abone başına 1,3 Mbps, %0 kayıp; `livekit-server` CPU ort. %1,1, tepe tek çekirdeğin %11'i |
+
+Bu çalıştırma şu hataları buldu; hepsi düzeltildi:
+
+- `-ServiceAccount 'NT AUTHORITY\NetworkService'` ile servis birkaç saniyede bir çöküyordu
+  (System 7031, Application `.NET Runtime 1026 … UnauthorizedAccessException …
+  livekit-service.err.log`), kurulum betiği ise "started" deyip 0 ile çıkıyordu. Sebep:
+  önceki LocalSystem çalıştırmasının oluşturduğu log dosyalarına NetworkService
+  yazamıyordu. İlk kez NetworkService ile yapılan kurulumda (dosyaları servis kendisi
+  oluşturduğu için) sorun çıkmadı; yani sorun yalnızca hesap değişiminde görülür. Artık
+  betik log klasörüne Modify, `livekit.yaml` ve TURN dosyalarına okuma veriyor ve servisi
+  ancak 8 sn sonra hâlâ aynı süreçle ayaktaysa başlamış sayıyor (`docs/operations.md` §4.2).
+- Çöken sarmalayıcı `livekit-server.exe`'yi sahipsiz bırakıyordu (servis Stopped iken 7880
+  yanıt veriyordu). Yeniden kurulum, `-Remove` ve başarısız başlatma artık bunları
+  durduruyor.
+- `Invoke-LiveKitLoadTest.ps1` odayı oluşturmuyordu (`room.auto_create: false` → her
+  katılımcı `not found`) ve 5 katılımcının 0'ı bağlanmışken CPU'ya bakıp PASS diyordu.
+  Artık odayı oluşturuyor, `lk`'nın abone özet tablosunu okuyor ve bağlantı/iz/kayıp
+  denetimlerinden biri kalırsa FAIL ile 1 döndürüyor.
+- LiveKit logunu stdout'a değil **stderr**'e yazıyor (`livekit-service.err.log`); şablonun
+  webhook bloğu M5'e kadar kapatıldı.
+
+Ardından yeni `deploy/livekit/Test-LiveKitInstall.ps1` aynı VM'de temiz bir sıfırlamadan
+sonra koşuldu; **tüm denetimler PASS, çıkış 0, toplam 144 sn**:
+
+| Adım | Ölçülen |
+|---|---|
+| LocalSystem kurulumu + yukarıdaki tüm servis/port/kural denetimleri | PASS; `livekit.yaml` devralmasız, Users/Everyone erişimi yok |
+| Çalışırken ikinci kurulum | Yeni sarmalayıcı süreci, aynı denetimler PASS |
+| `livekit-server.exe` öldürüldü | 5,9 sn'de geri geldi ve yanıt verdi (sınır 20 sn); sahipsiz süreç yok |
+| `Invoke-LiveKitLoadTest.ps1` 1 yayıncı / 4 abone / 30 sn | 4/4 iz, abone başına 1,3 Mbps (toplam 5,1 Mbps), %0 kayıp; ana bilgisayar CPU ort. %4,2, tepe %5,9; `livekit-server` ort. %1,6, tepe tek çekirdeğin %4,7'si. Ağ sayaçları 0: trafik loopback üzerinden aktı |
+| Negatif: oda oluşturulmadan yük testi | Beklendiği gibi FAIL, çıkış 1 ("could not connect … not found"), CPU değerlendirilmedi |
+| LocalSystem'in üzerine NetworkService ile yeniden kurulum | 45 sn sonra aynı süreç Running, iki süreç de `NT AUTHORITY\NETWORK SERVICE`, `GET /` 200, System'de LiveKit için 7031 yok, Application'da `.NET Runtime` hatası yok |
+| `-Remove` | Servis, kurallar ve `livekit-server.exe` yok |
+
+Bir önceki tam koşu (aynı gün) de yeşildi: toparlanma 5,9 sn, CPU tepe %8,9.
+Hatanın gerçekten yakalandığı da ayrıca denendi: LocalSystem kurulumundan sonra
+`livekit-service.err.log` NetworkService'e kapatılıp NetworkService kurulumu yapıldığında
+betik 10,3 sn'de "did not stay up" ile hata verdi ve sahipsiz `livekit-server.exe`'yi
+durdurdu.
 
 ---
 

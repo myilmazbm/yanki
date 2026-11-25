@@ -304,8 +304,10 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
   denetimler PASS, çıkış 0. Not: üretim hedefi SQL Server 2025'tir; laboratuvarda SQL Server 2022 vardı. İlk gerçek
   çalıştırmada MSI 1603 ile geri alınıyordu (`MsiServiceConfigFailureActions`, hata 1939); kurtarma ayarı artık
   `sc.exe` özel eylemiyle verilir ve MSI `SERVICE_ACCOUNT`/`DATADIR`'i hatırlar (`docs/operations.md` §4.1).
-- Açık — Spike A: yalnızca geliştirici makinesinde ön kontrol yapıldı (`docs/livekit-windows-spike.md`); gerçek
-  Windows Server donanımında ölçüm bekliyor, kal / Hyper-V kararı M1 başında.
+- Açık — Spike A: 2026-11-25'te WEB laboratuvar VM'inde (Windows Server 2025, 2 vCPU) kurulum betikleri düzeltildi ve
+  `deploy/livekit/Test-LiveKitInstall.ps1` tüm denetimleri geçti (LocalSystem ve NetworkService, kurtarma, 1 yayıncı /
+  4 aboneyle %0 kayıp); bu bir işlev denetimidir, ölçüm değildir (`docs/livekit-windows-spike.md` §1.2). Gerçek
+  donanımda yük ölçümü bekliyor, kal / Hyper-V kararı M1 başında.
 - Açık — Spike B: çalıştırılmadı; iki forest'lı lab'de M1'in ilk işi.
 - Açık — Spike C: çalıştırılmadı; M3 açılışına alınması önerildi, sahibinin kararı bekleniyor.
 - Açık — CI hiç çalışmadı: repo'nun uzak deposu yok. Barındırma (GitHub mı Azure DevOps Server mı) sahibin kararı;
