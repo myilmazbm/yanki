@@ -279,6 +279,23 @@ kendisinden: aynı tür, hesap ve bayraklı düz girdiler maskelerinin birleşim
 (bir durumda, `FullControl` ve `Modify` taşıyan aynı hesabın girdileri), bu aynı hakları verir.
 Son kod değişikliğinden sonra tam kabul koşusu: LiveKit 1.13.11, 116 PASS, 0 FAIL, çıkış 0, 278 sn.
 
+### 1.8 Yedinci tur: anahtar işlevinin kenar durumları (2026-11-25)
+
+Altıncı turun son denetimi yaklaşık 75 DACL durumunu Win32 üzerinden yazıp okudu ve altı bulgu
+doğruladı. Düzeltildi: hiç DACL'si olmayan anahtarda işlev hata verip anahtarı açık bırakıyordu
+(altıncı turun gerilemesi; artık kapatılır ve `no DACL (everyone had full control) replaced`
+yazılır); gizli bir anahtar dosyası `Get-Item`'da bulunamıyordu (üç işlevde `-Force`);
+bilinmeyen türde bir girdi ya da 0x20 bayrağı yazmayı kural dışı sayıp durduruyordu (koruma biti
+artık yüklenen tanımlayıcıda taşınır, bayrak PowerShell'in enum denetiminden geçmeden silinir);
+bir nesne türü adlandıran nesne girdisi SYSTEM ve Administrators'ın okuması sayılıyordu. §1.7'deki
+"tek istisna" cümlesi eksikti: yazma yolu birleştirmenin yanında bir dosyada etkisi olmayan
+girdileri ve bayrak bitlerini de geri yazmaz; işlev açıklaması ve yardım metni bunu söyler.
+Kabul edilen sınır: .NET'in değiştiremediği bir girdi (bilinmeyen tür) taşıyan anahtara servis
+hesabının okuması eklenemez; betik dosyayı adıyla anan bir hatayla durur, anahtar kapalı kalır.
+İnceleyicinin durumları (t1, t2, t4: 58 durum; t3: 4; t5: 16 çağıran durumu; t7, t8), altıncı
+turun 21 durumu, ikinci okuyucunun 9 durumu ve VM'deki 8 durum yeniden koşuldu; sonuçlar raporda.
+Son kod değişikliğinden sonra tam kabul koşusu: LiveKit 1.13.11, 116 PASS, 0 FAIL, çıkış 0, 278 sn.
+
 ---
 
 ## 2. Spike A kurulumu (gerçek donanım)
