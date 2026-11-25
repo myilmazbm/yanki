@@ -308,10 +308,14 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
   `deploy/livekit/Test-LiveKitInstall.ps1` tüm denetimleri geçti (LocalSystem ve NetworkService, kurtarma, 1 yayıncı /
   4 aboneyle %0 kayıp); bu bir işlev denetimidir, ölçüm değildir (`docs/livekit-windows-spike.md` §1.2). Gerçek
   donanımda yük ölçümü bekliyor, kal / Hyper-V kararı M1 başında.
-- Açık — Spike B: çalıştırılmadı; iki forest'lı lab'de M1'in ilk işi.
+- Açık, ertelendi — Spike B: çalıştırılmadı. Sahibin kararı (2026-11-25): laboratuvarda tek forest var, ikinci bir
+  etki alanı denetleyicisi için kapasite yok ve laboratuvar başka projelerle paylaşılıyor. İki forest'lı bir ortam
+  bulunana kadar çok-forest Kerberos **kanıtlanmamış risk** olarak kalır; M1 tek forest ile başlayabilir, ama
+  çok-forest kısmı bu spike yapılmadan "bitti" sayılmaz.
 - Açık — Spike C: çalıştırılmadı; M3 açılışına alınması önerildi, sahibinin kararı bekleniyor.
-- Açık — CI hiç çalışmadı: repo'nun uzak deposu yok. Barındırma (GitHub mı Azure DevOps Server mı) sahibin kararı;
-  karar sonrası tek tanım kalır.
+- Açık — CI hiç çalışmadı: repo'nun uzak deposu henüz yok. Sahibin kararı (2026-11-25): depo GitHub'da ve herkese
+  açık olacak; yayın öncesi denetim (gizli bilgi, kişisel veri, lisans, CI) bittikten sonra açılır ve tek CI tanımı
+  (GitHub Actions) kalır.
 - Bilerek sonraya bırakılanlar: servis çıkış kodu / SCM kurtarma davranışı (gerçek servis kurulumu ister), rol
   kapılama (M2; roller bugün yalnızca raporlanır), encode-once fan-out (M2), SQL'e göre saat kayması `doctor`
   kontrolü (M2), OpenAPI üretimi (M1, ilk gerçek REST uç noktalarıyla). §5'teki AD/GC, pay ve LiveKit `doctor`
