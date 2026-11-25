@@ -103,11 +103,13 @@
         LiveKit (working directory InstallDir) resolves them; the drive-relative form
         'X:name' is warned about;
       - turn.key_file only, for every account including LocalSystem, before the service
-        account's Read: inheritance off (inherited entries are kept as explicit ones), then
-        the allow entries of Users, Authenticated Users, Everyone, ALL APPLICATION PACKAGES
-        and ALL RESTRICTED APPLICATION PACKAGES are removed; SYSTEM or Administrators get
-        Full Control if no entry of theirs can read the file any more. Every other entry
-        stays.
+        account's Read, in one write: inheritance off (inherited entries are kept as
+        explicit ones), every allow entry of Users, Authenticated Users, Everyone, ALL
+        APPLICATION PACKAGES and ALL RESTRICTED APPLICATION PACKAGES is removed (conditional
+        ones too), deny entries come first, and SYSTEM or Administrators get Full Control if
+        no unconditional entry of theirs can read the file any more. Every other entry is
+        kept as stored: type, rights mask and condition unchanged (plain entries of the
+        same type, account and flags may be combined into one with the same rights).
     WinSW itself grants a non-LocalSystem account the "Log on as a service" right at
     `install` (<allowservicelogon> in livekit.xml).
     When -ServiceAccount differs from the account the existing service runs as, the entries
@@ -589,37 +591,58 @@ function Remove-AllowRule {
 # The TURN private key must not be readable by ordinary users. The decision does not
 # depend on what the DACL shows: a key moved into its folder keeps a stale DACL without
 # the folder's entries, and the next write of an unprotected DACL brings them back. So the
-# new DACL is protected (inherited entries are kept as explicit ones), without the allow
-# entries of the broad groups, and with Full Control for SYSTEM and Administrators if no
-# remaining allow entry of theirs reads the file. It is built in memory with AddAccessRule,
-# which keeps the canonical order (deny before allow, whatever the old order was), and
-# written once, so the key never has an empty or half-changed DACL on disk. Call it before
-# granting the service account Read. Returns what it changed, or '' (nothing written).
+# new DACL is protected and built from the entries as stored (type, mask, identity and
+# condition data copied byte for byte; formerly inherited entries lose only their
+# inherited flag): every allow entry of the broad groups is dropped, conditional or not,
+# deny entries are put before allow entries, and Full Control for SYSTEM and
+# Administrators is appended if no unconditional allow entry of theirs reads the file.
+# Rebuilding entries through FileSystemAccessRule would drop conditions and rewrite the
+# SYNCHRONIZE bit. The one change the write path (FileSecurity) makes on its own: plain
+# entries of the same type, identity and flags become one entry with the union of their
+# masks, which allows and denies exactly the same. It is written once, so the key never
+# has an empty or half-changed DACL on disk, and nothing is written when nothing changes.
+# Call it before granting the service account Read. Returns what it changed, or ''.
 function Protect-PrivateKeyFile {
     param([Parameter(Mandatory)][string] $Path)
     $item = Get-Item -LiteralPath $Path
     $current = $item.GetAccessControl('Access')
-    $rules = @($current.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
-    $broad = @($rules | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -in $BroadSids })
-    $kept = @($rules | Where-Object { $broad -notcontains $_ })
-    $readers = @($kept | Where-Object { $_.AccessControlType -eq 'Allow' -and
-            ([int]$_.FileSystemRights -band [int][Security.AccessControl.FileSystemRights]::ReadData) -ne 0 } |
-        ForEach-Object { $_.IdentityReference.Value })
+    $raw = New-Object Security.AccessControl.RawSecurityDescriptor($current.GetSecurityDescriptorBinaryForm(), 0)
+    $revision = if ($raw.DiscretionaryAcl) { $raw.DiscretionaryAcl.Revision } else { 2 }
+    $aces = @($raw.DiscretionaryAcl | ForEach-Object { $_ })
+    # Allow and conditional allow (callback) entries; every other entry type is kept in front.
+    $isAllow = { param($ace) $ace -is [Security.AccessControl.QualifiedAce] -and $ace.AceQualifier -eq [Security.AccessControl.AceQualifier]::AccessAllowed }
+    $broad = @($aces | Where-Object { (& $isAllow $_) -and $_.SecurityIdentifier.Value -in $BroadSids })
+    $kept = @($aces | Where-Object { $broad -notcontains $_ })
+    $readMask = 0x1 -bor 0x10000000 -bor [int]0x80000000   # FILE_READ_DATA, GENERIC_ALL, GENERIC_READ
+    $readers = @($kept | Where-Object { (& $isAllow $_) -and -not $_.IsCallback -and ($_.AccessMask -band $readMask) -ne 0 } |
+        ForEach-Object { $_.SecurityIdentifier.Value })
     $missing = @($SystemSid, $AdminsSid | Where-Object { $readers -notcontains $_.Value })
+    $ordered = @($kept | Where-Object { -not (& $isAllow $_) }) + @($kept | Where-Object { & $isAllow $_ })
+    $reordered = $false
+    for ($i = 0; $i -lt $kept.Count; $i++) { if (-not [object]::ReferenceEquals($kept[$i], $ordered[$i])) { $reordered = $true } }
     $changes = @()
     if (-not $current.AreAccessRulesProtected) { $changes += 'inheritance off' }
     if ($broad.Count -gt 0) { $changes += 'Users / Authenticated Users / Everyone / app packages removed' }
     if ($missing.Count -gt 0) {
         $changes += "$(($missing | ForEach-Object { if ($_.Value -eq $SystemSid.Value) { 'SYSTEM' } else { 'Administrators' } }) -join ' and ') full control added (no entry of theirs could read it)"
     }
+    if ($reordered) { $changes += 'deny entries moved before allow entries' }
     if ($changes.Count -eq 0) { return '' }
-    $acl = New-Object Security.AccessControl.FileSecurity
-    $acl.SetAccessRuleProtection($true, $false)
-    foreach ($rule in $kept) {
-        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($rule.IdentityReference, $rule.FileSystemRights,
-                    $rule.InheritanceFlags, $rule.PropagationFlags, $rule.AccessControlType)))
+    $dacl = New-Object Security.AccessControl.RawAcl($revision, ($ordered.Count + $missing.Count))
+    $n = 0
+    foreach ($ace in $ordered) {
+        $ace.AceFlags = [Security.AccessControl.AceFlags]([int]$ace.AceFlags -band (-bnot [int][Security.AccessControl.AceFlags]::Inherited))
+        $dacl.InsertAce($n, $ace); $n++
     }
-    foreach ($sid in $missing) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'Allow'))) }
+    foreach ($sid in $missing) {
+        $dacl.InsertAce($n, (New-Object Security.AccessControl.CommonAce('None', 'AccessAllowed', 0x1F01FF, $sid, $false, $null))); $n++
+    }
+    $sd = New-Object Security.AccessControl.RawSecurityDescriptor(([Security.AccessControl.ControlFlags]'DiscretionaryAclPresent'), $null, $null, $null, $dacl)
+    $bytes = New-Object byte[] $sd.BinaryLength
+    $sd.GetBinaryForm($bytes, 0)
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetSecurityDescriptorBinaryForm($bytes, 'Access')
+    $acl.SetAccessRuleProtection($true, $false)
     $item.SetAccessControl($acl)
     return ($changes -join ', ')
 }
