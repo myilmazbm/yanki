@@ -146,9 +146,66 @@ davranış aynı. Bir ara koşuda (`stopparentprocessfirst` henüz true iken) 1.
 `stopwait`, WinSW 2.12.0'ın `ProcessHelper.GetChildren` içinde çıkmış sürecin `StartTime`'ını
 okurken "The handle is invalid" ile çökmesine yol açtı; durdurma 7031 ve SCM yeniden
 başlatmasına döndü. 132 ayrı durdurma/başlatma döngüsünde (120 boşta, 12 yük testinin hemen
-ardından) yeniden üretilemedi; bu yüzden düzeltme kaynak koda dayanır: `stopparentprocessfirst`
-false yapıldı, böylece alt süreç listesi LiveKit henüz çalışırken alınır (LiveKit alt süreç
-başlatmaz; Ctrl+C ile boşaltma iki ayarda da aynı). Yukarıdaki üç kabul koşusu bu ayarla yapıldı.
+ardından) yeniden üretilemedi. İkinci turda `stopparentprocessfirst` false yapıldı ve "LiveKit
+alt süreç başlatmaz, Ctrl+C ile boşaltma iki ayarda da aynı" diye yazıldı; **bu yanlıştı**:
+`livekit-server.exe`'nin konsolunun `conhost.exe`'si bir alt süreçtir ve false iken LiveKit
+boşaltma olmadan öldürülür. Üçüncü turda true'ya dönüldü (§1.4). Yukarıdaki üç kabul koşusu
+false ayarıyla yapıldı ve durdurmanın düzgün olup olmadığını denetlemiyordu.
+
+### 1.4 Üçüncü tur: durdurma sırası ve izinler (2026-11-25)
+
+**Durdurma sırası.** Aynı düğümde, gerçek servisle, `livekit-service.xml`'deki tek fark bu ayar;
+her durdurma `Stop-Service LiveKit`, LiveKit sağlıklı ve boşta:
+
+| | `stopparentprocessfirst` false (2. tur) | `stopparentprocessfirst` true (3. tur) |
+|---|---|---|
+| `livekit-server.exe`'nin alt süreçleri | `conhost.exe` (her koşuda bir tane) | aynı |
+| `livekit-service.wrapper.log` | `Process <conhost> terminated.` → `WARN - Failed to attach to console. No process is on the other end of the pipe.` → `Process <livekit> terminated.` | `Process <livekit> canceled with code 0.` |
+| LiveKit'in kendi logu (`err.log`) | durdurmaya dair satır yok | `"msg":"exit requested, shutting down"` |
+| Application günlüğü (WinSW) | `Child process … terminated with -1` | `Child process … terminated with 0` |
+| `Stop-Service` süresi | 0,27 sn | 0,26–0,27 sn |
+| Koşular | 1.13.11'de 2, 1.13.6'da 1; hepsi aynı | 1.13.11'de 2, 1.13.6'da 1; hepsi aynı |
+
+İnceleme doğrulandı: false iken LiveKit Ctrl+C almadan öldürülür. Boşta bir düğümde süre aynıdır,
+çünkü boşaltılacak oturum yoktur; dolu bir düğümde false, katılımcıları uyarısız düşürür. true'ya
+dönüldü; nadir "The handle is invalid" çökmesi (§1.3) için betiğin kendi durdurmaları kurtarma
+eylemlerini önce kaldırır ve "Stopped, süreç kalmadı" durumunu başarı sayar. Bu çökme bu turda da
+kasıtlı olarak üretilemedi; o yol yalnızca kod incelemesiyle doğrulandı. Kabul testi artık
+çalışan bir düğümün her durdurmasından sonra LiveKit'in logunda bu satırı arar.
+
+**Diğer bulgular.** Önce düzeltilmemiş betiklerle (2. tur kodu), sonra düzeltmeyle:
+
+| Deneme | Düzeltmeden önce | Düzeltmeden sonra |
+|---|---|---|
+| `InstallDir`'e taşınmış, devralması açık ama geniş grup göstermeyen anahtar, NetworkService kurulumu (yerel, Windows 11) | Koruma adımı "değişiklik yok" dedi; ardından servis hesabına okuma yazılınca Users ve iki uygulama paketi grubu yeniden devralındı (3 geniş girdi) | Devralma kapatıldı, son yazma bu oldu: 0 geniş girdi; önceki hesap temizliğinden sonra da 0 |
+| Varsayılan log klasörü (VM) | `%ProgramData%`'dan devralınan `BUILTIN\Users Write` (dosya oluşturma) duruyordu | Devralma kapalı; yalnızca SYSTEM ve Administrators (LocalSystem), servis hesabı Değiştirme |
+| Güvenlik duvarı hatası (geçersiz `-SignalRemoteAddress`), çalışan düğüm (VM) | Servis yeniden oluşturuldu, hata yazıldı ama betik "ready" dedi; sinyal kuralı güncellenmedi | Betik servis adımından önce durdu: "The LiveKit service was not stopped or re-created."; aynı sarmalayıcı süreç çalışmaya devam etti, `GET /` 200 |
+| NetworkService'ten LocalSystem'e geçiş, servis kaydı başka bir tutamak yüzünden silinemiyor; sonra yeniden çalıştırma (VM) | 1. koşu 60 sn sonra hata; 2. koşu başarılı ama log klasöründe, sertifikada ve anahtarda NETWORK SERVICE girdileri kaldı | 1. koşu eski servisi durdurur durdurmaz girdileri kaldırdı, sonra aynı hatayı verdi; 2. koşudan sonra NETWORK SERVICE için 0 girdi |
+| Önbellekte bozuk WinSW (önce yerel, sonra VM) | Kopya önce `livekit-service.exe` adıyla yazılıyordu; başka bir süreç onu açık tutarken silinemedi, kaldı ve sonraki koşu onu "present" diye kullandı | Kopya geçici adla doğrulanıyor: "`livekit-service.exe` was not created", geçici dosya ve önbellek silindi; kurulu ama sabitlemeye uymayan bir `livekit-service.exe` her koşuda reddediliyor (`-WinSwVersion`/`-WinSwSha256` adıyla) |
+| `-FirewallProfile Private`, makinenin tek ağı etki alanında (VM) | Parametre yoktu (kurallar hep Domain) | Altı kural Private, uyarı: "None of this machine's active networks is in the firewall profile 'Private' (active: Domain)"; varsayılanla yeniden Domain |
+| Önceki hesap için operatörün verdiği ReadAndExecute / Modify / FullControl (yerel) | Betiğin Read'i bunlardan çıkarıldı, girdiler bozuldu (ör. Modify → ExecuteFile, Write, Delete) | Dokunulmadı, adıyla uyarı verildi. Sınır: betiğinkiyle birebir aynı bir Read ayırt edilemez ve kaldırılır |
+| `-InstallDir C:\`, sürücüsüz TURN yolu `\certs\key.pem`, `InstallDir` D: üzerinde (yerel) | `C:\` → `C:`; `\certs\key.pem` → `C:\certs\key.pem` | `C:\` kalır; `D:\certs\key.pem`; `X:ad` uyarı verir |
+| Yükseltilmemiş `-WhatIf`, kurulu düğüm (yerel) | `UnauthorizedAccessException` ile düştü | Tamamlandı, sonda okunamayanları saydı ("Not previewed") |
+| Başarısız başlatmada durdurma reddedildi / kurtarma eylemleri kaldırılamadı / servis yok (yerel) | Üçünde de "no restart pending" | Mesaj gerçek durumu söylüyor (Declined / Armed / Gone) |
+| Yük testi 8 yayıncı / 2 abone / 30 sn (VM) | (2. tur) speaker düzeni, abone başına 6/8; 2 yayıncı hiçbir denetime girmiyordu ve bu yazılmıyordu | `-Layout speaker`: PASS 12/12 ve "not covered: 2 of 8 publishers" satırı; `-Layout 3x3`: abone başına 8/8, PASS 16/16, %0 kayıp |
+
+Not: laboratuvar VM'inde (Windows Server 2025) `Move-Item` taşınan dosyanın devralınan
+girdilerini açık girdiye çevirip DACL'yi korumalı yapar; incelemedeki "taşınmış anahtar"
+durumu orada taşımayla oluşmaz (Windows 11 geliştirme makinesinde oluşur). Kabul testi bu
+yüzden o durumu, taşımadan sonra korumalı bir DACL görürse doğrudan yazar
+(`SetFileSecurity`, devralınmış işaretli SYSTEM ve Administrators, koruma yok); VM'de bu
+durumda düzeltme olmadan sıradan bir DACL yazımı Users ve iki uygulama paketi grubunu
+yeniden getirdi.
+
+**Tam kabul koşuları** (son kod değişikliğinden sonra, her biri temiz sıfırlamadan):
+
+| Sürüm | Sonuç | Notlar |
+|---|---|---|
+| 1.13.11 | İki koşu, ikisi de 114 PASS, 0 FAIL, çıkış 0, 278 sn | Başarısız başlatma adımı 84 sn; toparlanma 5,9 sn; 4/4 iz, %0 kayıp; her durdurmada `exit requested, shutting down` |
+| 1.13.6 | 114 PASS, 0 FAIL, çıkış 0, 269 sn | Başarısız başlatma adımı 75 sn (0 koduyla çıkış, yeniden başlatma yok); gerisi aynı |
+
+Süre artışı (158 → ~278 sn) yeni başarısız başlatma adımından (~85 sn bekleme dahil) ve
+taşınmış anahtar adımından gelir; on dakikanın çok altındadır.
 
 ---
 
@@ -166,10 +223,13 @@ Kurulum:
 # SFU düğümünde, yükseltilmiş oturum
 .\deploy\livekit\Get-LiveKit.ps1    # varsayılan: kabul testini geçen en yeni sürüm (§1.3)
 # Şablonu C:\Program Files\LiveKit\livekit.yaml olarak kopyalar, servisi başlatmaz
-.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR> -NoStart
+# -SignalRemoteAddress hem API düğümlerini hem yük üretecini kapsamalıdır (lk TCP 7880'e bağlanır).
+# -FirewallProfile varsayılanı Domain; SFU etki alanına bağlı değilse uygun profili verin
+# (betik, etkin ağların hiçbiri o profilde değilse uyarır).
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR>,<yük-üreteci-IP> -NoStart
 # O kopyadaki "<...>" yer tutucuları doldurun (node_ip, turn.domain, sertifika, keys);
 # depodaki deploy\livekit\livekit.yaml şablon olarak doldurulmamış kalır
-.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR>
+.\deploy\livekit\Install-LiveKitService.ps1 -SignalRemoteAddress <api-düğümü-CIDR>,<yük-üreteci-IP>
 ```
 
 Ölçüm (yük üreteci makinesinde):
@@ -179,8 +239,12 @@ $env:LIVEKIT_API_SECRET = '<secret>'
 .\deploy\livekit\Invoke-LiveKitLoadTest.ps1 `
     -Url ws://media-01.talky.corp:7880 -ApiKey talky `
     -NodeComputerName media-01 `
-    -Room spike -VideoPublishers 8 -Subscribers 100 -Duration 10m
+    -Room spike -VideoPublishers 8 -Subscribers 100 -Duration 10m -Layout 3x3
 ```
+
+`-Layout 3x3` her aboneyi 9 katılımcıya kadar abone eder; böylece 8 yayıncının hepsi denetime
+girer ve her abonenin 8 izin hepsini alması beklenir. Bu, varsayılan `speaker` düzeninden
+(abone başına en çok 6 iz) **daha ağır** bir okumadır: SFU abone başına 8 iz iletir.
 
 Betik `artifacts/livekit-spike/` altına bir CSV (5 sn'lik örneklerle toplam CPU,
 `livekit-server` süreç CPU'su ve çalışma kümesi, ağ Mbps) ve `lk` çıktısının tamamını
