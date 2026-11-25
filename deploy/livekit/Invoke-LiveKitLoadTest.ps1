@@ -17,8 +17,11 @@
          working set, and network bytes in/out per second;
       5. reads lk's "Subscriber summaries" table and prints one PASS/FAIL line per check:
          every participant connected (no "could not connect", error count 0), every
-         subscriber received every published track, packet loss below 1 % for every
-         subscriber, and - only when the load actually ran - peak host CPU below 60 %;
+         subscriber received min(publishers, 6) tracks - lk's default "speaker" layout
+         subscribes each subscriber to at most 6 participants, so with the default 8
+         publishers lk itself prints 6/8 for a healthy subscriber - packet loss below 1 %
+         for every subscriber, and - only when the load actually ran and livekit-server.exe
+         was seen on the sampled host in every sample - peak host CPU below 60 %;
       6. deletes the room again (best effort).
 
     The URL, key and secret are handed to lk through LIVEKIT_URL / LIVEKIT_API_KEY /
@@ -44,13 +47,15 @@
 
 .PARAMETER NodeComputerName
     Host to sample counters from. Default: the local machine. Set it when the load
-    generator and the SFU are different machines, which they should be.
+    generator and the SFU are different machines, which they should be. CPU is judged only
+    if livekit-server.exe was running on this host in every sample.
 
 .PARAMETER Room
     Room name. Default 'spike'.
 
 .PARAMETER VideoPublishers
-    Publishing participants. Default 8.
+    Publishing participants. Default 8. With lk's default layout each subscriber
+    subscribes to at most 6 of them.
 
 .PARAMETER Subscribers
     Subscribing participants. Default 100. At least 1: the pass criteria are read from the
@@ -75,6 +80,10 @@
     Do not create (or delete) the room; only for a node configured with
     room.auto_create: true. Against a Talky node every participant then fails with
     "not found", which Test-LiveKitInstall.ps1 uses as its negative check.
+
+.PARAMETER SkipCpuCheck
+    Print the counters but do not judge CPU: for a functional check (generator on the node,
+    small VM), where the spike's CPU threshold means nothing. Never for Spike A.
 
 .EXAMPLE
     $env:LIVEKIT_API_SECRET = '...'
@@ -103,7 +112,8 @@ param(
     [ValidateRange(1, 300)][int] $SampleIntervalSeconds = 5,
     [string] $CliVersion = '2.18.6',
     [switch] $SkipDownload,
-    [switch] $SkipRoomCreate
+    [switch] $SkipRoomCreate,
+    [switch] $SkipCpuCheck
 )
 
 Set-StrictMode -Version Latest
@@ -116,6 +126,11 @@ $ErrorActionPreference = 'Stop'
 $CliRepo = 'livekit/livekit-cli'
 $UserAgent = 'talky-deploy'
 $CpuPassThreshold = 60
+# lk load-test defaults this script relies on (lk 2.18.6, not passed on the command line):
+# the "speaker" layout subscribes each subscriber to at most 6 participants (3x3: 9,
+# 4x4: 16, 5x5: 25), and testers join at 5 per second (--num-per-second).
+$LkSpeakerLayoutCap = 6
+$LkJoinsPerSecond = 5
 $LossPassThresholdPercent = 1
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
@@ -405,7 +420,11 @@ try {
         $process = Start-Process -FilePath $lk -ArgumentList $lkArgs -PassThru -NoNewWindow `
             -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
         try {
-            $deadline = (Get-Date).Add($span).AddMinutes(2)   # lk stops on its own; this is a guard
+            # lk stops on its own; this is a guard. lk first joins every participant, at
+            # most $LkJoinsPerSecond per second (its default --num-per-second), and only
+            # then waits for --duration, so the guard grows with the participant count.
+            $guardSeconds = 120 + [math]::Ceiling(($VideoPublishers + $Subscribers) / $LkJoinsPerSecond)
+            $deadline = (Get-Date).Add($span).AddSeconds($guardSeconds)
             while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
                 $sample = Get-NodeSample -ComputerName $NodeComputerName
                 if ($sample) {
@@ -415,7 +434,7 @@ try {
                 Start-Sleep -Seconds $SampleIntervalSeconds
             }
             $loadRan = $process.HasExited
-            Write-Check $loadRan "lk load-test finished within $Duration + 2 min"
+            Write-Check $loadRan "lk load-test finished within $Duration + $guardSeconds s (joining + 2 min)"
         }
         finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
@@ -453,7 +472,8 @@ Write-Host ''
 $loadOk = $false
 if ($loadRan) {
     $summary = Read-LkSummary -Text $lkText
-    $expectedTracks = $Subscribers * $VideoPublishers
+    $perSubscriber = [Math]::Min($VideoPublishers, $LkSpeakerLayoutCap)
+    $expectedTracks = $Subscribers * $perSubscriber
     Write-Check $summary.Found 'lk printed its subscriber summary table'
     if ($summary.Found) {
         $errorCount = 0
@@ -462,11 +482,12 @@ if ($loadRan) {
         Write-Check $connected ("every participant connected ({0} 'could not connect', subscriber errors {1})" -f $summary.ConnectFailures.Count, $summary.Total.Error)
         foreach ($line in ($summary.ConnectFailures | Select-Object -First 3)) { Write-Host "      $line" }
 
-        $short = @($summary.Subscribers | Where-Object { $_.Received -ne $VideoPublishers -or $_.Expected -ne $VideoPublishers })
-        $tracksOk = $summary.Subscribers.Count -eq $Subscribers -and $short.Count -eq 0 -and
-            $summary.Total.Received -eq $expectedTracks -and $summary.Total.Expected -eq $expectedTracks
-        Write-Check $tracksOk ("every subscriber received its tracks: {0}/{1} total, expected {2} ({3} of {4} subscriber rows short)" -f
-            $summary.Total.Received, $summary.Total.Expected, $expectedTracks, $short.Count, $summary.Subscribers.Count)
+        # lk's expected column is always the publisher count, whatever the layout, so it is
+        # not compared; the real expectation is min(publishers, cap of the layout).
+        $short = @($summary.Subscribers | Where-Object { $_.Received -ne $perSubscriber })
+        $tracksOk = $summary.Subscribers.Count -eq $Subscribers -and $short.Count -eq 0 -and $summary.Total.Received -eq $expectedTracks
+        Write-Check $tracksOk ("every subscriber received {0} track(s) (min of {1} publishers and lk's speaker-layout cap of {2}): {3} total, expected {4} ({5} of {6} subscriber rows short)" -f
+            $perSubscriber, $VideoPublishers, $LkSpeakerLayoutCap, $summary.Total.Received, $expectedTracks, $short.Count, $summary.Subscribers.Count)
 
         $losses = @($summary.Subscribers | Where-Object { $null -ne $_.LossPercent } | ForEach-Object { $_.LossPercent })
         $worst = if ($losses.Count -gt 0) { ($losses | Measure-Object -Maximum).Maximum } else { $null }
@@ -489,11 +510,24 @@ if ($samples.Count -gt 0) {
     Write-Host ("  livekit-server   avg {0:N1} %, peak {1:N1} % of one core-equivalent" -f $lkCpuStats.Average, $lkCpuStats.Maximum)
     Write-Host ("  network peak     {0:N1} Mbps in, {1:N1} Mbps out" -f $inStats.Maximum, $outStats.Maximum)
     Write-Host ''
-    if ($loadOk) {
-        Write-Check ($cpuStats.Maximum -lt $CpuPassThreshold) ("peak host CPU {0:N1} % is below the {1} % spike threshold" -f $cpuStats.Maximum, $CpuPassThreshold)
+    if (-not $loadOk) {
+        Write-Host 'CPU      not judged: the load did not run as configured, so the counters say nothing about the SFU.'
+    }
+    elseif ($SkipCpuCheck) {
+        Write-Host 'CPU      not judged (-SkipCpuCheck): functional check, the counters above are for information only.'
     }
     else {
-        Write-Host 'CPU      not judged: the load did not run as configured, so the counters say nothing about the SFU.'
+        # A host without livekit-server.exe (e.g. the generator itself) yields its own CPU.
+        $seen = @($samples | Where-Object { $_.LiveKitWorkingSetMB -gt 0 }).Count
+        $onNode = $seen -eq $samples.Count
+        Write-Check $onNode ("livekit-server.exe was running on $NodeComputerName in every sample ($seen of $($samples.Count))" +
+            $(if ($onNode) { '' } else { '; pass -NodeComputerName <SFU host>' }))
+        if ($onNode) {
+            Write-Check ($cpuStats.Maximum -lt $CpuPassThreshold) ("peak host CPU {0:N1} % is below the {1} % spike threshold" -f $cpuStats.Maximum, $CpuPassThreshold)
+        }
+        else {
+            Write-Host 'CPU      not judged: the sampled host is not the SFU.'
+        }
     }
 }
 elseif ($loadRan) {
