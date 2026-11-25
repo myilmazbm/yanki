@@ -311,8 +311,11 @@ servisi yeniden oluşturur ve kuralları günceller.
 | `livekit.yaml` içindeki `turn.cert_file` ve `turn.key_file` | Servis hesabına okuma (yalnızca bir izin girdisi eklenir) | Gömülü TURN/TLS sertifikayı ve anahtarı okuyabilsin |
 
 Betik servisi ancak sarmalayıcı süreç ve onun `livekit-server.exe` alt süreci, "Running"
-bildiriminden 8 sn sonra hâlâ aynıysa başlamış sayar; değilse log klasörünü ve olay
-günlüklerini göstererek hata verir. WinSW çöktüğünde `livekit-server.exe` sahipsiz kalır ve
+bildiriminden 8 sn sonra hâlâ aynıysa başlamış sayar. Değilse servisi durdurur ve en uzun
+yeniden başlatma gecikmesinden (30 sn) uzun süre Stopped kalmasını bekler, böylece SCM'nin
+yeniden başlatma döngüsü geride kalmaz; ardından log klasörünü ve olay günlüklerini
+göstererek hata verir. Servis kayıtlı ama durmuş kalır: sebebi giderip `Start-Service LiveKit`
+ya da betiği yeniden çalıştırın. WinSW çöktüğünde `livekit-server.exe` sahipsiz kalır ve
 portları tutmaya devam eder; betik servisi durdurduğu/kaldırdığı her yolda (yeniden kurulum,
 `-Remove`, başarısız başlatma) `InstallDir` altından çalışan ve servisin alt süreci olmayan
 `livekit-server.exe`'leri durdurur. Başka klasördeki LiveKit süreçlerine dokunmaz.

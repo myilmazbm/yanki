@@ -18,7 +18,10 @@
       4. set the file permissions the service account needs (see -ServiceAccount);
       5. `livekit-service.exe install` and, unless -NoStart, `start`. The start only counts
          once the same wrapper process and its livekit-server.exe child are still running a
-         few seconds after the service reported Running;
+         few seconds after the service reported Running. If not, the script stops the
+         service until it stays Stopped for longer than the longest restart delay (so no
+         SCM restart loop is left behind), stops orphaned processes and fails; the service
+         stays registered;
       6. add the inbound firewall rules in the "LiveKit" group:
             UDP 7882  media (SRTP/ICE)
             UDP 3478  embedded TURN
@@ -122,6 +125,10 @@ $WinSwCache = Join-Path $env:TEMP 'winsw-download'
 # A crash shows up a few seconds after Running (the wrapper opens its log files and
 # starts livekit-server.exe only then); 8 s covers that with margin.
 $StartSettleSeconds = 8
+# Longest delay of the restart ladder in livekit.xml (5 s / 10 s / 30 s). After a failed
+# start the service only counts as quiet once it stayed Stopped for longer than that, since
+# a restart may be pending.
+$RestartLadderMaxSeconds = 30
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -221,6 +228,39 @@ function Stop-OrphanedServer {
             Write-Host "stopped  orphaned livekit-server.exe ($($proc.ProcessId), parent $($proc.ParentProcessId) gone)"
         }
     }
+}
+
+# Ends the SCM restart loop of a crashing service: stops it whenever it is starting or
+# running (a recovery restart may be pending or may just have fired) until it has stayed
+# Stopped for longer than the longest restart delay. A stop requested through the SCM is
+# not a failure, so it triggers no further recovery action.
+function Stop-ServiceUntilQuiet {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
+    if (-not $PSCmdlet.ShouldProcess($ServiceName, 'Stop the service and end its restart loop')) { return }
+    $quietSeconds = $RestartLadderMaxSeconds + 5
+    $deadline = (Get-Date).AddSeconds(4 * $quietSeconds)
+    $stoppedSince = $null
+    while ((Get-Date) -lt $deadline) {
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if (-not $svc) { return }
+        if ($svc.Status -eq 'Stopped') {
+            if (-not $stoppedSince) { $stoppedSince = Get-Date }
+            if (((Get-Date) - $stoppedSince).TotalSeconds -ge $quietSeconds) {
+                Write-Host "stopped  service $ServiceName (stayed Stopped for $quietSeconds s, restart loop ended)"
+                return
+            }
+        }
+        else {
+            $stoppedSince = $null
+            if ($svc.Status -in 'Running', 'StartPending', 'Paused') {
+                # sc.exe fails harmlessly while the service cannot accept a stop yet; retry.
+                & "$env:SystemRoot\System32\sc.exe" stop $ServiceName 2>&1 | Write-Verbose
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    Write-Warning "Service $ServiceName did not stay Stopped within $([int](4 * $quietSeconds)) s; stop it with Stop-Service $ServiceName."
 }
 
 function Resolve-AccountSid {
@@ -472,12 +512,14 @@ elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
     $wrapperPidNow = Get-WrapperProcessId
     $child = @(Get-InstalledServerProcess | Where-Object { [int]$_.ParentProcessId -eq $wrapperPidNow })
     if ($started.Status -ne 'Running' -or $wrapperPid -eq 0 -or $wrapperPidNow -ne $wrapperPid -or $child.Count -eq 0) {
+        Stop-ServiceUntilQuiet
         Stop-OrphanedServer
         throw ("Service $ServiceName reported Running but did not stay up (status $($started.Status) " +
             "$StartSettleSeconds s later, wrapper process $wrapperPid -> $wrapperPidNow, livekit-server.exe children: $($child.Count)). " +
             "See $LogDir (livekit-service.err.log is LiveKit's own log, livekit-service.wrapper.log WinSW's) and the event logs: " +
             "System (source Service Control Manager, event 7031) and Application (source .NET Runtime, livekit-service.exe). " +
-            "The service stays registered with its restart policy; stop it with Stop-Service $ServiceName or remove it with -Remove.")
+            "The service was left registered but stopped (its restart loop was ended); fix the cause, then run " +
+            "Start-Service $ServiceName or this script again.")
     }
     Write-Host "started  service $ServiceName ($($started.Status), wrapper $wrapperPid, livekit-server.exe $($child[0].ProcessId), stable for $StartSettleSeconds s)"
 }
