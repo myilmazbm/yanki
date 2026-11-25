@@ -17,11 +17,14 @@
          working set, and network bytes in/out per second;
       5. reads lk's "Subscriber summaries" table and prints one PASS/FAIL line per check:
          every participant connected (no "could not connect", error count 0), every
-         subscriber received min(publishers, 6) tracks - lk's default "speaker" layout
-         subscribes each subscriber to at most 6 participants, so with the default 8
-         publishers lk itself prints 6/8 for a healthy subscriber - packet loss below 1 %
-         for every subscriber, and - only when the load actually ran and livekit-server.exe
-         was seen on the sampled host in every sample - peak host CPU below 60 %;
+         subscriber received min(publishers, cap of -Layout) tracks - lk subscribes each
+         subscriber to at most 6 participants in the "speaker" layout, 9 / 16 / 25 in
+         3x3 / 4x4 / 5x5, and prints the publisher count as "expected" whatever the layout -
+         packet loss below 1 % for every subscriber, and - only when the load actually ran
+         and livekit-server.exe was seen on the sampled host in every sample - peak host
+         CPU below 60 %. When the publishers exceed the layout's cap, a publisher that
+         joined but never published goes unnoticed (lk reports publish errors nowhere);
+         the script says how many publishers no check covers;
       6. deletes the room again (best effort).
 
     The URL, key and secret are handed to lk through LIVEKIT_URL / LIVEKIT_API_KEY /
@@ -54,8 +57,14 @@
     Room name. Default 'spike'.
 
 .PARAMETER VideoPublishers
-    Publishing participants. Default 8. With lk's default layout each subscriber
-    subscribes to at most 6 of them.
+    Publishing participants. Default 8. Each subscriber subscribes to at most the cap of
+    -Layout of them.
+
+.PARAMETER Layout
+    lk's --layout: speaker (default, lk's own default; at most 6 subscriptions per
+    subscriber), 3x3 (9), 4x4 (16) or 5x5 (25). Spike A uses 3x3 so that every subscriber
+    receives all 8 publishers' tracks, the heavier reading of the profile; with speaker
+    only 6 of 8 are subscribed and 2 publishers are covered by no check.
 
 .PARAMETER Subscribers
     Subscribing participants. Default 100. At least 1: the pass criteria are read from the
@@ -107,6 +116,7 @@ param(
     [string] $Room = 'spike',
     [ValidateRange(1, 10000)][int] $VideoPublishers = 8,
     [ValidateRange(1, 100000)][int] $Subscribers = 100,
+    [ValidateSet('speaker', '3x3', '4x4', '5x5')][string] $Layout = 'speaker',
     [string] $Duration = '10m',
     [string] $OutputDir,
     [ValidateRange(1, 300)][int] $SampleIntervalSeconds = 5,
@@ -126,10 +136,10 @@ $ErrorActionPreference = 'Stop'
 $CliRepo = 'livekit/livekit-cli'
 $UserAgent = 'talky-deploy'
 $CpuPassThreshold = 60
-# lk load-test defaults this script relies on (lk 2.18.6, not passed on the command line):
-# the "speaker" layout subscribes each subscriber to at most 6 participants (3x3: 9,
-# 4x4: 16, 5x5: 25), and testers join at 5 per second (--num-per-second).
-$LkSpeakerLayoutCap = 6
+# lk load-test behaviour this script relies on (lk 2.18.6): each subscriber subscribes to
+# at most this many participants per --layout (numToSubscribe in pkg/loadtester), and
+# testers join at 5 per second (default --num-per-second, not passed).
+$LkLayoutCap = @{ 'speaker' = 6; '3x3' = 9; '4x4' = 16; '5x5' = 25 }
 $LkJoinsPerSecond = 5
 $LossPassThresholdPercent = 1
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -377,12 +387,22 @@ $lkArgs = @(
     '--room', $Room,
     '--video-publishers', $VideoPublishers,
     '--subscribers', $Subscribers,
+    '--layout', $Layout,
     '--duration', $Duration
 )
+$layoutCap = $LkLayoutCap[$Layout]
+$perSubscriber = [Math]::Min($VideoPublishers, $layoutCap)
+$uncovered = $VideoPublishers - $perSubscriber
 
 # The secret is never echoed.
 Write-Host "Load test    $Room on $Url"
-Write-Host "  publishers $VideoPublishers video, subscribers $Subscribers, duration $Duration"
+Write-Host "  publishers $VideoPublishers video, subscribers $Subscribers, layout $Layout (each subscriber takes up to $layoutCap), duration $Duration"
+if ($uncovered -gt 0) {
+    $covering = @('3x3', '4x4', '5x5') | Where-Object { $LkLayoutCap[$_] -ge $VideoPublishers } | Select-Object -First 1
+    Write-Host ("  NOTE       $VideoPublishers publishers exceed the $Layout layout's cap of ${layoutCap}: up to $uncovered publisher(s) " +
+        'that join but never publish are covered by no check. ' +
+        $(if ($covering) { "Use -Layout $covering to cover them all." } else { 'No lk layout covers more than 25.' }))
+}
 Write-Host "  sampling   $NodeComputerName every $SampleIntervalSeconds s"
 Write-Host "  csv        $csvPath"
 Write-Host "  log        $logPath"
@@ -472,7 +492,6 @@ Write-Host ''
 $loadOk = $false
 if ($loadRan) {
     $summary = Read-LkSummary -Text $lkText
-    $perSubscriber = [Math]::Min($VideoPublishers, $LkSpeakerLayoutCap)
     $expectedTracks = $Subscribers * $perSubscriber
     Write-Check $summary.Found 'lk printed its subscriber summary table'
     if ($summary.Found) {
@@ -486,8 +505,11 @@ if ($loadRan) {
         # not compared; the real expectation is min(publishers, cap of the layout).
         $short = @($summary.Subscribers | Where-Object { $_.Received -ne $perSubscriber })
         $tracksOk = $summary.Subscribers.Count -eq $Subscribers -and $short.Count -eq 0 -and $summary.Total.Received -eq $expectedTracks
-        Write-Check $tracksOk ("every subscriber received {0} track(s) (min of {1} publishers and lk's speaker-layout cap of {2}): {3} total, expected {4} ({5} of {6} subscriber rows short)" -f
-            $perSubscriber, $VideoPublishers, $LkSpeakerLayoutCap, $summary.Total.Received, $expectedTracks, $short.Count, $summary.Subscribers.Count)
+        Write-Check $tracksOk ("every subscriber received {0} track(s) (min of {1} publishers and the {2} layout's cap of {3}): {4} total, expected {5} ({6} of {7} subscriber rows short)" -f
+            $perSubscriber, $VideoPublishers, $Layout, $layoutCap, $summary.Total.Received, $expectedTracks, $short.Count, $summary.Subscribers.Count)
+        if ($uncovered -gt 0) {
+            Write-Host "      not covered: $uncovered of $VideoPublishers publishers (above the $Layout layout's cap); a publisher that never published would not show."
+        }
 
         $losses = @($summary.Subscribers | Where-Object { $null -ne $_.LossPercent } | ForEach-Object { $_.LossPercent })
         $worst = if ($losses.Count -gt 0) { ($losses | Measure-Object -Maximum).Maximum } else { $null }
