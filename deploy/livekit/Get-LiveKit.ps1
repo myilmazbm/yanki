@@ -12,9 +12,10 @@
     that the installed binary is already current, unless -Force is given.
 
 .PARAMETER Version
-    Release to install, e.g. '1.13.6', or 'latest' to resolve the newest release through
-    the GitHub API. Pin an explicit version for production; a media node should never
-    change underneath a running deployment.
+    Release to install. Default 1.13.11: the newest release that passed the full
+    Test-LiveKitInstall.ps1 run (docs/livekit-windows-spike.md, section 1.3); raise it only
+    together with a new passing run. 'latest' resolves the newest release through the
+    GitHub API and is never the default: a media node must not change version by accident.
 
 .PARAMETER InstallDir
     Where livekit-server.exe is placed. Default C:\Program Files\LiveKit.
@@ -29,10 +30,13 @@
     Re-download and reinstall even if the target version is already installed.
 
 .EXAMPLE
-    .\Get-LiveKit.ps1 -Version 1.13.6 -WhatIf
+    .\Get-LiveKit.ps1 -WhatIf
 
 .EXAMPLE
-    .\Get-LiveKit.ps1 -Version 1.13.6
+    .\Get-LiveKit.ps1
+
+.EXAMPLE
+    .\Get-LiveKit.ps1 -Version latest    # explicit choice; run Test-LiveKitInstall.ps1 on a lab VM first
 
 .NOTES
     Requires an elevated session to write into C:\Program Files.
@@ -40,7 +44,7 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $Version = 'latest',
+    [string] $Version = '1.13.11',
     [string] $InstallDir = (Join-Path $env:ProgramFiles 'LiveKit'),
     [string] $DownloadDir = (Join-Path $env:TEMP 'livekit-download'),
     [ValidateSet('amd64', 'arm64')]
@@ -90,7 +94,8 @@ Write-Host "LiveKit $resolved ($Architecture)"
 
 if ((Test-Path -LiteralPath $targetExe) -and -not $Force) {
     $installed = (& $targetExe --version 2>&1 | Out-String).Trim()
-    if ($installed -match [regex]::Escape($resolved)) {
+    # Anchored: 1.13.1 must not count as installed when 1.13.11 is.
+    if ($installed -match ('(^|\s)v?' + [regex]::Escape($resolved) + '$')) {
         Write-Host "current  $targetExe is already $installed"
         return
     }

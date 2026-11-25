@@ -306,8 +306,9 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
   `sc.exe` özel eylemiyle verilir ve MSI `SERVICE_ACCOUNT`/`DATADIR`'i hatırlar (`docs/operations.md` §4.1).
 - Açık — Spike A: 2026-11-25'te bir laboratuvar VM'inde (Windows Server 2025, 2 vCPU) kurulum betikleri düzeltildi ve
   `deploy/livekit/Test-LiveKitInstall.ps1` tüm denetimleri geçti (LocalSystem ve NetworkService, kurtarma, 1 yayıncı /
-  4 aboneyle %0 kayıp); bu bir işlev denetimidir, ölçüm değildir (`docs/livekit-windows-spike.md` §1.2). Gerçek
-  donanımda yük ölçümü bekliyor, kal / Hyper-V kararı M1 başında.
+  4 aboneyle %0 kayıp); ikinci turda bağımsız incelemenin bulguları düzeltildi ve varsayılan sürüm 1.13.11'e çıktı (o da
+  tam kabul koşusunu geçti); bu bir işlev denetimidir, ölçüm değildir (`docs/livekit-windows-spike.md` §1.2–1.3).
+  Gerçek donanımda yük ölçümü bekliyor, kal / Hyper-V kararı M1 başında.
 - Açık, ertelendi — Spike B: çalıştırılmadı. Sahibin kararı (2026-11-25): laboratuvarda tek forest var, ikinci bir
   etki alanı denetleyicisi için kapasite yok ve laboratuvar başka projelerle paylaşılıyor. İki forest'lı bir ortam
   bulunana kadar çok-forest Kerberos **kanıtlanmamış risk** olarak kalır; M1 tek forest ile başlayabilir, ama
