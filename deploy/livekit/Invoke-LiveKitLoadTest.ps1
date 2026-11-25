@@ -10,8 +10,8 @@
          against the release checksums.txt;
       2. creates the room with `lk room create` (our livekit.yaml sets
          room.auto_create: false, so a participant cannot create it by joining);
-      3. starts `lk load-test` with the spike profile - by default 8 video publishers and
-         100 subscribers in room "spike" for 10 minutes;
+      3. starts `lk load-test` - by default 8 video publishers and 100 subscribers in room
+         "spike" for 10 minutes; the Spike A profile adds -Layout 3x3 (first example);
       4. samples the SFU host every -SampleIntervalSeconds while the test runs and writes
          one row per sample to a CSV: total CPU %, livekit-server process CPU % and
          working set, and network bytes in/out per second;
@@ -97,7 +97,10 @@
 .EXAMPLE
     $env:LIVEKIT_API_SECRET = '...'
     .\Invoke-LiveKitLoadTest.ps1 -Url ws://media-01.talky.corp:7880 -ApiKey talky `
-        -NodeComputerName media-01
+        -NodeComputerName media-01 -Layout 3x3
+
+    The Spike A profile (docs/livekit-windows-spike.md, section 2): 8 publishers, 100
+    subscribers, 10 minutes, every subscriber receiving all 8 tracks.
 
 .EXAMPLE
     .\Invoke-LiveKitLoadTest.ps1 -WhatIf
@@ -128,6 +131,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# ValidateSet accepts any case, lk's --layout only its own spelling (3X3 would silently run
+# speaker).
+$Layout = $Layout.ToLowerInvariant()
 
 # The CSV is read by other tools and by people on other machines: force '.' as the decimal
 # separator regardless of the operator's regional settings.
