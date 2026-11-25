@@ -7,9 +7,9 @@
 .DESCRIPTION
     STATUS: executed on 2026-11-25 on a lab VM (Windows Server 2025 Datacenter,
     2 vCPU / 4 GB, domain member, self-signed lab TURN certificate), driven over
-    PowerShell Direct from a clean reset; all checks passed, 144 s in total
-    (docs/livekit-windows-spike.md, section 1.2). That is a functional check, not the
-    Spike A hardware measurement.
+    PowerShell Direct from a clean reset, in this form with LiveKit 1.13.6 once and 1.13.11
+    twice: all 102 checks passed each time, 158 s each (docs/livekit-windows-spike.md,
+    section 1.3). That is a functional check, not the Spike A hardware measurement.
 
     It installs and removes the LiveKit service and its firewall rules, so run it only on
     a throw-away VM, elevated, with -AcknowledgeServiceInstall. The machine must not
@@ -23,26 +23,29 @@
     The secret is never printed; it reaches lk only through the environment, and the
     livekit.yaml holding it is deleted at the end of leg d.
 
-    Leg a: Get-LiveKit.ps1 (twice: the second run must say "current") -> install as
-    LocalSystem -> service Running, Automatic (Delayed Start), restart after 5 s / 10 s /
-    30 s with reset 86400 s, livekit-server.exe a High-priority child of the wrapper under
-    InstallDir, TCP 7880/7881/5349 listening, UDP 3478 and 7882 bound by it,
+    Leg a: Get-LiveKit.ps1 (twice: the second run must say "current") -> install with
+    -NoStart: service registered and Stopped, the six firewall rules already there ->
+    install as LocalSystem -> service Running, Automatic (Delayed Start), restart after
+    5 s / 10 s / 30 s with reset 86400 s, livekit-server.exe a High-priority child of the
+    wrapper under InstallDir, TCP 7880/7881/5349 listening, UDP 3478 and 7882 bound by it,
     GET http://127.0.0.1:7880/ returns 200 "OK", six enabled rules in the "LiveKit"
-    firewall group, livekit.yaml not readable by Users -> second installer run while
-    running (new wrapper process, same checks) -> kill livekit-server.exe, recovery
-    within 20 s.
+    firewall group, livekit.yaml not readable by Users / Authenticated Users / Everyone,
+    the TURN private key not by those nor by the app-package groups -> second installer
+    run while running (new wrapper
+    process, same checks) -> kill livekit-server.exe, recovery within 20 s.
 
     Leg b: Invoke-LiveKitLoadTest.ps1 with 1 video publisher and 4 subscribers for 30 s
-    (generator on the node: a functional check, not a measurement) must exit 0, i.e. all
-    4 subscribers received the track. Negative: the same script with -SkipRoomCreate
-    (room.auto_create is false, so nobody can join) must exit non-zero and say that not
-    every participant connected.
+    and -SkipCpuCheck (generator on the node: a functional check, not a measurement) must
+    exit 0, i.e. all 4 subscribers received the track. Negative: the same script with
+    -SkipRoomCreate (room.auto_create is false, so nobody can join) must exit non-zero and
+    say that not every participant connected.
 
     Leg c: re-install as NT AUTHORITY\NetworkService over the LocalSystem install (log
     files created by LocalSystem already exist) -> after 45 s (longer than the 5 s and
     10 s restart delays) the same wrapper process is still running, both processes run as
     NETWORK SERVICE, the node answers, and the System log has no event 7031 for LiveKit
-    since the leg started.
+    since the leg started -> re-install as LocalSystem: running as LocalSystem, and no
+    entry for NETWORK SERVICE left on the log directory or the TURN files.
 
     Leg d: Install-LiveKitService.ps1 -Remove -> no service, no rules, no livekit-server.exe
     from InstallDir.
@@ -64,7 +67,7 @@
     PEM private key for TURN/TLS.
 
 .PARAMETER LiveKitVersion
-    LiveKit release to install. Default 1.13.6.
+    LiveKit release to install. Default 1.13.11, the same as Get-LiveKit.ps1's default.
 
 .PARAMETER CliVersion
     lk release for the load test. Default 2.18.6.
@@ -81,14 +84,19 @@
 .EXAMPLE
     .\Test-LiveKitInstall.ps1 -AcknowledgeServiceInstall -NodeIp 192.0.2.16 -TurnDomain media-01.corp.local `
         -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
+
+.NOTES
+    Windows PowerShell 5.1 (Desktop edition) only, like Install-LiveKitService.ps1: the ACL
+    checks use FileInfo.GetAccessControl, which only .NET Framework has.
 #>
+#Requires -PSEdition Desktop
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $NodeIp,
     [Parameter(Mandatory)][string] $TurnDomain,
     [Parameter(Mandatory)][string] $CertFile,
     [Parameter(Mandatory)][string] $KeyFile,
-    [string] $LiveKitVersion = '1.13.6',
+    [string] $LiveKitVersion = '1.13.11',
     [string] $CliVersion = '2.18.6',
     [string] $InstallDir = (Join-Path $env:ProgramFiles 'LiveKit'),
     [string] $WorkDir = (Join-Path $env:TEMP 'livekit-install-test'),
@@ -98,6 +106,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Absolute with backslashes, as Install-LiveKitService.ps1 does: process paths are compared as text.
+$InstallDir = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)).TrimEnd('\')
 $GetLiveKit = Join-Path $PSScriptRoot 'Get-LiveKit.ps1'
 $Install = Join-Path $PSScriptRoot 'Install-LiveKitService.ps1'
 $LoadTest = Join-Path $PSScriptRoot 'Invoke-LiveKitLoadTest.ps1'
@@ -131,6 +141,15 @@ function Get-ServerProcess {
     return @(Get-CimInstance -ClassName Win32_Process -Filter "Name='livekit-server.exe'" |
         Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })
 }
+
+# Allow entries (explicit or inherited) on a file or directory for the given SIDs.
+function Get-AllowEntry {
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string[]] $Sid)
+    return @((Get-Item -LiteralPath $Path).GetAccessControl('Access').GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+        Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -in $Sid })
+}
+$BroadGroups = 'S-1-5-32-545', 'S-1-5-11', 'S-1-1-0'   # Users, Authenticated Users, Everyone
+$AppPackages = 'S-1-15-2-1', 'S-1-15-2-2'             # ALL (RESTRICTED) APPLICATION PACKAGES
 
 function Get-ProcessOwner {
     param([Parameter(Mandatory)][int] $ProcessId)
@@ -242,7 +261,7 @@ try {
     Write-Host '--- leg a: Get-LiveKit.ps1 + Install-LiveKitService.ps1 as LocalSystem ---'
     & $GetLiveKit -Version $LiveKitVersion -InstallDir $InstallDir
     $reported = (& $ServerExe --version 2>&1 | Out-String).Trim()
-    Write-Check ($reported -match [regex]::Escape($LiveKitVersion)) "livekit-server.exe reports $LiveKitVersion (got '$reported')"
+    Write-Check ($reported -match ('(^|\s)v?' + [regex]::Escape($LiveKitVersion) + '$')) "livekit-server.exe reports $LiveKitVersion (got '$reported')"
     $again = & $GetLiveKit -Version $LiveKitVersion -InstallDir $InstallDir 6>&1 | Out-String
     Write-Check ($again -match '(?m)^current\s') 'second Get-LiveKit.ps1 run reports the binary as current'
     Assert-Step 'Leg a'
@@ -259,11 +278,22 @@ try {
     [IO.File]::WriteAllText($ConfigPath, $yaml, (New-Object System.Text.UTF8Encoding($false)))
     Assert-Step 'Leg a'
 
+    # -NoStart first, as on a new node: the firewall rules must exist before any start, so a
+    # node whose first start fails is reachable once its configuration is fixed.
+    & $Install -InstallDir $InstallDir -NoStart -Confirm:$false
+    $svc = Get-Service -Name LiveKit -ErrorAction SilentlyContinue
+    $rules = @(Get-NetFirewallRule -Group 'LiveKit' -ErrorAction SilentlyContinue)
+    Write-Check ($null -ne $svc -and $svc.Status -eq 'Stopped' -and $rules.Count -eq 6) `
+        "install -NoStart: service registered and Stopped, six firewall rules already present (status $(if ($svc) { $svc.Status } else { 'absent' }), $($rules.Count) rules)"
+    Assert-Step 'Leg a'
+
     & $Install -InstallDir $InstallDir -Confirm:$false
     $first = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after the first install'
     $acl = (Get-Item -LiteralPath $ConfigPath).GetAccessControl('Access')
-    $usersAce = @($acl.Access | Where-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -in 'S-1-5-32-545', 'S-1-5-11', 'S-1-1-0' })
+    $usersAce = @(Get-AllowEntry -Path $ConfigPath -Sid $BroadGroups)
     Write-Check ($acl.AreAccessRulesProtected -and $usersAce.Count -eq 0) 'livekit.yaml (holds the secret): inheritance off, no access for Users / Authenticated Users / Everyone'
+    $keyAce = @(Get-AllowEntry -Path $KeyFile -Sid ($BroadGroups + $AppPackages))
+    Write-Check ($keyAce.Count -eq 0) "TURN private key $KeyFile not readable by Users / Authenticated Users / Everyone / app packages ($($keyAce.Count) entries)"
 
     & $Install -InstallDir $InstallDir -Confirm:$false
     $second = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after a second installer run while running'
@@ -288,7 +318,8 @@ try {
     $env:LIVEKIT_URL = 'ws://127.0.0.1:7880'
     $env:LIVEKIT_API_KEY = 'talky'
     $env:LIVEKIT_API_SECRET = $secret
-    & $LoadTest -Room smoke -VideoPublishers 1 -Subscribers 4 -Duration 30s -OutputDir $WorkDir -CliVersion $CliVersion -Confirm:$false
+    # -SkipCpuCheck: the spike's CPU threshold means nothing with the generator on a small VM.
+    & $LoadTest -Room smoke -VideoPublishers 1 -Subscribers 4 -Duration 30s -OutputDir $WorkDir -CliVersion $CliVersion -SkipCpuCheck -Confirm:$false
     Write-Check ($LASTEXITCODE -eq 0) "load test passed: 4/4 subscribers received the track (exit $LASTEXITCODE)"
     Assert-Step 'Leg b'
 
@@ -299,7 +330,7 @@ try {
     $negativeExit = $LASTEXITCODE
     $negative | ForEach-Object { Write-Host "  | $_" }
     $negativeText = $negative -join "`n"
-    Write-Check ($negativeExit -ne 0 -and $negativeText -match '(?m)^FAIL\s+every participant connected' -and $negativeText -notmatch '(?m)^PASS\s+peak host CPU') `
+    Write-Check ($negativeExit -ne 0 -and $negativeText -match '(?m)^FAIL\s+every participant connected' -and $negativeText -notmatch '(?m)^(PASS|FAIL)\s+peak host CPU') `
         "load test into a room that does not exist fails: participants not connected, CPU not judged (exit $negativeExit)"
     Assert-Step 'Leg b'
 
@@ -321,6 +352,15 @@ try {
     $logAce = @((Get-Item -LiteralPath $LogDir).GetAccessControl('Access').Access | Where-Object {
             $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-20' -and ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Modify) -eq [Security.AccessControl.FileSystemRights]::Modify })
     Write-Check ($logAce.Count -gt 0) "$LogDir grants NETWORK SERVICE Modify"
+    Assert-Step 'Leg c'
+
+    # Back to LocalSystem: the entries added for NETWORK SERVICE must go again.
+    & $Install -InstallDir $InstallDir -Confirm:$false
+    $null = Test-Node -Account 'LocalSystem' -ProcessOwner 'NT AUTHORITY\SYSTEM' -When 'after going back to LocalSystem'
+    foreach ($path in $LogDir, $CertFile, $KeyFile) {
+        $left = @(Get-AllowEntry -Path $path -Sid 'S-1-5-20')
+        Write-Check ($left.Count -eq 0) "no entry for NETWORK SERVICE left on $path after going back to LocalSystem ($($left.Count) left)"
+    }
     Assert-Step 'Leg c'
 
     # --- leg d: removal -------------------------------------------------------------------
