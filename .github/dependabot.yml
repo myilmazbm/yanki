@@ -1,9 +1,14 @@
 version: 2
 
+# open-pull-requests-limit is 0 on every entry until CI has run green on main once; raise
+# the limits then (they were 5 / 5 / 3). With 0, version-update PRs are not opened; security
+# updates are switched on in the repository settings and have their own fixed limit.
+
 updates:
   # Server NuGet packages. Versions live in server/Directory.Packages.props (central
   # package management), which Dependabot edits directly - `dotnet add package` is never
-  # used in this repository.
+  # used in this repository. The search walks up to the repository root, so the wix tool
+  # in .config/dotnet-tools.json is tracked by this entry too.
   - package-ecosystem: nuget
     directory: /server
     schedule:
@@ -11,9 +16,28 @@ updates:
       day: monday
       time: '06:00'
       timezone: Europe/Istanbul
-    open-pull-requests-limit: 5
+    # Raised after the first green CI run on main.
+    open-pull-requests-limit: 0
     commit-message:
       prefix: 'Server:'
+    ignore:
+      # The target framework is net10.0 (locked); the next major of the ASP.NET Core / EF
+      # Core / Extensions stack and of Serilog.AspNetCore targets .NET 11.
+      - dependency-name: 'Microsoft.AspNetCore.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.EntityFrameworkCore.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Serilog.AspNetCore'
+        update-types: ['version-update:semver-major']
+      # Pinned to the version the EF Core SQL Server provider resolves to (see
+      # Directory.Packages.props); it moves with an EF Core update, never on its own.
+      - dependency-name: 'Microsoft.Data.SqlClient'
+      # WiX 7 refuses to run until its maintenance-fee EULA is accepted, which is the
+      # owner's licensing decision; the PR would pass CI and break the first release build.
+      - dependency-name: 'wix'
+        update-types: ['version-update:semver-major']
     groups:
       # The whole ASP.NET Core / EF Core stack must move together; separate PRs would
       # each fail to restore.
@@ -40,17 +64,26 @@ updates:
       day: monday
       time: '06:00'
       timezone: Europe/Istanbul
-    open-pull-requests-limit: 5
+    # Raised after the first green CI run on main.
+    open-pull-requests-limit: 0
     commit-message:
       prefix: 'Clients:'
+    ignore:
+      # TypeScript is pinned at 5.9 on purpose (CLAUDE.md); a major is a project decision.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
     groups:
       buf:
         patterns:
           - '@bufbuild/*'
+      # Minor and patch updates of dev tooling travel together; majors arrive one by one.
       dev-tooling:
         dependency-type: development
+        update-types: ['minor', 'patch']
 
-  # Workflow actions. Majors are pinned in ci.yml; this keeps the minors honest.
+  # Workflow actions. ci.yml pins major tags (actions/checkout@v7), so Dependabot proposes
+  # the next major when one is released; minor and patch releases are picked up by the
+  # tag itself.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -58,19 +91,7 @@ updates:
       day: monday
       time: '06:00'
       timezone: Europe/Istanbul
-    open-pull-requests-limit: 3
+    # Raised after the first green CI run on main.
+    open-pull-requests-limit: 0
     commit-message:
       prefix: 'CI:'
-
-  # global.json states the minimum SDK (10.0.400, rollForward latestMajor), not a pin;
-  # this proposes updates to that minimum.
-  - package-ecosystem: dotnet-sdk
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-      time: '06:00'
-      timezone: Europe/Istanbul
-    open-pull-requests-limit: 1
-    commit-message:
-      prefix: 'Build:'
