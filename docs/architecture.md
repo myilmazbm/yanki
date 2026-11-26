@@ -36,7 +36,7 @@ için `docs/protocol.md`, kurulum ve işletim için `docs/operations.md`.
    yanki.corp:443                         │
                                           ▼
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  Yanki düğümleri  —  yanki.exe (.NET 10, tek binary, Windows servisi) │
+   │  Yankı düğümleri  —  yanki.exe (.NET 10, tek binary, Windows servisi) │
    │                                                                      │
    │   node-01 --role api      node-02 --role api      node-03 --role api │
    │   node-04 --role search   node-05 --role search                      │
