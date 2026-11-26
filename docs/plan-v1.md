@@ -318,6 +318,7 @@ Süreler göstergedir (2 backend, 2 frontend, 1 mobil, 1 DevOps/QA varsayımı).
 - Açık — CI hiç çalışmadı: repo'nun uzak deposu henüz yok. Sahibin kararı (2026-11-25): depo GitHub'da ve herkese
   açık olacak; yayın öncesi denetim (gizli bilgi, kişisel veri, lisans, CI) bittikten sonra açılır. Tek CI tanımı
   GitHub Actions'tır (Azure DevOps tanımı silindi); iş akışı ilk kez ilk push'ta çalışacak.
+- Ad (2026-11-26): proje "Talky" çalışma adıyla geliştirildi; bu ad aynı alanda başka bir ürünce kullanıldığı için Yankı (ASCII: Yanki) olarak değiştirildi. Lisans: Apache-2.0.
 - Bilerek sonraya bırakılanlar: servis çıkış kodu / SCM kurtarma davranışı (gerçek servis kurulumu ister), rol
   kapılama (M2; roller bugün yalnızca raporlanır), encode-once fan-out (M2), SQL'e göre saat kayması `doctor`
   kontrolü (M2), OpenAPI üretimi (M1, ilk gerçek REST uç noktalarıyla). §5'teki AD/GC, pay ve LiveKit `doctor`
