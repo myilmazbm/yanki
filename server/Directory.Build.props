@@ -14,7 +14,8 @@
     <SatelliteResourceLanguages>en;tr</SatelliteResourceLanguages>
     <Authors>Yanki</Authors>
     <Product>Yanki</Product>
-    <Copyright>Copyright © Yanki</Copyright>
+    <Copyright>Copyright 2026 The Yanki Authors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <VersionPrefix>0.1.0</VersionPrefix>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>

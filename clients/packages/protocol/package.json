@@ -2,6 +2,7 @@
   "name": "@yanki/protocol",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Generated TypeScript wire contracts from api/proto. Do not hand-edit src/gen.",
   "exports": {

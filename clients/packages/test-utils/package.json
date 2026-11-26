@@ -2,6 +2,7 @@
   "name": "@yanki/test-utils",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
   "description": "Scriptable Yanki mock WebSocket server, in-memory transport, fake clock and golden-fixture replayer.",

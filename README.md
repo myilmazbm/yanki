@@ -14,7 +14,8 @@ Skype for Business (messaging, 1:1 calls, meetings with screen sharing, file sha
 as a single .NET 10 binary plus SQL Server and LiveKit. It is pre-release: only the M0 skeleton exists (host and
 CLI, SQL schema v0, the WebSocket handshake, installers), there is no sign-in and no messaging yet, and it is
 not usable as a product. The documentation under `docs/` and this README are in Turkish; code, comments and
-log messages are in English. Security reports: see `SECURITY.md`.
+log messages are in English. Security reports: see `SECURITY.md`. Licensed under the Apache License 2.0
+(`LICENSE`, `NOTICE`).
 
 Kurumsal, tamamen on-prem çalışan Teams / Skype for Business tarzı iletişim platformu:
 mesajlaşma, 1:1 arama, grup toplantısı + ekran paylaşımı, dosya paylaşımı.
@@ -65,3 +66,7 @@ pnpm typecheck
 - `TreatWarningsAsErrors` açıktır; analizör uyarısı bırakılmaz.
 - Sıcak yollarda (mesaj gönderimi, geçmiş, sync, fan-out) her değişiklik ölçümle gelir.
 - Doğruluk hiçbir zaman küme bus'ına dayanmaz; SQL'deki `seq` ve istemci resync'i esastır.
+
+## Lisans
+
+Apache License 2.0 (SPDX: `Apache-2.0`); metin `LICENSE` dosyasında, bildirim `NOTICE` dosyasındadır.
