@@ -1,5 +1,5 @@
 /**
- * Shared Prettier options for the Talky client workspace.
+ * Shared Prettier options for the Yanki client workspace.
  *
  * @type {import('prettier').Config}
  */

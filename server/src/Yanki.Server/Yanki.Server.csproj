@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Production ships a single binary named yanki.exe (Windows service + CLI). -->
+    <AssemblyName>yanki</AssemblyName>
+    <RootNamespace>Yanki.Server</RootNamespace>
+    <!-- CA1515: the entry point type and the test-visible composition root must stay public. -->
+    <NoWarn>$(NoWarn);CA1515</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\Yanki.Data\Yanki.Data.csproj" />
+    <ProjectReference Include="..\Yanki.Realtime\Yanki.Realtime.csproj" />
+    <ProjectReference Include="..\Yanki.Identity\Yanki.Identity.csproj" />
+    <ProjectReference Include="..\Yanki.Media\Yanki.Media.csproj" />
+    <ProjectReference Include="..\Yanki.Files\Yanki.Files.csproj" />
+    <ProjectReference Include="..\Yanki.Search\Yanki.Search.csproj" />
+    <ProjectReference Include="..\Yanki.Push\Yanki.Push.csproj" />
+    <ProjectReference Include="..\Yanki.Federation\Yanki.Federation.csproj" />
+    <ProjectReference Include="..\Yanki.Protocol\Yanki.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.EventLog" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Development settings (dev tokens, dev certificate, migrate on startup) stay out of every
+         published or installed node; the build output keeps them for local runs and tests. -->
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Yanki.IntegrationTests" />
+    <InternalsVisibleTo Include="Yanki.UnitTests" />
+  </ItemGroup>
+
+</Project>

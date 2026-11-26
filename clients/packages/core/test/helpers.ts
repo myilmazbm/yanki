@@ -1,10 +1,10 @@
-import type { ResyncRequired, ServerFrame, Welcome } from '@talky/protocol/v1';
-import type { FakeClock, MemoryServer, MockServerOptions } from '@talky/test-utils';
-import { createFakeClock, flush, startMemoryServer } from '@talky/test-utils';
+import type { ResyncRequired, ServerFrame, Welcome } from '@yanki/protocol/v1';
+import type { FakeClock, MemoryServer, MockServerOptions } from '@yanki/test-utils';
+import { createFakeClock, flush, startMemoryServer } from '@yanki/test-utils';
 import { createWsClient } from '../src/index.js';
 import type {
   ReconnectScheduled,
-  TalkyWsError,
+  YankiWsError,
   WsClient,
   WsClientOptions,
   WsClientState,
@@ -32,7 +32,7 @@ export interface Harness {
   server: MemoryServer;
   clock: FakeClock;
   /** Errors delivered through the `error` event. */
-  errors: TalkyWsError[];
+  errors: YankiWsError[];
   /** States entered, in order, excluding the initial `idle`. */
   states: WsClientState[];
   reconnects: ReconnectScheduled[];
@@ -72,7 +72,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
   const random = options.client?.random ?? seededRandom(options.seed ?? 0x5eed);
 
   const client = createWsClient({
-    url: 'ws://mock.talky.local/ws',
+    url: 'ws://mock.yanki.local/ws',
     getToken: () => Promise.resolve('dev:u1'),
     deviceId: '11111111-2222-4333-8444-555555555555',
     client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },
@@ -82,7 +82,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
     ...options.client,
   });
 
-  const errors: TalkyWsError[] = [];
+  const errors: YankiWsError[] = [];
   const states: WsClientState[] = [];
   const reconnects: ReconnectScheduled[] = [];
   const welcomes: Welcome[] = [];

@@ -1,8 +1,8 @@
-import type { MockServer } from '@talky/test-utils';
-import { ErrorCode } from '@talky/protocol/v1';
-import { startMockServer } from '@talky/test-utils';
+import type { MockServer } from '@yanki/test-utils';
+import { ErrorCode } from '@yanki/protocol/v1';
+import { startMockServer } from '@yanki/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { TalkyWsError, WsClient } from '../src/index.js';
+import type { YankiWsError, WsClient } from '../src/index.js';
 import { createWsClient } from '../src/index.js';
 
 /**
@@ -37,7 +37,7 @@ function connect(target: MockServer, overrides: Parameters<typeof createWsClient
 describe('mock server over real WebSockets', () => {
   it('completes the handshake and answers heartbeats', async () => {
     server = await startMockServer({ heartbeatIntervalMs: 120 });
-    const errors: TalkyWsError[] = [];
+    const errors: YankiWsError[] = [];
     const rtts: number[] = [];
     client = connect(server, {
       url: server.url,
@@ -86,7 +86,7 @@ describe('mock server over real WebSockets', () => {
 
   it('rejects a bad token with 1008 and does not retry', async () => {
     server = await startMockServer({ authenticate: (hello) => hello.token === 'good' });
-    const errors: TalkyWsError[] = [];
+    const errors: YankiWsError[] = [];
     client = connect(server, {
       url: server.url,
       getToken: () => Promise.resolve('bad'),

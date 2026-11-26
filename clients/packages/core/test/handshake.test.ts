@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ErrorCode } from '@talky/protocol/v1';
+import { ErrorCode } from '@yanki/protocol/v1';
 import { isUuidV7 } from '../src/index.js';
 import { createHarness } from './helpers.js';
 

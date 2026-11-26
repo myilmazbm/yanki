@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <Description>Replays the golden WebSocket fixtures in api/fixtures/ws against a self-contained realtime host.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Realtime\Yanki.Realtime.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Protocol\Yanki.Protocol.csproj" />
+  </ItemGroup>
+
+  <!-- One realtime test host, shared with the integration tests. -->
+  <ItemGroup>
+    <Compile Include="..\Yanki.IntegrationTests\Realtime\Harness\*.cs" LinkBase="Realtime\Harness" />
+  </ItemGroup>
+
+</Project>

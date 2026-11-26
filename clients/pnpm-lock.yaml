@@ -8,12 +8,12 @@ importers:
 
   .:
     devDependencies:
-      '@talky/config':
-        specifier: workspace:*
-        version: link:packages/config
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@yanki/config':
+        specifier: workspace:*
+        version: link:packages/config
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -65,19 +65,19 @@ importers:
       '@bufbuild/protobuf':
         specifier: ^2.14.1
         version: 2.14.1
-      '@talky/protocol':
+      '@yanki/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
-      '@talky/config':
-        specifier: workspace:*
-        version: link:../config
-      '@talky/test-utils':
-        specifier: workspace:*
-        version: link:../test-utils
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@yanki/config':
+        specifier: workspace:*
+        version: link:../config
+      '@yanki/test-utils':
+        specifier: workspace:*
+        version: link:../test-utils
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -109,22 +109,22 @@ importers:
       '@bufbuild/protobuf':
         specifier: ^2.14.1
         version: 2.14.1
-      '@talky/protocol':
+      '@yanki/protocol':
         specifier: workspace:*
         version: link:../protocol
       ws:
         specifier: ^8.21.3
         version: 8.21.3
     devDependencies:
-      '@talky/config':
-        specifier: workspace:*
-        version: link:../config
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      '@yanki/config':
+        specifier: workspace:*
+        version: link:../config
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(supports-color@7.2.0)

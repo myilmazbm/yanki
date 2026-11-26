@@ -28,7 +28,7 @@ export interface MockServerStartOptions extends MockServerOptions {
   path?: string;
 }
 
-/** A mock Talky server listening on a real TCP port. */
+/** A mock Yanki server listening on a real TCP port. */
 export interface MockServer extends MockServerCore {
   /** Full `ws://…` URL to hand to `createWsClient({ url })`. */
   readonly url: string;
@@ -36,7 +36,7 @@ export interface MockServer extends MockServerCore {
 }
 
 /**
- * Start a mock Talky realtime server over real WebSockets (the `ws` package).
+ * Start a mock Yanki realtime server over real WebSockets (the `ws` package).
  *
  * Use it for the handful of tests that must exercise a genuine socket — the browser/Node
  * global `WebSocket`, real close codes, real backpressure. Everything else is faster and more

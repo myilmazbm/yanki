@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Talky is pre-release. Only the M0 skeleton exists (see `README.md`), no version has been
+Yanki is pre-release. Only the M0 skeleton exists (see `README.md`), no version has been
 released and no version is supported. Do not run it in production or expose a node to an
 untrusted network.
 
@@ -20,7 +20,7 @@ by the maintainer; there is no bug bounty.
 These are known and documented. Reports that only restate them are not treated as new
 vulnerabilities, but reports showing that one of them is worse than described here are welcome.
 
-1. **Development tokens** (`Talky:Realtime:AllowDevTokens` accepts any `dev:<name>` token
+1. **Development tokens** (`Yanki:Realtime:AllowDevTokens` accepts any `dev:<name>` token
    without verification). A default install is not exposed: the switch is `false` in
    `appsettings.json` and in the installer template, the Development settings file that turns
    it on is excluded from publish output and from the MSI, and the host refuses to start with
@@ -39,11 +39,11 @@ vulnerabilities, but reports showing that one of them is worse than described he
    but returns error details only in the Development environment.
 5. **A TLS certificate outside its validity period is accepted at startup with a warning
    only.** This concerns an operator's certificate, not the default install; clients reject
-   such a certificate, and `talky doctor` reports it.
+   such a certificate, and `yanki doctor` reports it.
 6. **Cookie-authenticated WebSocket connections will need an `Origin` allow-list**
    (`docs/protocol.md`). A default install is not exposed: no cookie authentication exists
    today.
-7. **Service account defaults.** The Talky service (MSI and scripted installer) and the
+7. **Service account defaults.** The Yanki service (MSI and scripted installer) and the
    LiveKit service both default to `LocalSystem`; a gMSA or `NT AUTHORITY\NetworkService` is
    the documented hardened choice. LiveKit runs at High priority, and its service wrapper
    (WinSW 2.12.0) is unsigned and therefore pinned by SHA-256. A default install runs with

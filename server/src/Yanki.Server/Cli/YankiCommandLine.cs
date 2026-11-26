@@ -1,0 +1,275 @@
+using System.CommandLine;
+using System.Diagnostics;
+using System.Globalization;
+using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
+using Yanki.Server.Hosting;
+
+namespace Yanki.Server.Cli;
+
+/// <summary>
+/// The yanki.exe command line. Running the executable without a command is identical to
+/// <c>yanki serve</c>, which is what the Windows service does: the installers register it with
+/// options only (<c>--data-dir</c>) and no command.
+/// </summary>
+internal static class YankiCommandLine
+{
+    /// <summary>File in <c>&lt;data-dir&gt;\logs</c> that records failures which ended the service process.</summary>
+    public const string StartupLogFileName = "yanki-startup.log";
+
+    /// <summary>Parses <paramref name="args"/> and runs the selected command.</summary>
+    /// <param name="args">Raw command line arguments.</param>
+    /// <param name="cancellationToken">Cancels the command.</param>
+    /// <returns>The process exit code.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Any failure must end in a reported message and an exit code, also when the process runs as a service.")]
+    public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        var configuration = new InvocationConfiguration
+        {
+            // The host owns graceful shutdown; System.CommandLine must not kill the process while
+            // the node is still draining, and must not swallow the exceptions handled below.
+            EnableDefaultExceptionHandler = false,
+            ProcessTerminationTimeout = TimeSpan.FromDays(1),
+        };
+
+        // Generic host settings such as --environment or --contentRoot are consumed by the host
+        // builder, not by this parser, so they are pulled out before parsing and allowed through.
+        var hostSettings = HostStartupArguments.ExtractHostSettings(args);
+
+        ParseResult? parseResult = null;
+        try
+        {
+            parseResult = BuildRootCommand(hostSettings).Parse(args);
+
+            var unexpected = parseResult.UnmatchedTokens
+                .FirstOrDefault(token => !hostSettings.Contains(token, StringComparer.Ordinal));
+            if (unexpected is not null)
+            {
+                await ReportFailureAsync(
+                    [unexpected.StartsWith('-')
+                        ? $"Unknown option '{unexpected}'. Run 'yanki --help' to see the available options."
+                        : $"Unknown command '{unexpected}'. Run 'yanki --help' to see the available commands."],
+                    parseResult);
+                return ExitCode.Failure;
+            }
+
+            if (parseResult.Errors.Count > 0)
+            {
+                // System.CommandLine prints these itself, with help, when the result is invoked below;
+                // only the sinks that a service's invisible stderr needs are written here.
+                await ReportFailureAsync(
+                    [.. parseResult.Errors.Select(error => error.Message)],
+                    parseResult,
+                    writeToStandardError: false);
+            }
+
+            return await parseResult.InvokeAsync(configuration, cancellationToken);
+        }
+        catch (YankiStartupException ex)
+        {
+            await ReportFailureAsync([ex.Message], parseResult);
+            return ExitCode.InvalidConfiguration;
+        }
+        catch (OptionsValidationException ex)
+        {
+            await ReportFailureAsync(DescribeInvalidConfiguration(ex.Failures), parseResult);
+            return ExitCode.InvalidConfiguration;
+        }
+        catch (AggregateException ex) when (ex.Flatten().InnerExceptions.All(inner => inner is OptionsValidationException))
+        {
+            // The startup validator throws one AggregateException when several option types fail.
+            var failures = ex.Flatten().InnerExceptions.Cast<OptionsValidationException>().SelectMany(inner => inner.Failures);
+            await ReportFailureAsync(DescribeInvalidConfiguration(failures), parseResult);
+            return ExitCode.InvalidConfiguration;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCode.Success;
+        }
+        catch (Exception ex)
+        {
+            await ReportFailureAsync([$"yanki failed unexpectedly: {ex}"], parseResult);
+            return ExitCode.Failure;
+        }
+    }
+
+    private static string[] DescribeInvalidConfiguration(IEnumerable<string> failures) =>
+        ["Configuration is invalid:", .. failures.Select(failure => $"  - {failure}")];
+
+    /// <summary>
+    /// Reports a failure that ends the process on stderr. Only when the process runs as a Windows
+    /// service, whose stderr nobody sees, the same text also goes, best effort, to the Windows event
+    /// log (source <c>Yanki</c>) and to <c>&lt;data-dir&gt;\logs\yanki-startup.log</c>; an interactive
+    /// command or a test run writes neither. Neither needs the host or its logger, which usually do
+    /// not exist yet when this runs.
+    /// </summary>
+    /// <param name="lines">The failure text, one entry per line.</param>
+    /// <param name="parseResult">The parsed command line, for <c>--data-dir</c>; null if parsing failed.</param>
+    /// <param name="writeToStandardError">False when the text reaches stderr another way.</param>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Reporting a failure must never replace it with a second one.")]
+    private static async Task ReportFailureAsync(
+        IReadOnlyList<string> lines,
+        ParseResult? parseResult,
+        bool writeToStandardError = true)
+    {
+        if (writeToStandardError)
+        {
+            foreach (var line in lines)
+            {
+                await Console.Error.WriteLineAsync(line);
+            }
+        }
+
+        if (!WindowsServiceHelpers.IsWindowsService())
+        {
+            return;
+        }
+
+        var text = string.Join(Environment.NewLine, lines);
+
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                EventLog.WriteEntry(LoggingOptions.EventLogSourceName, text, EventLogEntryType.Error);
+            }
+            catch (Exception)
+            {
+                // No event source (it is created at install time) or no permission to write.
+            }
+        }
+
+        try
+        {
+            string? dataDirectory = null;
+            try
+            {
+                dataDirectory = parseResult?.GetValue<string?>("--data-dir");
+            }
+            catch (Exception)
+            {
+                // The command line could not be parsed; use the default data directory.
+            }
+
+            var directory = Path.Combine(
+                YankiConfigurationSources.ResolveDataDirectory(HostStartupArguments.Empty with { DataDirectory = dataDirectory }),
+                "logs");
+            Directory.CreateDirectory(directory);
+
+            var timestamp = TimeProvider.System.GetUtcNow().ToString("O", CultureInfo.InvariantCulture);
+            await File.AppendAllTextAsync(
+                Path.Combine(directory, StartupLogFileName),
+                $"{timestamp} {text.ReplaceLineEndings(" ")}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Best effort: the data directory may not exist or may not be writable.
+        }
+    }
+
+    /// <summary>Builds a fresh command tree; the options are per-call so nothing is shared.</summary>
+    /// <param name="hostSettings">Generic host settings handed to the host builder as-is.</param>
+    private static RootCommand BuildRootCommand(string[] hostSettings)
+    {
+        var configOption = new Option<string?>("--config", "-c")
+        {
+            Description = "Extra JSON configuration file, layered on top of appsettings.json and %ProgramData%\\Yanki.",
+            HelpName = "file",
+            Recursive = true,
+        };
+
+        var dataDirOption = new Option<string?>("--data-dir")
+        {
+            Description = "Data directory of this node (default %ProgramData%\\Yanki). Its appsettings.json is loaded, logs default to <dir>\\logs.",
+            HelpName = "dir",
+            Recursive = true,
+        };
+
+        var roleOption = new Option<string?>("--role")
+        {
+            Description = $"Roles this node runs: '{NodeRoles.AllName}' or a comma separated list of {string.Join(", ", NodeRoles.Names)}.",
+            HelpName = "roles",
+            Recursive = true,
+        };
+
+        var urlsOption = new Option<string[]>("--urls")
+        {
+            Description = "Endpoints Kestrel binds to, e.g. https://+:8443. Replaces Yanki:Server:Urls entirely.",
+            HelpName = "urls",
+            AllowMultipleArgumentsPerToken = true,
+            Recursive = true,
+        };
+
+        var setOption = new Option<string[]>("--set")
+        {
+            Description = "Override a single configuration key, e.g. --set Yanki:Server:DrainSeconds=60. Repeatable.",
+            HelpName = "key=value",
+            AllowMultipleArgumentsPerToken = false,
+            Recursive = true,
+        };
+
+        HostStartupArguments Arguments(ParseResult parseResult) => new(
+            parseResult.GetValue(configOption),
+            parseResult.GetValue(roleOption),
+            parseResult.GetValue(urlsOption) ?? [],
+            parseResult.GetValue(setOption) ?? [],
+            hostSettings)
+        {
+            DataDirectory = parseResult.GetValue(dataDirOption),
+        };
+
+        var serve = new Command("serve", "Run the Yanki server. This is what the Windows service starts.");
+        serve.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
+
+        var migrate = new Command("migrate", "Show and apply pending database migrations, then exit.");
+        migrate.SetAction((parseResult, token) => MigrateCommand.RunAsync(Arguments(parseResult), token));
+
+        var doctor = new Command("doctor", "Run every environment check and print a report.");
+        doctor.SetAction((parseResult, token) => DoctorCommand.RunAsync(Arguments(parseResult), token));
+
+        var version = new Command("version", "Print the yanki.exe version and runtime information.");
+        version.SetAction(_ => VersionCommand.Run());
+
+        var configValidate = new Command("validate", "Bind and validate configuration, then print the effective values.");
+        configValidate.SetAction((parseResult, token) => ConfigValidateCommand.RunAsync(Arguments(parseResult), token));
+
+        var config = new Command("config", "Configuration utilities.");
+        config.Subcommands.Add(configValidate);
+
+        var root = new RootCommand(
+            "Yanki server: on-premises messaging, calling and meetings. Running yanki with no command serves.")
+        {
+            // Generic host settings (--environment, --contentRoot, --applicationName, --webroot)
+            // arrive on the command line from deployment scripts and from the ASP.NET Core test
+            // host. They are consumed by the host builder, not by this parser.
+            TreatUnmatchedTokensAsErrors = false,
+        };
+
+        root.Options.Add(configOption);
+        root.Options.Add(dataDirOption);
+        root.Options.Add(roleOption);
+        root.Options.Add(urlsOption);
+        root.Options.Add(setOption);
+
+        root.Subcommands.Add(serve);
+        root.Subcommands.Add(migrate);
+        root.Subcommands.Add(doctor);
+        root.Subcommands.Add(version);
+        root.Subcommands.Add(config);
+
+        // No command means serve, so the service command line needs no command, only options.
+        root.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
+
+        return root;
+    }
+}

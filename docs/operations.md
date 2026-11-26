@@ -1,16 +1,16 @@
-# Talky işletim kılavuzu
+# Yankı işletim kılavuzu
 
-Windows Server 2022/2025 üzerinde Talky kurmak, yükseltmek, yedeklemek ve arızasını bulmak.
+Windows Server 2022/2025 üzerinde Yankı kurmak, yükseltmek, yedeklemek ve arızasını bulmak.
 Mimari için `docs/architecture.md`, medya spike'ı için `docs/livekit-windows-spike.md`.
 
 Bütün betikler `deploy/windows/` ve `deploy/livekit/` altındadır ve PowerShell 5.1 uyumludur.
 Durum değiştiren betikler yükseltilmiş oturum ister ve **`-WhatIf` destekler**; bir sunucuda ilk
 kez çalıştırmadan önce her zaman `-WhatIf` ile çalıştırın. İstisnalar: salt okunur
-`Test-TalkyPrerequisites.ps1` (değiştirecek bir şey yok) ve yalnızca atılabilir VM için olan
-`Test-TalkyInstall.ps1` (`-AcknowledgeServiceInstall` ister).
+`Test-YankiPrerequisites.ps1` (değiştirecek bir şey yok) ve yalnızca atılabilir VM için olan
+`Test-YankiInstall.ps1` (`-AcknowledgeServiceInstall` ister).
 
 > **Durum (M0).** Bu kılavuz v1'in hedeflenen işletimini anlatır. M0'da yalnızca host
-> (`talky.exe`), CLI (`serve`, `migrate`, `doctor`, `config`), SQL şeması, `/ws` el sıkışması
+> (`yanki.exe`), CLI (`serve`, `migrate`, `doctor`, `config`), SQL şeması, `/ws` el sıkışması
 > ve kurulum betikleri/MSI vardır. Mesh, rol ayrımı, admin paneli, dosya payı ve arama
 > aşağıda **planlı** olarak, kilometre taşıyla işaretlidir; takvim `docs/plan-v1.md` bölüm 9.
 
@@ -19,11 +19,11 @@ kez çalıştırmadan önce her zaman `-WhatIf` ile çalıştırın. İstisnalar
 ## 1. Ön koşullar
 
 ```powershell
-.\deploy\windows\Test-TalkyPrerequisites.ps1 `
-    -ServiceAccount 'CORP\talky$' `
-    -SqlConnectionString 'Server=sql-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
+.\deploy\windows\Test-YankiPrerequisites.ps1 `
+    -ServiceAccount 'CORP\yanki$' `
+    -SqlConnectionString 'Server=sql-ag.corp;Database=Yanki;Integrated Security=true;Encrypt=true' `
     -CertificateThumbprint <parmak-izi> `
-    -FileShare \\corp\dfs\talky\files
+    -FileShare \\corp\dfs\yanki\files
 ```
 
 Denetlenenler: işletim sistemi sürümü ve mimarisi, yükseltilmiş oturum, gMSA'nın
@@ -31,15 +31,15 @@ Denetlenenler: işletim sistemi sürümü ve mimarisi, yükseltilmiş oturum, gM
 sürümü, 8443 portunun (ve `-EnableHttp` ile 8080'in) boş olması, sertifikanın varlığı ve özel anahtarı, dosya
 payına erişim, saat kaynağı, disk alanı. Herhangi bir `Fail` varsa çıkış kodu 1'dir.
 
-.NET çalışma zamanı **gerekmez**: `talky.exe` self-contained yayımlanır.
+.NET çalışma zamanı **gerekmez**: `yanki.exe` self-contained yayımlanır.
 
 ---
 
 ## 2. gMSA ve SPN
 
-Talky düğümleri bir **group Managed Service Account** altında çalışır. gMSA parolasızdır:
+Yankı düğümleri bir **group Managed Service Account** altında çalışır. gMSA parolasızdır:
 parola AD tarafından üretilir ve otomatik döndürülür, hiçbir yerde saklanmaz. Bu yüzden
-`Install-Talky.ps1` bilinçli olarak parola parametresi kabul etmez.
+`Install-Yanki.ps1` bilinçli olarak parola parametresi kabul etmez.
 
 Bir kere, bir domain denetleyicisinde (KDS kök anahtarı yoksa):
 
@@ -50,34 +50,34 @@ Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))
 Hesabı oluşturun ve hangi sunucuların parolasını alabileceğini belirtin:
 
 ```powershell
-New-ADServiceAccount -Name talky `
-    -DNSHostName talky.corp `
-    -PrincipalsAllowedToRetrieveManagedPassword 'TalkyNodes' `
-    -ServicePrincipalNames 'HTTP/talky.corp','HTTP/talky.corp.local'
+New-ADServiceAccount -Name yanki `
+    -DNSHostName yanki.corp `
+    -PrincipalsAllowedToRetrieveManagedPassword 'YankiNodes' `
+    -ServicePrincipalNames 'HTTP/yanki.corp','HTTP/yanki.corp.local'
 ```
 
-`TalkyNodes`, düğüm bilgisayar hesaplarını içeren bir güvenlik grubudur. Grup üyeliği
+`YankiNodes`, düğüm bilgisayar hesaplarını içeren bir güvenlik grubudur. Grup üyeliği
 makinenin Kerberos biletine ancak yeniden başlatmadan sonra yansır.
 
 Her düğümde:
 
 ```powershell
-Install-ADServiceAccount -Identity talky
-Test-ADServiceAccount -Identity talky     # True dönmeli
+Install-ADServiceAccount -Identity yanki
+Test-ADServiceAccount -Identity yanki     # True dönmeli
 ```
 
 **"Log on as a service"** hakkı grup ilkesiyle verilir (tercih edilen yol):
 `Computer Configuration → Windows Settings → Security Settings → Local Policies →
-User Rights Assignment → Log on as a service` altına `CORP\talky$` eklenir.
-`Test-TalkyPrerequisites.ps1` bu hakkı denetler ve eksikse uyarır.
+User Rights Assignment → Log on as a service` altına `CORP\yanki$` eklenir.
+`Test-YankiPrerequisites.ps1` bu hakkı denetler ve eksikse uyarır.
 
-**SPN**: istemcilerin Kerberos ile bağlanabilmesi için `HTTP/talky.corp` SPN'i gMSA'ya ait
+**SPN**: istemcilerin Kerberos ile bağlanabilmesi için `HTTP/yanki.corp` SPN'i gMSA'ya ait
 olmalıdır. Yük dengeleyici arkasında tek bir isim kullanıldığı için SPN de tektir.
 Doğrulama:
 
 ```powershell
-setspn -L CORP\talky$
-setspn -Q HTTP/talky.corp        # tek bir hesapta çıkmalı; çift kayıt Kerberos'u bozar
+setspn -L CORP\yanki$
+setspn -Q HTTP/yanki.corp        # tek bir hesapta çıkmalı; çift kayıt Kerberos'u bozar
 ```
 
 ---
@@ -88,7 +88,7 @@ Kestrel TLS'i sonlandırır ve sertifikayı **Windows sertifika deposundan** oku
 diske konmaz.
 
 1. Sertifikayı `LocalMachine\My` deposuna, özel anahtarıyla birlikte içe aktarın
-   (konu adı `talky.corp`, SAN'larda kullanılan tüm adlar).
+   (konu adı `yanki.corp`, SAN'larda kullanılan tüm adlar).
 2. gMSA'ya özel anahtar okuma izni verin — bu adım unutulursa servis başlar ama TLS el
    sıkışması başarısız olur:
 
@@ -97,17 +97,17 @@ $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq '
 $keyFile = $cert.PrivateKey.Key.UniqueName          # CNG
 $keyPath = Join-Path $env:ProgramData "Microsoft\Crypto\Keys\$keyFile"
 $acl = Get-Acl $keyPath
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('CORP\talky$','Read','Allow')))
+$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule('CORP\yanki$','Read','Allow')))
 Set-Acl -Path $keyPath -AclObject $acl
 ```
 
-3. Parmak izini `Install-Talky.ps1 -CertificateThumbprint` ile verin; betik onu
-   `Talky:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`). `-Urls` içinde
+3. Parmak izini `Install-Yanki.ps1 -CertificateThumbprint` ile verin; betik onu
+   `Yanki:Server:Certificate:Thumbprint` alanına yazar (kaynak `Store`). `-Urls` içinde
    https varken parmak izi verilmezse betik hiçbir şey yazmadan durur. Sertifikasız
    laboratuvar düğümü için yalnızca http URL'leri verin (`-Urls http://+:8080`); betik o
    zaman `AllowInsecureHttp=true` yazar. Güvenlik duvarı adımı `-Urls`'i okumaz: yalnızca
    8443'ü (ve `-EnableHttp` ile 8080'i) açar. http portu açılmadıysa betik bunu uyarı olarak
-   söyler ve açacak komutu verir: `Set-TalkyFirewall.ps1 -EnableHttp -HttpPort <port>`.
+   söyler ve açacak komutu verir: `Set-YankiFirewall.ps1 -EnableHttp -HttpPort <port>`.
 
 LiveKit'in gömülü TURN'ü ayrı bir **PEM** çifti ister (`turn.cert_file` / `turn.key_file`)
 ve bunlar dosya olarak durur; LiveKit servis hesabı ikisini de okuyabilmelidir
@@ -122,24 +122,24 @@ sonlandırıyorsa `external_tls: true` kullanın ve dosyaları hiç oluşturmay�
 ### 4.1 Tek sunucu (küçük kurulum ve laboratuvar)
 
 ```powershell
-.\deploy\windows\Install-Talky.ps1 `
-    -ServiceAccount 'CORP\talky$' `
+.\deploy\windows\Install-Yanki.ps1 `
+    -ServiceAccount 'CORP\yanki$' `
     -Roles all `
-    -SqlConnectionString 'Server=sql01.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
+    -SqlConnectionString 'Server=sql01.corp;Database=Yanki;Integrated Security=true;Encrypt=true' `
     -CertificateThumbprint <parmak-izi> `
-    -FileShare \\corp\dfs\talky\files `
+    -FileShare \\corp\dfs\yanki\files `
     -WhatIf
 ```
 
 `-WhatIf` çıktısı beklediğinizle örtüşüyorsa aynı komutu `-WhatIf` olmadan çalıştırın.
 
-**Betik yolu** — `Install-Talky.ps1` sırayla: klasörleri açar, ACL'leri uygular
+**Betik yolu** — `Install-Yanki.ps1` sırayla: klasörleri açar, ACL'leri uygular
 (`InstallDir` üzerinde okuma+çalıştırma, `DataDir`/`logs`/`index` üzerinde değiştirme),
-Windows Olay Günlüğü kaynağı `Talky`'yi (Application) oluşturur, yayın çıktısını kopyalar,
-`appsettings.json`'ı şablondan üretir, `talky migrate` ile şemayı uygular, servisi
-**Automatic (Delayed Start)** olarak `"<InstallDir>\talky.exe" --data-dir "<DataDir>"`
+Windows Olay Günlüğü kaynağı `Yanki`'yi (Application) oluşturur, yayın çıktısını kopyalar,
+`appsettings.json`'ı şablondan üretir, `yanki migrate` ile şemayı uygular, servisi
+**Automatic (Delayed Start)** olarak `"<InstallDir>\yanki.exe" --data-dir "<DataDir>"`
 komut satırıyla kaydeder, kurtarma eylemlerini 5 sn / 10 sn / 30 sn olarak ayarlar, güvenlik
-duvarı kurallarını ekler (`Set-TalkyFirewall.ps1`), servisi başlatır ve `talky doctor`
+duvarı kurallarını ekler (`Set-YankiFirewall.ps1`), servisi başlatır ve `yanki doctor`
 çalıştırır. Servis başlamazsa (ya da Running bildirip 5 sn içinde düşerse) `doctor` yine
 çalışır, betik hata verir ve `<DataDir>\logs`'u gösterir.
 
@@ -163,31 +163,31 @@ duvarına dokunmaz ve servisi başlatmaz. Sıra:
 # msiexec bir GUI programıdır: PowerShell onu beklemeden sonraki satıra geçer. -Wait ile
 # kurulumun bitmesini bekleyin ve çıkış kodunu denetleyin (0 dışı her kod durdurur;
 # 3010 = yeniden başlatma gerekli).
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<sürüm>.msi','SERVICE_ACCOUNT=CORP\talky$','DATADIR=D:\TalkyData','/qn','/norestart','/l*v','install.log'
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Yanki.Server-<sürüm>.msi','SERVICE_ACCOUNT=CORP\yanki$','DATADIR=D:\YankiData','/qn','/norestart','/l*v','install.log'
 if ($p.ExitCode -ne 0) { throw "msiexec exited with $($p.ExitCode); see install.log" }
-.\deploy\windows\Install-Talky.ps1 -AclOnly -ServiceAccount 'CORP\talky$' -DataDir 'D:\TalkyData'
-.\deploy\windows\Install-Talky.ps1 -ConfigOnly -DataDir 'D:\TalkyData' -SqlConnectionString '…' -CertificateThumbprint '…'
-& 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'
-.\deploy\windows\Set-TalkyFirewall.ps1
-Start-Service Talky
-& 'C:\Program Files\Talky\talky.exe' doctor --data-dir 'D:\TalkyData'
+.\deploy\windows\Install-Yanki.ps1 -AclOnly -ServiceAccount 'CORP\yanki$' -DataDir 'D:\YankiData'
+.\deploy\windows\Install-Yanki.ps1 -ConfigOnly -DataDir 'D:\YankiData' -SqlConnectionString '…' -CertificateThumbprint '…'
+& 'C:\Program Files\Yanki\yanki.exe' migrate --data-dir 'D:\YankiData'
+.\deploy\windows\Set-YankiFirewall.ps1
+Start-Service Yanki
+& 'C:\Program Files\Yanki\yanki.exe' doctor --data-dir 'D:\YankiData'
 ```
 
-Boşluk içeren bir değeri tırnakla verin: `'DATADIR="D:\Talky Data"'`.
+Boşluk içeren bir değeri tırnakla verin: `'DATADIR="D:\Yanki Data"'`.
 
 MSI, LocalSystem'e varsayılan verir ve gMSA'yı `SERVICE_ACCOUNT` ile alır; `SERVICE_PASSWORD`
 her zaman boş kalır. Roller komut satırında değil yalnızca `appsettings.json`'da
-(`Talky:Node:Roles`) durur. MSI yükseltmesi de servisi başlatmaz; yükseltmeden sonra
-`Start-Service Talky` gerekir.
+(`Yanki:Node:Roles`) durur. MSI yükseltmesi de servisi başlatmaz; yükseltmeden sonra
+`Start-Service Yanki` gerekir.
 
 **MSI `SERVICE_ACCOUNT` ve `DATADIR` değerlerini hatırlar.** Kurulum iki değeri
-`HKLM\SOFTWARE\Talky` altına (`ServiceAccount`, `DataDir`) yazar; sonraki yükseltme, onarım
+`HKLM\SOFTWARE\Yanki` altına (`ServiceAccount`, `DataDir`) yazar; sonraki yükseltme, onarım
 ve yeniden kurulum bu değerleri oradan okur, bu yüzden yükseltme ve geri alma komutlarında
 tekrarlanmaları gerekmez. Öncelik: komut satırında verilen değer > hatırlanan değer >
-varsayılan (LocalSystem, `C:\ProgramData\Talky`). `SERVICE_PASSWORD` hiçbir yere yazılmaz.
+varsayılan (LocalSystem, `C:\ProgramData\Yanki`). `SERVICE_PASSWORD` hiçbir yere yazılmaz.
 Hesabı ya da veri klasörünü **bilerek** değiştirmek için yeni değeri servisin yeniden
 kaydedildiği bir kurulumda verin (`SERVICE_ACCOUNT=…` / `DATADIR=…`): bir sonraki sürüm
-yükseltmesinde ya da `Stop-Service Talky` → `msiexec /x` → `msiexec /i … SERVICE_ACCOUNT=…`
+yükseltmesinde ya da `Stop-Service Yanki` → `msiexec /x` → `msiexec /i … SERVICE_ACCOUNT=…`
 sırasıyla. O değer servise uygulanır ve yeni hatırlanan değer olur (veri klasörünü
 değiştirirseniz `appsettings.json`'u ve ACL'leri yeni klasöre siz taşırsınız). **Kurulu
 sürümün kendi MSI'siyle `msiexec /i` çalıştırmak hiçbir şeyi değiştirmez:** komut 0 ile
@@ -200,7 +200,7 @@ Hatırlamanın kapsamadığı üç durum:
   hatırlanan hesap ve boş parolayla kaydedilir ve başlamaz. gMSA'da parola yoktur, bu durum
   onu etkilemez.
 - **Yükseltme canlı servise değil hatırlanan değere bakar.** Hesabı MSI dışında
-  (`services.msc`, `sc.exe config`, `Install-Talky.ps1 -ServiceAccount`) değiştirdiyseniz
+  (`services.msc`, `sc.exe config`, `Install-Yanki.ps1 -ServiceAccount`) değiştirdiyseniz
   bir sonraki yükseltme komutunda `SERVICE_ACCOUNT=` verin; yoksa servis eski hatırlanan
   hesaba döner.
 - **Hatırlanan veri klasörünün sürücüsü artık yoksa** (disk sökülmüş, harfi değişmiş)
@@ -209,11 +209,11 @@ Hatırlamanın kapsamadığı üç durum:
   (`msiexec /x`) bu durumda da çalışır (ikisi de lab'da ölçüldü).
 Anahtar, `DATADIR` gibi kalıcıdır: `msiexec /x` onu silmez, böylece kaldırıp eski sürümü
 kurmak (geri alma) ve yeniden kurulum aynı hesabı ve klasörü bulur. Düğümü tamamen
-temizlerken anahtarı elle silin: `Remove-Item HKLM:\SOFTWARE\Talky`. Bu davranış bu
+temizlerken anahtarı elle silin: `Remove-Item HKLM:\SOFTWARE\Yanki`. Bu davranış bu
 özelliği taşıyan sürümlerden itibaren geçerlidir; anahtarı okumayan daha eski bir MSI'ye
 geri dönülürse iki değer o komutta verilmelidir.
 
-**Kurtarma ayarları.** MSI, servisi kaydettikten hemen sonra `sc.exe failure Talky
+**Kurtarma ayarları.** MSI, servisi kaydettikten hemen sonra `sc.exe failure Yanki
 reset= 86400 actions= restart/5000/restart/10000/restart/30000` çalıştırır (betik yolundaki
 ayarın aynısı); komut başarısız olursa kurulum geri alınır. Windows Installer'ın kendi
 `MsiServiceConfigFailureActions` tablosu Windows Server 2025'te yeniden başlatma eylemlerini
@@ -221,8 +221,8 @@ ayarlayamıyor (hata 1939, erişim reddedildi) ve kurulumu geri alıyordu; bu y�
 kullanılmıyor. Kurulumdan sonra doğrulayın:
 
 ```powershell
-sc.exe qfailure Talky      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
-sc.exe qc Talky            # START_TYPE AUTO_START (DELAYED)
+sc.exe qfailure Yanki      # RESET_PERIOD 86400, RESTART 5000/10000/30000 görmelisiniz
+sc.exe qc Yanki            # START_TYPE AUTO_START (DELAYED)
 ```
 
 Bilinen açıklar:
@@ -236,15 +236,15 @@ Bilinen açıklar:
   `StopServices` 30 sn'lik boşaltmanın bitmesini bekledi, servis ve dosyalar kaldırıldı, veri
   klasörü ve `appsettings.json` kaldı, yeniden başlatma gerekmedi. Tek bir ölçüm olduğu ve
   daha uzun bir `DrainSeconds` ile sonucun değişebileceği için prosedür değişmedi: MSI
-  yükseltmesi, kaldırması ve geri alması her zaman önce `Stop-Service Talky` ile başlar
+  yükseltmesi, kaldırması ve geri alması her zaman önce `Stop-Service Yanki` ile başlar
   (bölüm 6 ve 10). Çalışan düğüme karşı yükseltme amaçlı `msiexec /i` ölçülmedi.
 
 **MSI yükü ve yayın ön koşulları.** MSI, `dotnet publish` çıktısının tamamını taşır; tek
 bilinçli istisna `msalruntime.dll`'dir (Microsoft.Data.SqlClient'ın Entra ID aracı bileşeni).
 Lisans metni yeniden dağıtım izni vermez ve dosya yalnızca etkileşimli Entra ID aracılı oturum
 açmada yüklenir; SQL Server'a Integrated Security ile bağlanan bir düğüm onu hiç kullanmaz.
-`Test-Msi.ps1` dosyanın pakette olmadığını denetler; `Test-TalkyInstall.ps1` dosya olmadan
-`talky migrate` ve `/api/v1/ping`'in çalıştığını laboratuvar VM'inde doğruladı. İki yayın ön
+`Test-Msi.ps1` dosyanın pakette olmadığını denetler; `Test-YankiInstall.ps1` dosya olmadan
+`yanki migrate` ve `/api/v1/ping`'in çalıştığını laboratuvar VM'inde doğruladı. İki yayın ön
 koşulu **henüz karşılanmadı**:
 
 - Yayın sırasında üretilen bir `THIRD-PARTY-NOTICES` dosyası (MSI'nin taşıdığı açık kaynak
@@ -254,7 +254,7 @@ koşulu **henüz karşılanmadı**:
   MSI provası için) da MSI'yi yapıt olarak yükler; bu dosya gelmeden prova yapılırsa yapıt
   çalıştırmadan sonra silinir.
 
-**Kabul testi.** `deploy\windows\Test-TalkyInstall.ps1` her iki yolu gerçekten kurar ve
+**Kabul testi.** `deploy\windows\Test-YankiInstall.ps1` her iki yolu gerçekten kurar ve
 `/api/v1/ping`'in düğüm kimliğini döndüğünü denetler (M0 çıkış kriteri); MSI yolunda ayrıca
 gecikmeli otomatik başlatmayı ve 5/10/30 sn kurtarma ayarını denetler. `-UpgradeMsiPath` ile
 verilen daha yüksek sürümlü ikinci bir MSI (`Build-Msi.ps1 -Version 0.1.1 -SkipPublish`),
@@ -265,20 +265,20 @@ kurup kaldırdığı için yalnızca atılabilir bir VM'de, yükseltilmiş oturu
 Server 2025, SQL Server 2022) yükseltme alt adımıyla birlikte tüm denetimleri geçti
 (`docs/plan-v1.md`, "M0 durumu").
 
-**SQL izinleri.** `talky migrate` kurulumu yapan yönetici hesabıyla (Integrated Security
+**SQL izinleri.** `yanki migrate` kurulumu yapan yönetici hesabıyla (Integrated Security
 ise o Windows kimliğiyle) çalışır: veritabanı yoksa oluşturur (`dbcreator`), varsa üzerinde
 `db_owner` gerekir (`ALTER DATABASE … READ_COMMITTED_SNAPSHOT` ve şema değişiklikleri); kilit
 için `master`'da `sp_getapplock` kullanır. Servis hesabı (gMSA) şema değiştirmez: veritabanında
 bir login/kullanıcı ile `db_datareader` ve `db_datawriter` yeterlidir.
-`Test-TalkyPrerequisites.ps1` SQL'i betiği çalıştıran hesapla dener, gMSA ile değil; gMSA
-login'ini DBA ile ayrıca doğrulayın. Şemayı DBA uyguluyorsa ona `talky migrate`'i (veya
+`Test-YankiPrerequisites.ps1` SQL'i betiği çalıştıran hesapla dener, gMSA ile değil; gMSA
+login'ini DBA ile ayrıca doğrulayın. Şemayı DBA uyguluyorsa ona `yanki migrate`'i (veya
 `-SkipMigrate` ile kurulum sonrası) çalıştırtın.
 
 ### 4.2 Üç düğümlü küme (planlı, M2)
 
 Düğümler arası yayın (gRPC mesh) ve rol ayrımı **M2**'de gelir. M0'da birden fazla düğüm
 kurulabilir ama düğümler birbirini tanımaz; yük dengeleyici arkasında birden çok `api`
-düğümü çapraz düğüm dağıtımı olmadan çalışır. `Talky:Node:Roles` bugün yalnızca bilgi
+düğümü çapraz düğüm dağıtımı olmadan çalışır. `Yanki:Node:Roles` bugün yalnızca bilgi
 amaçlıdır (`/api/v1/ping` gösterir), hiçbir şeyi açıp kapatmaz.
 
 Hedef yerleşim: iki `api` düğümü, bir `search` düğümü (M3), ayrı SQL AG, ayrı LiveKit
@@ -287,20 +287,20 @@ düğümü. Düğüm keşfi SQL'deki `cluster_nodes` kaydıyla yapılacak; mesh 
 
 ```powershell
 # node-01 ve node-02 (api + worker)
-.\deploy\windows\Install-Talky.ps1 `
-    -ServiceAccount 'CORP\talky$' -Roles api,worker `
-    -SqlConnectionString 'Server=talky-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
+.\deploy\windows\Install-Yanki.ps1 `
+    -ServiceAccount 'CORP\yanki$' -Roles api,worker `
+    -SqlConnectionString 'Server=yanki-ag.corp;Database=Yanki;Integrated Security=true;Encrypt=true' `
     -CertificateThumbprint <parmak-izi>
 
 # node-03 (search, M3)
-.\deploy\windows\Install-Talky.ps1 `
-    -ServiceAccount 'CORP\talky$' -Roles search `
-    -SqlConnectionString 'Server=talky-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
+.\deploy\windows\Install-Yanki.ps1 `
+    -ServiceAccount 'CORP\yanki$' -Roles search `
+    -SqlConnectionString 'Server=yanki-ag.corp;Database=Yanki;Integrated Security=true;Encrypt=true' `
     -CertificateThumbprint <parmak-izi> `
-    -DataDir D:\TalkyData          # indeks NVMe üzerinde olsun
+    -DataDir D:\YankiData          # indeks NVMe üzerinde olsun
 ```
 
-`talky migrate` yalnızca ilk düğümde gereklidir; diğerlerinde zararsızdır (kilit alır,
+`yanki migrate` yalnızca ilk düğümde gereklidir; diğerlerinde zararsızdır (kilit alır,
 bekleyen göç yoksa hiçbir şey yapmaz).
 
 Medya düğümü:
@@ -369,7 +369,7 @@ geçici bir adla doğrulanır ve ancak eşleşirse `livekit-service.exe` adını
 | Nesne | İzin | Neden |
 |---|---|---|
 | `livekit.yaml` (API sırrını tutar) | Devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı okuma (LocalSystem'de ek hesap yok). Hesap değişirken önceki hesap, servisi durdurulana kadar okumayı korur | Sıradan kullanıcılar sırrı okuyamasın. Dosyayı okumak/düzenlemek için yükseltilmiş oturum gerekir |
-| Varsayılan log klasörü (`%ProgramData%\Talky\logs\livekit`) | DACL'yi betik sahiplenir: devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı Değiştirme (Modify, dosyalara devredilir), başka kimse yok; sahibi SYSTEM ya da Administrators değilse Administrators yapılır. Klasörün kendisi bir bağlantıysa (junction, sembolik bağlantı) betik durur; `%ProgramData%` ile klasör arasındaki bir klasör bağlantıysa ya da sahibi SYSTEM, Administrators veya TrustedInstaller değilse uyarır (o klasörün sahibi log klasörünü taşıyabilir ya da yolu başka yere yönlendirebilir) | `%ProgramData%` her kullanıcıya dosya oluşturma hakkı verir; böyle biri log dosyalarını önceden oluşturup servisin onlara yazmasını engelleyebilirdi. Servis hesabı, daha önce LocalSystem'in ya da yükseltilmiş `install` komutunun oluşturduğu dosyalara yazabilmeli (yoksa sarmalayıcı `UnauthorizedAccessException` ile çöker) |
+| Varsayılan log klasörü (`%ProgramData%\Yanki\logs\livekit`) | DACL'yi betik sahiplenir: devralma kapalı; SYSTEM ve Administrators tam denetim, servis hesabı Değiştirme (Modify, dosyalara devredilir), başka kimse yok; sahibi SYSTEM ya da Administrators değilse Administrators yapılır. Klasörün kendisi bir bağlantıysa (junction, sembolik bağlantı) betik durur; `%ProgramData%` ile klasör arasındaki bir klasör bağlantıysa ya da sahibi SYSTEM, Administrators veya TrustedInstaller değilse uyarır (o klasörün sahibi log klasörünü taşıyabilir ya da yolu başka yere yönlendirebilir) | `%ProgramData%` her kullanıcıya dosya oluşturma hakkı verir; böyle biri log dosyalarını önceden oluşturup servisin onlara yazmasını engelleyebilirdi. Servis hesabı, daha önce LocalSystem'in ya da yükseltilmiş `install` komutunun oluşturduğu dosyalara yazabilmeli (yoksa sarmalayıcı `UnauthorizedAccessException` ile çöker) |
 | Özel bir `-LogDir` (zaten varsa) | Yalnızca servis hesabına Değiştirme eklenir; Users, Authenticated Users ya da Everyone orada dosya oluşturup değiştirebiliyorsa ya da sahibi SYSTEM/Administrators değilse uyarı | Klasörün sahibi operatördür |
 | `livekit.yaml` içindeki `turn.cert_file` ve `turn.key_file` | Servis hesabına okuma (yalnızca bir izin girdisi eklenir). Göreli yol `InstallDir`'e, sürücüsüz yol (`\certs\key.pem`) `InstallDir`'in sürücüsüne göredir, LiveKit'in çözdüğü gibi; `X:ad` biçimi uyarı verir | Gömülü TURN/TLS sertifikayı ve anahtarı okuyabilsin |
 | `turn.key_file` (özel anahtar), LocalSystem dahil her hesapta, servis hesabına okuma verilmeden **önce** | Devralma her zaman kapatılır (devralınan girdiler açık girdi olarak kalır), sonra Users, Authenticated Users, Everyone, ALL APPLICATION PACKAGES ve ALL RESTRICTED APPLICATION PACKAGES'ın bütün izin girdileri (koşullu olanlar da) silinir, reddetme girdileri öne alınır; SYSTEM ya da Administrators'ın dosyayı okuyabilen koşulsuz bir izin girdisi kalmadıysa ona tam denetim eklenir ve hepsi tek seferde yazılır. Diğer girdiler saklandıkları gibi kalır: türü, hak maskesi ve koşulu değişmez. Aynı tür, hesap ve bayraklı düz girdiler aynı haklarla tek girdide birleşebilir; bir dosyada etkisi olmayan girdiler ve bayrak bitleri (maskesi 0, yalnızca devredilen, izin ve reddetme dışındaki türler) geri yazılmaz. Hiç DACL'si olmayan (herkese tam denetim veren) bir anahtar bir DACL alır. Anahtar böylece iki yazma arasında hiç açık kalmaz; okuma verilemezse kapalı kalır | Şablonun önerdiği `C:\Program Files\LiveKit\` altında anahtar devralmayla Users'a ve AppContainer süreçlerine okunur olurdu. Klasöre **taşınan** bir anahtar eski DACL'sini taşır ve bu grupları göstermez; karar bu yüzden gösterilene değil, korumanın açık olup olmadığına göre verilir |
@@ -436,7 +436,7 @@ baştan sona sınar; servis kurup kaldırdığı için yalnızca atılabilir bir
 
 ```powershell
 .\deploy\livekit\Test-LiveKitInstall.ps1 -AcknowledgeServiceInstall `
-    -NodeIp 10.20.30.41 -TurnDomain media-01.talky.corp `
+    -NodeIp 10.20.30.41 -TurnDomain media-01.yanki.corp `
     -CertFile C:\certs\turn-cert.pem -KeyFile C:\certs\turn-key.pem
 ```
 
@@ -482,10 +482,10 @@ katılımcı bağlar, ardından `--duration` kadar bekler).
 
 | Port | Protokol | Nerede | Kim erişir |
 |---|---|---|---|
-| 8443 | TCP | Talky düğümü | İstemciler / yük dengeleyici |
-| 8080 | TCP | Talky düğümü | Yalnızca TLS'i yük dengeleyici sonlandırıyorsa (`-EnableHttp`) |
-| 9443 | TCP | Talky düğümü | Planlı (M2, mesh): yalnızca diğer Talky düğümleri. Bugün açılmaz |
-| 7880 | TCP | LiveKit | Yalnızca Talky `api` düğümleri |
+| 8443 | TCP | Yankı düğümü | İstemciler / yük dengeleyici |
+| 8080 | TCP | Yankı düğümü | Yalnızca TLS'i yük dengeleyici sonlandırıyorsa (`-EnableHttp`) |
+| 9443 | TCP | Yankı düğümü | Planlı (M2, mesh): yalnızca diğer Yankı düğümleri. Bugün açılmaz |
+| 7880 | TCP | LiveKit | Yalnızca Yankı `api` düğümleri |
 | 7881 | TCP | LiveKit | İstemciler (UDP engelliyse) |
 | 7882 | UDP | LiveKit | İstemciler |
 | 3478 | UDP | LiveKit | İstemciler (TURN) |
@@ -506,11 +506,11 @@ katılımcı bağlar, ardından `--duration` kadar bekler).
 - **Zaman aşımları:** boşta kalan WebSocket bağlantısı için en az 120 sn (uygulama
   heartbeat'i 25 sn'dir). Daha kısa bir değer bağlantıları gereksiz yere koparır.
 - TLS'i yük dengeleyici sonlandırıyorsa arka uçta 8080 kullanılabilir; bu durumda 8080
-  yalnızca yük dengeleyicinin alt ağına açılmalıdır (`Set-TalkyFirewall.ps1 -EnableHttp`).
+  yalnızca yük dengeleyicinin alt ağına açılmalıdır (`Set-YankiFirewall.ps1 -EnableHttp`).
   `-EnableHttp` yalnızca güvenlik duvarını açar; `<DataDir>\appsettings.json`'da şu üç
   ayarı elle yapın (betik http/https karışık listeyi bilerek reddeder):
-  `Talky:Server:Urls` içine `http://+:8080`, `Talky:Server:AllowInsecureHttp: true` ve
-  `Talky:Server:KnownProxies` içine yük dengeleyicinin IP adresleri. Var olan dosya
+  `Yanki:Server:Urls` içine `http://+:8080`, `Yanki:Server:AllowInsecureHttp: true` ve
+  `Yanki:Server:KnownProxies` içine yük dengeleyicinin IP adresleri. Var olan dosya
   sonraki kurulumlarda korunur.
 
 ---
@@ -529,21 +529,21 @@ Düğüm başına sıra (aynı anda **tek** düğüm):
    gelen yeni bağlantılar 1013 koduyla kapatılır. İstemciler yeniden bağlanmayı
    `[0, delayMs]` aralığında rastgele geciktirir — en fazla 10 sn'lik pencere, tek bir
    düğüme yığılan sürü etkisini önler.
-3. **Boşaltma süresini bekle** (`Talky:Server:DrainSeconds`, varsayılan 30 sn). Bu süre
+3. **Boşaltma süresini bekle** (`Yanki:Server:DrainSeconds`, varsayılan 30 sn). Bu süre
    boyunca düğüm devam eden istekleri tamamlar; yeni istek almaz.
 4. **Şemayı uygula — yalnızca ilk yükseltilen düğümden, bir kez.** Yeni sürümün
-   `talky migrate`'i, diğer düğümler yeniden başlamadan önce çalışır. `Install-Talky.ps1`
+   `yanki migrate`'i, diğer düğümler yeniden başlamadan önce çalışır. `Install-Yanki.ps1`
    bunu servisi başlatmadan önce kendisi yapar; sonraki düğümlerde tekrar çalışması
    zararsızdır (bekleyen göç yoktur) ya da `-SkipMigrate` ile atlanır.
 5. **Durdur, değiştir, başlat.**
 
 ```powershell
 # 1-3: sürücü betiği yerine servis üzerinden en basit yol
-Stop-Service Talky            # boşaltma koordinatörü 503 + Reconnect + boşaltma süresini kendi yürütür
-.\deploy\windows\Install-Talky.ps1 -SourceDir <yeni-yayın>
+Stop-Service Yanki            # boşaltma koordinatörü 503 + Reconnect + boşaltma süresini kendi yürütür
+.\deploy\windows\Install-Yanki.ps1 -SourceDir <yeni-yayın>
 # Özel veri klasörüyle kurulmuş düğümde (ör. node-03) klasörü açıkça verin:
-#   .\deploy\windows\Install-Talky.ps1 -SourceDir <yeni-yayın> -DataDir D:\TalkyData
-# Install-Talky.ps1 servisi zaten durdurur, dosyaları değiştirir, migrate çalıştırır ve
+#   .\deploy\windows\Install-Yanki.ps1 -SourceDir <yeni-yayın> -DataDir D:\YankiData
+# Install-Yanki.ps1 servisi zaten durdurur, dosyaları değiştirir, migrate çalıştırır ve
 # başlatır; var olan appsettings.json ve servis hesabı korunur. -DataDir verilmezse var
 # olan servisin --data-dir'i kullanılır; verilen -DataDir ondan farklıysa betik durur.
 ```
@@ -552,18 +552,18 @@ MSI ile kurulmuş düğümde aynı adım (`SERVICE_ACCOUNT` ve `DATADIR` hatırl
 bölüm 4.1):
 
 ```powershell
-Stop-Service Talky            # önce: MSI'nin kendi durdurması boşaltmayı beklemek için tasarlanmadı
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','upgrade.log'
+Stop-Service Yanki            # önce: MSI'nin kendi durdurması boşaltmayı beklemek için tasarlanmadı
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Yanki.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','upgrade.log'
 if ($p.ExitCode -ne 0) { throw "msiexec exited with $($p.ExitCode); see upgrade.log" }
-& 'C:\Program Files\Talky\talky.exe' migrate --data-dir 'D:\TalkyData'   # yalnızca ilk düğümde
-Start-Service Talky
+& 'C:\Program Files\Yanki\yanki.exe' migrate --data-dir 'D:\YankiData'   # yalnızca ilk düğümde
+Start-Service Yanki
 ```
 
 6. **Doğrula**, sonra bir sonraki düğüme geç:
 
 ```powershell
 Invoke-WebRequest https://node-01.corp:8443/readyz -UseBasicParsing   # 200 olmalı
-& 'C:\Program Files\Talky\talky.exe' doctor
+& 'C:\Program Files\Yanki\yanki.exe' doctor
 ```
 
 Kurallar:
@@ -574,25 +574,25 @@ Kurallar:
 - Küme içinde **en fazla bir minör sürüm farkı** kabul edilir. Planlı (M2): mesh el
   sıkışması sürümü taşıyacak ve uyumsuzluğu loglayacak.
 - MSI ile yükseltme `MajorUpgrade Schedule="afterInstallInitialize"` kullanır: eski sürüm
-  önce kaldırılır, sonra yenisi kurulur. Servis önce `Stop-Service Talky` ile durdurulur
+  önce kaldırılır, sonra yenisi kurulur. Servis önce `Stop-Service Yanki` ile durdurulur
   (bölüm 4.1, "Bilinen açıklar"). `DataDir` klasörü ve `appsettings.json` yükseltmede
-  silinmez; yeni servis, `HKLM\SOFTWARE\Talky` altında hatırlanan hesap ve `--data-dir` ile
+  silinmez; yeni servis, `HKLM\SOFTWARE\Yanki` altında hatırlanan hesap ve `--data-dir` ile
   kaydedilir (laboratuvar VM'inde doğrulandı, bölüm 4.1). Kurtarma ayarı ve gecikmeli
-  başlatma yükseltmede yeniden uygulanır. MSI servisi başlatmaz: `talky migrate` (ilk
-  düğümde), sonra `Start-Service Talky`.
+  başlatma yükseltmede yeniden uygulanır. MSI servisi başlatmaz: `yanki migrate` (ilk
+  düğümde), sonra `Start-Service Yanki`.
 
-Geri alma: bir önceki yayın klasörünü `Install-Talky.ps1 -SourceDir <eski-yayın> -SkipMigrate`
+Geri alma: bir önceki yayın klasörünü `Install-Yanki.ps1 -SourceDir <eski-yayın> -SkipMigrate`
 ile geri kopyalayın (yapılandırma ve servis hesabı korunur; özel veri klasörüyle kurulmuş
-düğümde `-DataDir D:\TalkyData` ekleyin) ya da MSI ile kurulmuş düğümde yeni sürümü
+düğümde `-DataDir D:\YankiData` ekleyin) ya da MSI ile kurulmuş düğümde yeni sürümü
 kaldırıp eskisini kurun:
 
 ```powershell
-Stop-Service Talky
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','rollback-x.log'
+Stop-Service Yanki
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Yanki.Server-<yeni-sürüm>.msi','/qn','/norestart','/l*v','rollback-x.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see rollback-x.log" }
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Talky.Server-<eski-sürüm>.msi','/qn','/norestart','/l*v','rollback-i.log'
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','Yanki.Server-<eski-sürüm>.msi','/qn','/norestart','/l*v','rollback-i.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /i exited with $($p.ExitCode); see rollback-i.log" }
-Start-Service Talky
+Start-Service Yanki
 ```
 
 `msiexec /x` hatırlanan değerleri silmediği için eski sürüm aynı hesap ve klasörle kurulur
@@ -609,22 +609,22 @@ Yedeklenmesi gereken **iki** şey vardır. Üçüncüsü yoktur.
 
 | Ne | Nasıl | Sıklık |
 |---|---|---|
-| SQL Server `Talky` veritabanı | SQL native backup (FULL + DIFF + LOG), sıkıştırılmış ve doğrulanmış | FULL haftalık, DIFF günlük, LOG 15 dk |
-| Dosya payı `\\corp\dfs\talky\files` (planlı, M4) | Müşterinin standart dosya yedeklemesi veya DFS replikasyonu | Günlük |
+| SQL Server `Yanki` veritabanı | SQL native backup (FULL + DIFF + LOG), sıkıştırılmış ve doğrulanmış | FULL haftalık, DIFF günlük, LOG 15 dk |
+| Dosya payı `\\corp\dfs\yanki\files` (planlı, M4) | Müşterinin standart dosya yedeklemesi veya DFS replikasyonu | Günlük |
 
 Yedeklenmesi **gerekmeyenler**: Lucene.NET arama indeksi (planlı, M3; türetilmiş veridir,
 SQL'den yeniden kurulur), loglar, `InstallDir` (MSI'den yeniden kurulur).
 
 ```sql
-BACKUP DATABASE [Talky] TO DISK = N'\\yedek\sql\Talky_FULL.bak'
+BACKUP DATABASE [Yanki] TO DISK = N'\\yedek\sql\Yanki_FULL.bak'
   WITH COMPRESSION, CHECKSUM, INIT, STATS = 5;
-BACKUP LOG [Talky] TO DISK = N'\\yedek\sql\Talky_LOG.trn'
+BACKUP LOG [Yanki] TO DISK = N'\\yedek\sql\Yanki_LOG.trn'
   WITH COMPRESSION, CHECKSUM, STATS = 5;
 ```
 
 Geri yükleme sırası:
 
-1. Bütün Talky düğümlerinde servisi durdurun (`Stop-Service Talky`).
+1. Bütün Yankı düğümlerinde servisi durdurun (`Stop-Service Yanki`).
 2. Veritabanını geri yükleyin (`RESTORE DATABASE … WITH NORECOVERY`, log zinciri, sonra
    `WITH RECOVERY`).
 3. Dosya payını aynı zaman noktasına geri yükleyin. **Pay ile veritabanı arasındaki zaman
@@ -633,7 +633,7 @@ Geri yükleme sırası:
    korunmalıdır.
 4. `search` düğümlerinde indeksi silin (`<DataDir>\index`) ve servisi başlatın; indeks
    yeniden kurulur.
-5. Her düğümde `talky doctor`.
+5. Her düğümde `yanki doctor`.
 
 Kurtarma hedefleri: RPO 15 dakika (log yedeği aralığı), RTO 1 saat (tek veritabanı +
 pay geri yükleme).
@@ -644,9 +644,9 @@ pay geri yükleme).
 
 | Ne | Nerede |
 |---|---|
-| Talky düğümü (JSON, günlük döner, son 30 dosya tutulur — `Talky:Logging:RetainedFileCount`) | `<DataDir>\logs\talky<yyyyMMdd>.log`, ör. `talky20261124.log` |
-| Talky uyarı ve hataları | Windows Olay Günlüğü → Application, kaynak `Talky` (her iki kurulum yolu da kaynağı oluşturur) |
-| LiveKit (JSON, WinSW boyuta göre döndürür, 50 MB × 10) | `%ProgramData%\Talky\logs\livekit\livekit-service.err.log` — LiveKit kendi logunu stderr'e yazar. Başlangıç hatası (yapılandırma, TURN sertifikası, port) tek düz satır olarak `livekit-service.out.log` içindedir, o dosya başka zaman boş kalır; `livekit-service.wrapper.log` WinSW'nin kendi logudur |
+| Yankı düğümü (JSON, günlük döner, son 30 dosya tutulur — `Yanki:Logging:RetainedFileCount`) | `<DataDir>\logs\yanki<yyyyMMdd>.log`, ör. `yanki20261124.log` |
+| Yankı uyarı ve hataları | Windows Olay Günlüğü → Application, kaynak `Yanki` (her iki kurulum yolu da kaynağı oluşturur) |
+| LiveKit (JSON, WinSW boyuta göre döndürür, 50 MB × 10) | `%ProgramData%\Yanki\logs\livekit\livekit-service.err.log` — LiveKit kendi logunu stderr'e yazar. Başlangıç hatası (yapılandırma, TURN sertifikası, port) tek düz satır olarak `livekit-service.out.log` içindedir, o dosya başka zaman boş kalır; `livekit-service.wrapper.log` WinSW'nin kendi logudur |
 | LiveKit servisinin çökmeleri | Olay Günlüğü → System, kaynak `Service Control Manager`, olay 7031 ("terminated unexpectedly"); sarmalayıcının kendi hatası Application, kaynak `.NET Runtime` (`livekit-service.exe`) |
 | MSI kurulumu | `msiexec /l*v <dosya>` ile verdiğiniz yol |
 | Arama indeksi (log değil, veri) | `<DataDir>\index` |
@@ -655,36 +655,36 @@ Bir isteği izlemek için JSON log satırlarındaki izleme kimliğini (`@tr`) ku
 arası izleme bugün yoktur; mesh M2'de gelir.
 
 Servis başlarken (host ve logger daha yokken) biten hatalar ayrıca
-`<DataDir>\logs\talky-startup.log` dosyasına ve Olay Günlüğü'ne (kaynak `Talky`) yazılır.
+`<DataDir>\logs\yanki-startup.log` dosyasına ve Olay Günlüğü'ne (kaynak `Yanki`) yazılır.
 Elle çalıştırılan komutlar (`doctor`, `config validate`, `migrate`) bu ikisine yazmaz; hatayı
 yalnızca konsola basar.
 
 ---
 
-## 9. `talky doctor`
+## 9. `yanki doctor`
 
-Her düğümde çalıştırılabilir; kurulumun son adımı olarak `Install-Talky.ps1` zaten
+Her düğümde çalıştırılabilir; kurulumun son adımı olarak `Install-Yanki.ps1` zaten
 çalıştırır.
 
 ```powershell
-& 'C:\Program Files\Talky\talky.exe' doctor --data-dir C:\ProgramData\Talky
+& 'C:\Program Files\Yanki\yanki.exe' doctor --data-dir C:\ProgramData\Yanki
 ```
 
 Bugün var olan denetimler (tam liste):
 
 | Denetim | Ne bakar |
 |---|---|
-| `config` | Bütün `Talky` seçenek bölümleri bağlanıp doğrulanabiliyor mu |
+| `config` | Bütün `Yanki` seçenek bölümleri bağlanıp doğrulanabiliyor mu |
 | `certificate` | Yapılandırılan TLS sertifikası bulunuyor mu, süresi geçmemiş mi, gerçek düğümde geliştirme sertifikası mı |
 | `identity` | `doctor`'ın hangi hesapla çalıştırıldığını bildirir (bilgi amaçlı); servis hesabının kendisini sınamaz |
 | `log-directory` | Log klasörü var mı / oluşturulabiliyor mu, bu hesap yazabiliyor mu |
 | `os` | İşletim sistemi ve sürümü; istemci Windows sürümü (Windows 10/11) Development dışında uyarıdır ("yalnızca laboratuvar") |
 | `runtime` | .NET çalışma zamanı ve sunucu GC açık mı |
-| `sql` | Veritabanına erişim, beklenen ayarlar ve bekleyen göçler (bekleyen göç uyarıdır: `talky migrate`) |
+| `sql` | Veritabanına erişim, beklenen ayarlar ve bekleyen göçler (bekleyen göç uyarıdır: `yanki migrate`) |
 
 Mesh eşleri ve `jobs` gecikmesi (M2), dosya payı (M4) ve LiveKit (M5) denetimleri ilgili
 özellikle gelir; SQL'e göre saat kayması denetimi M2 için açık bir iştir. Disk alanı ve saat
-kaynağı bugün yalnızca kurulum öncesinde `Test-TalkyPrerequisites.ps1` ile denetlenir. Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk
+kaynağı bugün yalnızca kurulum öncesinde `Test-YankiPrerequisites.ps1` ile denetlenir. Çıkış kodu 0 sağlıklı, 0 dışı bir şey bozuk
 demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğümü havuza almadan önce
 `doctor` ve `/readyz` birlikte yeşil olmalıdır.
 
@@ -694,16 +694,16 @@ demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğ�
 
 | Belirti | Muhtemel sebep | Bakılacak yer |
 |---|---|---|
-| Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs\talky-startup.log`, Olay Günlüğü (kaynak `Talky`), `talky config validate --data-dir <DataDir>` (bozuk JSON'da dosya adı ve hata ile çıkış kodu 3), ardından `talky doctor` |
-| Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok; parolalı hesapta MSI yükseltmesi `SERVICE_PASSWORD=` verilmeden yapılmış | `Test-ADServiceAccount -Identity talky`, GPO kullanıcı hakları; bölüm 4.1 "MSI … hatırlar" |
+| Servis başlıyor, hemen duruyor | `appsettings.json` bozuk ya da zorunlu bir alan (ör. bağlantı dizesi) eksik/geçersiz | `<DataDir>\logs\yanki-startup.log`, Olay Günlüğü (kaynak `Yanki`), `yanki config validate --data-dir <DataDir>` (bozuk JSON'da dosya adı ve hata ile çıkış kodu 3), ardından `yanki doctor` |
+| Servis başlamıyor, Olay Günlüğü "logon failure" | gMSA host'a kurulmamış ya da "Log on as a service" yok; parolalı hesapta MSI yükseltmesi `SERVICE_PASSWORD=` verilmeden yapılmış | `Test-ADServiceAccount -Identity yanki`, GPO kullanıcı hakları; bölüm 4.1 "MSI … hatırlar" |
 | MSI yükseltmesi 1603 ile duruyor, logda `Error 1327. Invalid Drive` | Hatırlanan veri klasörünün sürücüsü artık yok | Komuta `DATADIR=<klasör>` ekleyin (bölüm 4.1) |
 | TLS el sıkışması başarısız, servis ayakta | gMSA sertifikanın özel anahtarını okuyamıyor | Bölüm 3, anahtar dosyası ACL'i |
-| İstemci 401, tarayıcıda kimlik istemi | SPN eksik veya iki hesapta kayıtlı | `setspn -Q HTTP/talky.corp` |
+| İstemci 401, tarayıcıda kimlik istemi | SPN eksik veya iki hesapta kayıtlı | `setspn -Q HTTP/yanki.corp` |
 | Yük dengeleyici bütün düğümleri "down" görüyor | Prob `/healthz` yerine `/readyz` olmalı ya da düğüm boşaltmada | `Invoke-WebRequest .../readyz` |
 | (M2) Mesajlar geliyor ama gecikmeli, farklı düğümlerde | Mesh kurulmamış | Admin panelinde (M3) mesh eş durumu; `Test-NetConnection <eş> -Port 9443` |
 | (M3) Aramada yeni mesajlar çıkmıyor | İndeksleme `jobs` gecikmesi ya da `search` düğümü kapalı | Admin panelinde `jobs` gecikmesi; `search` düğümünde `doctor` |
 | Toplantıda bağlanıyor ama ses/görüntü yok | TURN aktarım aralığı (30000–40000/UDP) kapalı; ya da `node_ip` yanlış | `Get-NetFirewallRule -Group LiveKit`; `livekit.yaml` içinde `rtc.node_ip` |
-| Toplantıya hiç katılınamıyor | 7880 proxy'si veya LiveKit servisi kapalı | `Get-Service LiveKit`, `%ProgramData%\Talky\logs\livekit\livekit-service.err.log` |
+| Toplantıya hiç katılınamıyor | 7880 proxy'si veya LiveKit servisi kapalı | `Get-Service LiveKit`, `%ProgramData%\Yanki\logs\livekit\livekit-service.err.log` |
 | LiveKit servisi birkaç saniyede bir yeniden başlıyor (System günlüğünde 7031) | Servis hesabı log dosyalarına yazamıyor (Application günlüğünde `.NET Runtime`, `UnauthorizedAccessException` … `livekit-service.err.log`); ya da LiveKit 1.13.10+ yapılandırmayı/TURN sertifikasını reddediyor | `Install-LiveKitService.ps1`'i aynı `-ServiceAccount` ile yeniden çalıştırın (izinleri yeniden verir); sebep `livekit-service.out.log`'un son satırında |
 | `Stop-Service LiveKit`'ten ~5 sn sonra servis yeniden Running (System günlüğünde 7031/7034) | WinSW 2.12.0 LiveKit çıktıktan hemen sonra nadiren "The handle is invalid" ile çöker (`livekit-service.wrapper.log`); SCM bunu hata sayıp yeniden başlatır | Servisi yeniden durdurun. Kurulum betiğinin kendi durdurmaları bu durumu kendileri ele alır |
 | LiveKit servisi başlıyor ve hemen duruyor, 7031 yok (LiveKit 1.13.9 ve öncesi) | LiveKit yapılandırmayı, TURN sertifikasını ya da portu reddetti ve 0 koduyla çıktı | `livekit-service.out.log`'un son satırı (JSON logda değil); düzeltip betiği yeniden çalıştırın |
@@ -715,23 +715,23 @@ demektir (yalnızca Error satırları çıkış kodunu değiştirir). Bir düğ�
 Kaldırma:
 
 ```powershell
-.\deploy\windows\Uninstall-Talky.ps1 -WhatIf
-.\deploy\windows\Uninstall-Talky.ps1              # veri korunur
-.\deploy\windows\Uninstall-Talky.ps1 -RemoveData  # yapılandırma, log ve indeks de silinir
+.\deploy\windows\Uninstall-Yanki.ps1 -WhatIf
+.\deploy\windows\Uninstall-Yanki.ps1              # veri korunur
+.\deploy\windows\Uninstall-Yanki.ps1 -RemoveData  # yapılandırma, log ve indeks de silinir
 ```
 
 MSI ile kurulmuş düğümde servisi önce durdurun (MSI'nin kendi durdurması boşaltmayı
 beklemek için tasarlanmadı, bölüm 4.1 "Bilinen açıklar"). `msiexec /x` veri klasörünü ve
-`HKLM\SOFTWARE\Talky` anahtarını bırakır; güvenlik duvarı kurallarını da MSI değil
-`Set-TalkyFirewall.ps1` yönetir. Düğümü tamamen temizlerken üçünü de elle kaldırın:
+`HKLM\SOFTWARE\Yanki` anahtarını bırakır; güvenlik duvarı kurallarını da MSI değil
+`Set-YankiFirewall.ps1` yönetir. Düğümü tamamen temizlerken üçünü de elle kaldırın:
 
 ```powershell
-Stop-Service Talky
-$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Talky.Server-<sürüm>.msi','/qn','/norestart','/l*v','uninstall.log'
+Stop-Service Yanki
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/x','Yanki.Server-<sürüm>.msi','/qn','/norestart','/l*v','uninstall.log'
 if ($p.ExitCode -ne 0) { throw "msiexec /x exited with $($p.ExitCode); see uninstall.log" }
 # Tamamen temizlemek için (yapılandırma ve loglar da gider):
-#   .\deploy\windows\Set-TalkyFirewall.ps1 -Remove
-#   Remove-Item -Recurse -Force 'D:\TalkyData'; Remove-Item HKLM:\SOFTWARE\Talky
+#   .\deploy\windows\Set-YankiFirewall.ps1 -Remove
+#   Remove-Item -Recurse -Force 'D:\YankiData'; Remove-Item HKLM:\SOFTWARE\Yanki
 ```
 
 Hiçbir durumda SQL veritabanı ve dosya payı silinmez; onlar elle kaldırılır.

@@ -1,9 +1,9 @@
 import { create } from '@bufbuild/protobuf';
-import { ErrorCode, PingSchema } from '@talky/protocol/v1';
-import { ackFrame, errorFrame } from '@talky/test-utils';
+import { ErrorCode, PingSchema } from '@yanki/protocol/v1';
+import { ackFrame, errorFrame } from '@yanki/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { ClientFrameBody } from '../src/index.js';
-import { isTalkyWsError, isUuidV7, TalkyWsError } from '../src/index.js';
+import { isYankiWsError, isUuidV7, YankiWsError } from '../src/index.js';
 import { createHarness } from './helpers.js';
 
 /**
@@ -14,11 +14,11 @@ import { createHarness } from './helpers.js';
 const REQUEST_BODY: ClientFrameBody = { case: 'ping', value: create(PingSchema, { ts: 1n }) };
 
 /** Await a request that must reject, and hand back the typed error. */
-async function failure(promise: Promise<unknown>): Promise<TalkyWsError> {
+async function failure(promise: Promise<unknown>): Promise<YankiWsError> {
   try {
     await promise;
   } catch (error) {
-    if (isTalkyWsError(error)) return error;
+    if (isYankiWsError(error)) return error;
     throw error;
   }
   throw new Error('expected the request to reject');
@@ -145,7 +145,7 @@ describe('request correlation', () => {
     try {
       expect(() => {
         harness.client.send(REQUEST_BODY);
-      }).toThrow(TalkyWsError);
+      }).toThrow(YankiWsError);
     } finally {
       await harness.dispose();
     }

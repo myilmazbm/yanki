@@ -5,7 +5,7 @@
  * `platform/Platform.ts`) are a first sketch, to be finalised by the M2 sync engine, which
  * needs an atomic "apply a page of events and advance the cursor" operation that this shape
  * does not offer yet. No platform adapters (web IndexedDB, Tauri SQLite, React Native SQLite)
- * exist yet. What is settled: `@talky/core` never reaches for a concrete store itself.
+ * exist yet. What is settled: `@yanki/core` never reaches for a concrete store itself.
  *
  * All `seq` values are the server's per-conversation `int64` sequence and are modelled as
  * `bigint` so they never lose precision.
@@ -114,7 +114,7 @@ export interface DraftStore {
   list(): Promise<Draft[]>;
 }
 
-/** Everything a Talky client persists locally. */
+/** Everything a Yanki client persists locally. */
 export interface Storage {
   readonly kv: KvStore;
   readonly conversations: ConversationStore;

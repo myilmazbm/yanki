@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Yanki.Core/Yanki.Core.csproj" />
+    <Project Path="src/Yanki.Data/Yanki.Data.csproj" />
+    <Project Path="src/Yanki.Federation/Yanki.Federation.csproj" />
+    <Project Path="src/Yanki.Files/Yanki.Files.csproj" />
+    <Project Path="src/Yanki.Identity/Yanki.Identity.csproj" />
+    <Project Path="src/Yanki.Media/Yanki.Media.csproj" />
+    <Project Path="src/Yanki.Protocol/Yanki.Protocol.csproj" />
+    <Project Path="src/Yanki.Push/Yanki.Push.csproj" />
+    <Project Path="src/Yanki.Realtime/Yanki.Realtime.csproj" />
+    <Project Path="src/Yanki.Search/Yanki.Search.csproj" />
+    <Project Path="src/Yanki.Server/Yanki.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Yanki.ContractTests/Yanki.ContractTests.csproj" />
+    <Project Path="tests/Yanki.IntegrationTests/Yanki.IntegrationTests.csproj" />
+    <Project Path="tests/Yanki.UnitTests/Yanki.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Yanki.WsLoad/Yanki.WsLoad.csproj" />
+  </Folder>
+</Solution>

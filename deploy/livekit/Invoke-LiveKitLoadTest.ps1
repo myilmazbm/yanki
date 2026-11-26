@@ -38,7 +38,7 @@
     participant could connect, so its exit code is not used).
 
 .PARAMETER Url
-    Signalling URL of the node under test, e.g. ws://media-01.talky.corp:7880.
+    Signalling URL of the node under test, e.g. ws://media-01.yanki.corp:7880.
     Defaults to $env:LIVEKIT_URL.
 
 .PARAMETER ApiKey
@@ -87,7 +87,7 @@
 
 .PARAMETER SkipRoomCreate
     Do not create (or delete) the room; only for a node configured with
-    room.auto_create: true. Against a Talky node every participant then fails with
+    room.auto_create: true. Against a Yanki node every participant then fails with
     "not found", which Test-LiveKitInstall.ps1 uses as its negative check.
 
 .PARAMETER SkipCpuCheck
@@ -96,7 +96,7 @@
 
 .EXAMPLE
     $env:LIVEKIT_API_SECRET = '...'
-    .\Invoke-LiveKitLoadTest.ps1 -Url ws://media-01.talky.corp:7880 -ApiKey talky `
+    .\Invoke-LiveKitLoadTest.ps1 -Url ws://media-01.yanki.corp:7880 -ApiKey yanki `
         -NodeComputerName media-01 -Layout 3x3
 
     The Spike A profile (docs/livekit-windows-spike.md, section 2): 8 publishers, 100
@@ -141,7 +141,7 @@ $Layout = $Layout.ToLowerInvariant()
 [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
 
 $CliRepo = 'livekit/livekit-cli'
-$UserAgent = 'talky-deploy'
+$UserAgent = 'yanki-deploy'
 $CpuPassThreshold = 60
 # lk load-test behaviour this script relies on (lk 2.18.6): each subscriber subscribes to
 # at most this many participants per --layout (numToSubscribe in pkg/loadtester), and
@@ -364,7 +364,7 @@ function Get-NodeSample {
 
 # --- preconditions --------------------------------------------------------------------
 
-if (-not $Url) { throw 'Pass -Url or set $env:LIVEKIT_URL, e.g. ws://media-01.talky.corp:7880.' }
+if (-not $Url) { throw 'Pass -Url or set $env:LIVEKIT_URL, e.g. ws://media-01.yanki.corp:7880.' }
 if (-not $ApiKey) { throw 'Pass -ApiKey or set $env:LIVEKIT_API_KEY.' }
 if (-not $ApiSecret) { throw 'Pass -ApiSecret or set $env:LIVEKIT_API_SECRET.' }
 

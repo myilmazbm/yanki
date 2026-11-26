@@ -1,6 +1,6 @@
-# `@talky/core` — istemci çekirdeği (M0)
+# `@yanki/core` — istemci çekirdeği (M0)
 
-`@talky/core`, Talky istemcilerinin ortak çekirdeğidir: React web, Tauri masaüstü ve React Native
+`@yanki/core`, Yankı istemcilerinin ortak çekirdeğidir: React web, Tauri masaüstü ve React Native
 uygulamalarının **tamamı** aynı paketi değiştirmeden kullanır. M0'da içeriği gerçek zamanlı
 WebSocket istemcisi, taslak kalıcılık/platform sözleşmeleri ve yardımcı ilkellerdir.
 
@@ -12,7 +12,7 @@ karşılığını, genel API'yi ve test/entegrasyon rehberini anlatır.
 - **Platformdan bağımsız.** `packages/core/tsconfig.src.json` DOM kütüphanesi ve Node tipleri
   olmadan derler; `window`, `document`, `process`, `Buffer` derleyicide bile yoktur. ESLint ayrıca
   `react`, `react-dom`, `react-native`, `@tauri-apps/*` ve `node:*` içe aktarımlarını yasaklar.
-- **Sıfır çalışma zamanı bağımlılığı** — yalnızca `@bufbuild/protobuf` ve `@talky/protocol`.
+- **Sıfır çalışma zamanı bağımlılığı** — yalnızca `@bufbuild/protobuf` ve `@yanki/protocol`.
 - **Enjekte edilebilir dikişler.** Saat (`TimerHost`), taşıma (`WebSocketFactory`), rastgelelik
   (`random`), kalıcılık (`Storage`) ve günlükleme (`Logger`) dışarıdan verilir. Testler bu sayede
   gerçek zaman beklemeden, gerçek soket açmadan tüm durum makinesini sürer.
@@ -20,15 +20,15 @@ karşılığını, genel API'yi ve test/entegrasyon rehberini anlatır.
   olayına `reason: 'handler'` ile dönüştürülür; bağlantı etkilenmez.
 - **ESM, tree-shakeable.** `sideEffects: false`, adlandırılmış dışa aktarımlar, varsayılan dışa
   aktarım yok. Paket kaynak TypeScript olarak yayımlanır (`exports: { ".": "./src/index.ts" }`),
-  `@talky/protocol` ile aynı yaklaşım.
+  `@yanki/protocol` ile aynı yaklaşım.
 
 ## Hızlı başlangıç
 
 ```ts
-import { createWsClient } from '@talky/core';
+import { createWsClient } from '@yanki/core';
 
 const client = createWsClient({
-  url: 'wss://talky.local/ws',
+  url: 'wss://yanki.local/ws',
   getToken: async () => session.accessToken, // her bağlantı denemesinde yeniden okunur
   deviceId, // kurulum başına sabit UUID
   client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },
@@ -51,7 +51,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 
 | Seçenek | Varsayılan | Anlamı |
 | --- | --- | --- |
-| `url` | — | `ws://` / `wss://` uç noktası; sunucuda yol `/ws`'dir (`Talky:Realtime:Path`), sorgu parametresi yoktur — sürüm `Hello.protoVersion` ile gider. |
+| `url` | — | `ws://` / `wss://` uç noktası; sunucuda yol `/ws`'dir (`Yanki:Realtime:Path`), sorgu parametresi yoktur — sürüm `Hello.protoVersion` ile gider. |
 | `getToken()` | — | `Hello.token`. **Her** denemede çağrılır; yenilenen token otomatik kullanılır. |
 | `deviceId` | — | Kurulum başına sabit UUID. |
 | `client` | — | `{ platform, appVersion, os, locale }` → `Hello.client`. |
@@ -76,7 +76,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 | `welcome` | Açık oturumun `Welcome`'ı ya da `null`. |
 | `connect()` | Bağlanmaya başlar; `close()` sonrası yeniden bağlanmayı tekrar etkinleştirir. Planlanmış bir yeniden bağlanma sırasında (bir `reconnectScheduled` dinleyicisinin içinden bile) zamanlayıcıyı iptal edip hemen dener. |
 | `close(reason?)` | `Bye` gönderir, 1000 ile kapatır, yeniden bağlanmayı kapatır. |
-| `send(body)` | Boş `rid` ile ateşle-unut. Oturum açık değilse `TalkyWsError` fırlatır. |
+| `send(body)` | Boş `rid` ile ateşle-unut. Oturum açık değilse `YankiWsError` fırlatır. |
 | `request(body, opts?)` | UUIDv7 `rid` atar, eşleşen `Ack` ile çözülür. |
 | `on/once/off/listenerCount` | Tipli olay aboneliği; `on` abonelikten çıkma fonksiyonu döndürür. |
 
@@ -84,7 +84,7 @@ client.close('logout'); // Bye gönderir, 1000 ile kapatır, yeniden bağlanmay�
 
 ```ts
 import { create } from '@bufbuild/protobuf';
-import { PingSchema } from '@talky/protocol/v1';
+import { PingSchema } from '@yanki/protocol/v1';
 
 client.send({ case: 'ping', value: create(PingSchema, { ts: 1n }) });
 ```
@@ -100,20 +100,20 @@ client.send({ case: 'ping', value: create(PingSchema, { ts: 1n }) });
 | `open` | — | Oturum kullanılabilir (`state === 'open'`). |
 | `frame` | `ServerFrame` | Tekilleştirmeden geçen her sunucu çerçevesi. |
 | `stateChange` | `(state, previous)` | Her geçişte. |
-| `error` | `TalkyWsError` | Belirli bir isteğe ait olmayan her hata. |
+| `error` | `YankiWsError` | Belirli bir isteğe ait olmayan her hata. |
 | `resyncRequired` | `ResyncRequired` | Sunucu boşluğu dolduramadı → `GET /api/v1/sync`. |
 | `reconnectScheduled` | `{ attempt, delayMs, reason, closeCode }` | Yeniden bağlanma zamanlayıcısı kuruldu. `reason`: `close` · `transport` · `server-reconnect` · `token`; `attempt` sunucu güdümlü yeniden bağlanmada `0`'dır. |
 | `evicted` | `string` (`Reconnect.reason`) | Sunucu bu bağlantıyı düşürdü, çünkü aynı kullanıcının daha yeni bir bağlantısı canlı (`Reconnect{reason:"too_many_connections"}`). İstemci `closed`'dır ve **yeniden denemez**; uygulama karar verir ("başka cihazda oturum açıldı"). |
 | `rtt` | `number` | Yeni RTT örneği. |
 
-### `TalkyWsError`
+### `YankiWsError`
 
 Tek hata tipi. `reason` alanı üzerinden dallanın, metne bakmayın:
 
 `protocol` (sunucu `Error` çerçevesi ya da çerçeve sözleşmesi ihlali) · `timeout` · `disconnected`
 · `closed` · `transport` · `decode` · `heartbeat` (Pong zaman aşımı) · `handler` (uygulama
 dinleyicisi fırlattı) · `evicted` (bağlantı daha yeni bir bağlantı lehine düşürüldü; `evicted`
-olayıyla birlikte gelir, yeniden deneme yok). Ek alanlar: `code` (`talky.v1.ErrorCode`), `rid`, `retryAfterMs`,
+olayıyla birlikte gelir, yeniden deneme yok). Ek alanlar: `code` (`yanki.v1.ErrorCode`), `rid`, `retryAfterMs`,
 `closeCode`, `cause`.
 
 ## Durum makinesi
@@ -221,7 +221,7 @@ aynı anahtara düşerler.
 
 ## Platform bağlama
 
-`@talky/core` hiçbir platform API'sine dokunmaz. Bir hostu bağlamak üç şey ister:
+`@yanki/core` hiçbir platform API'sine dokunmaz. Bir hostu bağlamak üç şey ister:
 
 | Dikiş | Web | Tauri | React Native |
 | --- | --- | --- | --- |
@@ -242,7 +242,7 @@ seqRange)`, `outbox`, `drafts`. Tüm `seq` değerleri `bigint`'tir — hassasiye
 
 ## Test rehberi
 
-`@talky/test-utils` bu iş paketiyle birlikte gelir ve `@talky/core`'a **bağımlı değildir** (aksi
+`@yanki/test-utils` bu iş paketiyle birlikte gelir ve `@yanki/core`'a **bağımlı değildir** (aksi
 halde Turborepo görev grafiğinde döngü oluşurdu); `WebSocketLike`/`TimerHost` yapısal olarak
 aynalanır ve `packages/core/test/contracts.test.ts` iki tanımı derleme zamanında birbirine sabitler.
 
@@ -300,7 +300,7 @@ test sonucu geçersiz olur. Mekanizmanın kendisi
 
 ```bash
 pnpm install
-pnpm gen         # api/proto -> @talky/protocol/src/gen
+pnpm gen         # api/proto -> @yanki/protocol/src/gen
 pnpm typecheck   # tsc: her paket + core için DOM/Node'suz ikinci geçiş
 pnpm lint        # ESLint 9 flat config, typescript-eslint strictTypeChecked
 pnpm test        # Vitest (turbo ile paket başına)
@@ -308,12 +308,12 @@ pnpm test:watch  # kök vitest projects kurulumu
 pnpm format      # Prettier (tek tırnak, 100 sütun, sondaki virgüller)
 pnpm format:check
 pnpm size        # esbuild --bundle --minify boyut ölçümü
-pnpm --filter @talky/protocol run lint:proto      # buf lint api/proto
-pnpm --filter @talky/protocol run breaking:proto  # buf breaking, main dalına karşı
+pnpm --filter @yanki/protocol run lint:proto      # buf lint api/proto
+pnpm --filter @yanki/protocol run breaking:proto  # buf breaking, main dalına karşı
 ```
 
-`pnpm gen` yalnızca istemci sözleşmesini (`api/proto/talky/v1`) üretir; küme içi mesh sözleşmesi
-(`talky/cluster`) sunucuya özeldir ve `@talky/protocol`'de yer almaz.
+`pnpm gen` yalnızca istemci sözleşmesini (`api/proto/yanki/v1`) üretir; küme içi mesh sözleşmesi
+(`yanki/cluster`) sunucuya özeldir ve `@yanki/protocol`'de yer almaz.
 
 ## Paket boyutu
 
@@ -327,7 +327,7 @@ pnpm --filter @talky/protocol run breaking:proto  # buf breaking, main dalına k
 
 Bütçe "yalnızca çekirdek" için 15 kB gzip'tir; `pnpm size` aşıldığında sıfırdan farklı kodla
 çıkar. "Bağımlılıklar dahil" satırındaki fark protobuf-es çalışma zamanıdır ve uygulamada
-`@talky/protocol` ile paylaşılır.
+`@yanki/protocol` ile paylaşılır.
 
 ## M2'de ne geliyor
 

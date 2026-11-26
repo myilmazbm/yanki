@@ -1,15 +1,16 @@
 {
-  "name": "@talky/protocol",
+  "name": "@yanki/protocol",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Generated TypeScript wire contracts from api/proto. Do not hand-edit src/gen.",
   "exports": {
     ".": "./src/index.ts",
-    "./v1": "./src/gen/talky/v1/frames_pb.ts"
+    "./v1": "./src/gen/yanki/v1/frames_pb.ts"
   },
   "scripts": {
-    "gen": "buf generate ../../../api/proto --path ../../../api/proto/talky/v1",
+    "gen": "buf generate ../../../api/proto --path ../../../api/proto/yanki/v1",
     "lint:proto": "buf lint ../../../api/proto",
     "breaking:proto": "buf breaking ../../../api/proto --against ../../../.git#branch=main,subdir=api/proto",
     "typecheck": "tsc --noEmit"

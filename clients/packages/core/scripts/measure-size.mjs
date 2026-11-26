@@ -1,9 +1,9 @@
-// Bundle-size dry run for @talky/core.
+// Bundle-size dry run for @yanki/core.
 //
-//   pnpm --filter @talky/core run size
+//   pnpm --filter @yanki/core run size
 //
 // Two numbers matter:
-//   * "core only"  — what @talky/core itself adds to an app that already ships protobuf-es.
+//   * "core only"  — what @yanki/core itself adds to an app that already ships protobuf-es.
 //                    This is the number the < 15 KB gz budget applies to.
 //   * "with deps"  — the whole subtree, for an app that has no other protobuf-es user.
 //
@@ -21,8 +21,8 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EXTERNALS = [
   '@bufbuild/protobuf',
   '@bufbuild/protobuf/*',
-  '@talky/protocol',
-  '@talky/protocol/*',
+  '@yanki/protocol',
+  '@yanki/protocol/*',
 ];
 
 /** @param {{ entry: string, external: string[] }} options */
@@ -52,7 +52,7 @@ async function measure({ entry, external }) {
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(2)} kB`;
 
-const scratch = mkdtempSync(join(tmpdir(), 'talky-core-size-'));
+const scratch = mkdtempSync(join(tmpdir(), 'yanki-core-size-'));
 try {
   const clientOnlyEntry = join(scratch, 'client-only.ts');
   writeFileSync(
@@ -77,7 +77,7 @@ try {
   ];
 
   const budgetGzip = 15 * 1024;
-  console.info('\n@talky/core bundle size (esbuild --bundle --minify, esm/es2022)\n');
+  console.info('\n@yanki/core bundle size (esbuild --bundle --minify, esm/es2022)\n');
   console.info(
     ['entry'.padEnd(32), 'raw'.padStart(11), 'gzip'.padStart(11), 'brotli'.padStart(11)].join(''),
   );

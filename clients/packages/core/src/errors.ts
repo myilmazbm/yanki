@@ -1,9 +1,9 @@
-import type { ErrorCode } from '@talky/protocol/v1';
+import type { ErrorCode } from '@yanki/protocol/v1';
 
 /**
- * Why a {@link TalkyWsError} was raised. Apps switch on this rather than on message text.
+ * Why a {@link YankiWsError} was raised. Apps switch on this rather than on message text.
  *
- * - `protocol` — the server sent a `talky.v1.Error` frame, or violated the frame contract.
+ * - `protocol` — the server sent a `yanki.v1.Error` frame, or violated the frame contract.
  * - `timeout` — no `Ack`/`Error` arrived for a request within its timeout.
  * - `disconnected` — the connection dropped while the request was in flight, or a frame was
  *   handed to a client that is not currently open.
@@ -15,7 +15,7 @@ import type { ErrorCode } from '@talky/protocol/v1';
  * - `handler` — an app-supplied event listener threw. The socket loop swallows it and
  *   reports it here instead of tearing the connection down.
  */
-export type TalkyWsErrorReason =
+export type YankiWsErrorReason =
   | 'protocol'
   | 'timeout'
   | 'disconnected'
@@ -27,11 +27,11 @@ export type TalkyWsErrorReason =
   /** The server evicted this connection (`Reconnect{reason:"too_many_connections"}`); no retry. */
   | 'evicted';
 
-/** Constructor payload for {@link TalkyWsError}. */
-export interface TalkyWsErrorInit {
-  reason: TalkyWsErrorReason;
+/** Constructor payload for {@link YankiWsError}. */
+export interface YankiWsErrorInit {
+  reason: YankiWsErrorReason;
   message?: string | undefined;
-  /** `talky.v1.ErrorCode` when the error came from a server `Error` frame. */
+  /** `yanki.v1.ErrorCode` when the error came from a server `Error` frame. */
   code?: ErrorCode | undefined;
   /** Correlation id of the request this error belongs to, when there is one. */
   rid?: string | undefined;
@@ -43,20 +43,20 @@ export interface TalkyWsErrorInit {
 }
 
 /**
- * The single error type `@talky/core` rejects and emits with.
+ * The single error type `@yanki/core` rejects and emits with.
  *
- * Every field except {@link TalkyWsError.reason} may be `undefined`; `reason` is always a
- * member of {@link TalkyWsErrorReason} so callers can exhaustively switch on it.
+ * Every field except {@link YankiWsError.reason} may be `undefined`; `reason` is always a
+ * member of {@link YankiWsErrorReason} so callers can exhaustively switch on it.
  */
-export class TalkyWsError extends Error {
-  override readonly name = 'TalkyWsError';
-  readonly reason: TalkyWsErrorReason;
+export class YankiWsError extends Error {
+  override readonly name = 'YankiWsError';
+  readonly reason: YankiWsErrorReason;
   readonly code: ErrorCode | undefined;
   readonly rid: string | undefined;
   readonly retryAfterMs: number | undefined;
   readonly closeCode: number | undefined;
 
-  constructor(init: TalkyWsErrorInit) {
+  constructor(init: YankiWsErrorInit) {
     super(
       init.message ?? init.reason,
       init.cause === undefined ? undefined : { cause: init.cause },
@@ -69,7 +69,7 @@ export class TalkyWsError extends Error {
   }
 }
 
-/** Type guard for {@link TalkyWsError}, safe across bundle boundaries. */
-export function isTalkyWsError(value: unknown): value is TalkyWsError {
-  return value instanceof TalkyWsError;
+/** Type guard for {@link YankiWsError}, safe across bundle boundaries. */
+export function isYankiWsError(value: unknown): value is YankiWsError {
+  return value instanceof YankiWsError;
 }

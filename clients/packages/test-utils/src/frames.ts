@@ -5,7 +5,7 @@ import type {
   PongJson,
   ServerFrameJson,
   WelcomeJson,
-} from '@talky/protocol/v1';
+} from '@yanki/protocol/v1';
 
 /**
  * Frame factories.
@@ -20,7 +20,7 @@ let counterState = { ms: -1, counter: 0 };
 /**
  * Minimal UUIDv7 generator.
  *
- * `@talky/test-utils` cannot import `@talky/core` (that would make the workspace task graph
+ * `@yanki/test-utils` cannot import `@yanki/core` (that would make the workspace task graph
  * cyclic), so the handful of ids the mock server mints are produced here.
  */
 export function testUuidV7(nowMs: number = Date.now()): string {

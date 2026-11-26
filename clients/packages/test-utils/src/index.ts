@@ -1,12 +1,12 @@
 /**
- * `@talky/test-utils` — everything needed to test a Talky client without a server.
+ * `@yanki/test-utils` — everything needed to test a Yanki client without a server.
  *
  * - {@link startMemoryServer} — in-process transport + scriptable protocol (default choice).
  * - {@link startMockServer} — the same protocol over real `ws` sockets.
  * - {@link createFakeClock} — virtual `TimerHost`, so hours of backoff pass instantly.
  * - {@link loadWsFixtures} / {@link replayFixture} — the `api/fixtures/ws/*.json` golden runner.
  *
- * This package deliberately does not depend on `@talky/core`; see `src/types.ts`.
+ * This package deliberately does not depend on `@yanki/core`; see `src/types.ts`.
  */
 
 export { createFakeClock, DEFAULT_CLOCK_START_MS, flush } from './clock.js';

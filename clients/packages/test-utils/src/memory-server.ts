@@ -112,7 +112,7 @@ export interface MemoryServer extends MockServerCore {
 }
 
 /**
- * Start a mock Talky server that speaks over in-process sockets.
+ * Start a mock Yanki server that speaks over in-process sockets.
  *
  * Preferred for protocol/state-machine tests: no ports, no I/O, no flakiness, and it composes
  * with `createFakeClock()` so a whole reconnect storm runs in microseconds.

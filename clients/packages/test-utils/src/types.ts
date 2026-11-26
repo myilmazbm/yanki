@@ -3,10 +3,10 @@ import type {
   ErrorCodeJson,
   ServerFrameJson,
   WelcomeJson,
-} from '@talky/protocol/v1';
+} from '@yanki/protocol/v1';
 
 /**
- * `@talky/test-utils` deliberately does **not** depend on `@talky/core`.
+ * `@yanki/test-utils` deliberately does **not** depend on `@yanki/core`.
  *
  * A dependency the other way round already exists (core's tests use these helpers), and
  * Turborepo refuses a cycle in the task graph. The two interfaces below are therefore
@@ -14,19 +14,19 @@ import type {
  * two together with a compile-time assertion, so a drift breaks the build immediately.
  */
 
-/** Mirror of `@talky/core`'s `WebSocketMessageEventLike`. */
+/** Mirror of `@yanki/core`'s `WebSocketMessageEventLike`. */
 export interface MessageEventLike {
   readonly data: unknown;
 }
 
-/** Mirror of `@talky/core`'s `WebSocketCloseEventLike`. */
+/** Mirror of `@yanki/core`'s `WebSocketCloseEventLike`. */
 export interface CloseEventLike {
   readonly code: number;
   readonly reason: string;
   readonly wasClean?: boolean;
 }
 
-/** Mirror of `@talky/core`'s `WebSocketLike`. */
+/** Mirror of `@yanki/core`'s `WebSocketLike`. */
 export interface WebSocketLike {
   readonly readyState: number;
   send(data: string): void;
@@ -37,10 +37,10 @@ export interface WebSocketLike {
   onerror: ((event: unknown) => void) | null;
 }
 
-/** Mirror of `@talky/core`'s `WebSocketFactory`. */
+/** Mirror of `@yanki/core`'s `WebSocketFactory`. */
 export type WebSocketFactory = (url: string, protocols?: readonly string[]) => WebSocketLike;
 
-/** Mirror of `@talky/core`'s `TimerHost`. */
+/** Mirror of `@yanki/core`'s `TimerHost`. */
 export interface TimerHostLike {
   setTimeout(handler: () => void, timeoutMs: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -134,7 +134,7 @@ export interface MockConnection {
   expectFrame(matcher: FrameMatcher, options?: ExpectFrameOptions): Promise<ClientFrameJson>;
 }
 
-/** Everything a test can do to a mock Talky server, regardless of transport. */
+/** Everything a test can do to a mock Yanki server, regardless of transport. */
 export interface MockServerControl {
   /** Every connection ever accepted, oldest first (closed ones included). */
   readonly connections: readonly MockConnection[];

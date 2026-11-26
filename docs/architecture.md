@@ -1,8 +1,8 @@
-# Talky mimarisi
+# Yankı mimarisi
 
 > **Durum (2026-11-24):** Bu belge **hedef v1 mimarisini** anlatır; çoğu bölüm henüz kodda yoktur. M0'da
-> gerçekten çalışan: `talky.exe` host'u ve CLI (`serve`, `migrate`, `doctor`, `config validate`, `version`),
-> `/healthz`, `/readyz`, `/api/v1/ping`, SQL şeması v0 (`talky migrate`), `/ws` el sıkışması (`Hello`/`Welcome`,
+> gerçekten çalışan: `yanki.exe` host'u ve CLI (`serve`, `migrate`, `doctor`, `config validate`, `version`),
+> `/healthz`, `/readyz`, `/api/v1/ping`, SQL şeması v0 (`yanki migrate`), `/ws` el sıkışması (`Hello`/`Welcome`,
 > `Ping`/`Pong`, drain, bağlantı bütçesi), MSI ve kurulum betikleri. Mesh, arama, dosyalar, medya, push, kimlik ve
 > yönetim paneli `docs/plan-v1.md` §9 kilometre taşlarıyla gelir. Çelişki olursa **`docs/plan-v1.md` esastır**.
 
@@ -33,10 +33,10 @@ için `docs/protocol.md`, kurulum ve işletim için `docs/operations.md`.
    web / masaüstü / mobil │  TCP passthrough veya TLS      │
         │                 │  sonlandırma, /readyz probu    │
         ▼                 └───────────────┬───────────────┘
-   talky.corp:443                         │
+   yanki.corp:443                         │
                                           ▼
    ┌──────────────────────────────────────────────────────────────────────┐
-   │  Talky düğümleri  —  talky.exe (.NET 10, tek binary, Windows servisi) │
+   │  Yankı düğümleri  —  yanki.exe (.NET 10, tek binary, Windows servisi) │
    │                                                                      │
    │   node-01 --role api      node-02 --role api      node-03 --role api │
    │   node-04 --role search   node-05 --role search                      │
@@ -53,12 +53,12 @@ için `docs/protocol.md`, kurulum ve işletim için `docs/operations.md`.
    │ kaynak        │        │                  │   │ 7880/7881/7882   │
    └───────────────┘        └──────────────────┘   └──────────────────┘
 
-   DMZ:  talky.exe --role push-relay  →  FCM / APNs
+   DMZ:  yanki.exe --role push-relay  →  FCM / APNs
 ```
 
 | Ürün | Ne | Neden ayrı |
 |---|---|---|
-| `talky.exe` | .NET 10, self-contained tek dosya, Windows servisi, gMSA altında | Uygulamanın tamamı |
+| `yanki.exe` | .NET 10, self-contained tek dosya, Windows servisi, gMSA altında | Uygulamanın tamamı |
 | SQL Server 2025 | Tek gerçek kaynak; AG ile yüksek erişilebilirlik | Müşteride zaten var, DBA ekibi zaten var |
 | LiveKit | Medya SFU + gömülü TURN | WebRTC SFU yazmak ayrı bir ürün geliştirmektir |
 
@@ -76,11 +76,11 @@ için `docs/protocol.md`, kurulum ve işletim için `docs/operations.md`.
 | Docker | Yok | Üretim Windows Server; MSI + PowerShell yeterli ve müşteriye tanıdık |
 | ClamAV | Windows Defender AMSI | Sunucuda zaten çalışıyor |
 
-## 2. `talky.exe` — modüler monolit ve roller
+## 2. `yanki.exe` — modüler monolit ve roller
 
 Tek assembly ailesi, tek binary, tek yapılandırma dosyası. Modüller derleme zamanında
-ayrıdır (`Talky.Realtime`, `Talky.Identity`, `Talky.Media`, `Talky.Files`, `Talky.Search`,
-`Talky.Push`, `Talky.Federation`, `Talky.Data`, `Talky.Protocol`, `Talky.Core`), çalışma
+ayrıdır (`Yanki.Realtime`, `Yanki.Identity`, `Yanki.Media`, `Yanki.Files`, `Yanki.Search`,
+`Yanki.Push`, `Yanki.Federation`, `Yanki.Data`, `Yanki.Protocol`, `Yanki.Core`), çalışma
 zamanında aynı süreçtedir. Mikroservis sınırı yerine **rol** sınırı vardır:
 
 | Rol | Ne yapar | Nerede çalışır |
@@ -95,19 +95,19 @@ Rol yalnızca hangi hosted service'lerin başlatıldığını belirler; kod taba
 müşteri tek sunucuda `--role all` ile başlar, büyüdüğünde aynı binary'yi farklı rollerle
 dağıtır. Yeni ürün yok, yeni yapılandırma biçimi yok.
 
-**M2'ye kadar roller bilgi amaçlıdır:** ayrıştırılır, doğrulanır ve raporlanır (`/api/v1/ping`, `talky doctor`,
-`talky config validate`) ama hiçbir şeyi kapılamaz; her düğüm bağlanmış tüm modülleri (bugün Data ve Realtime,
+**M2'ye kadar roller bilgi amaçlıdır:** ayrıştırılır, doğrulanır ve raporlanır (`/api/v1/ping`, `yanki doctor`,
+`yanki config validate`) ama hiçbir şeyi kapılamaz; her düğüm bağlanmış tüm modülleri (bugün Data ve Realtime,
 `/ws` dahil) çalıştırır. Her modül geldiğinde kendi rol koşulunu ekler.
 
-`talky doctor` her düğümde çalışır. Bugünkü yedi kontrol: `config` (seçenek bölümleri), `certificate`, `identity`
+`yanki doctor` her düğümde çalışır. Bugünkü yedi kontrol: `config` (seçenek bölümleri), `certificate`, `identity`
 (süreç hesabı), `log-directory`, `os`, `runtime` ve `sql` (erişim, `READ_COMMITTED_SNAPSHOT`, şema/göç durumu).
 AD, dosya payı, LiveKit ve mesh kontrolleri ilgili modüllerle gelir; disk, saat senkronu ve pay erişimi kurulum
-öncesinde `Test-TalkyPrerequisites.ps1` ile denetlenir.
+öncesinde `Test-YankiPrerequisites.ps1` ile denetlenir.
 
 ## 3. Küme: gRPC full-mesh bus
 
 Her `api` düğümü diğer her `api` düğümüne 9443 üzerinden kalıcı, çift yönlü bir gRPC akışı
-açar (`api/proto/talky/cluster/v1/mesh.proto`). N düğüm için N·(N−1)/2 bağlantı; 6 düğümde
+açar (`api/proto/yanki/cluster/v1/mesh.proto`). N düğüm için N·(N−1)/2 bağlantı; 6 düğümde
 15 bağlantı. Bu ölçekte broker'a gerek yoktur.
 
 Bus'ın taşıdığı tek şey **ipuçlarıdır**: "şu konuşmada `seq` şuraya ilerledi", "şu kullanıcı
@@ -127,7 +127,7 @@ statik bir eş listesi yoktur. Mesh M2'de gelir; bugün tablo ve `IClusterNodeRe
 
 ## 4. Gerçek zamanlı protokol (özet)
 
-Ayrıntı ve altın fixture'lar: `docs/protocol.md`, `api/proto/talky/v1/frames.proto`.
+Ayrıntı ve altın fixture'lar: `docs/protocol.md`, `api/proto/yanki/v1/frames.proto`.
 
 - Bir WebSocket **text** çerçevesi = bir proto3-JSON nesnesi (`ClientFrame`/`ServerFrame`);
   `oneof body` alan adı çerçeve tipidir. Azami çerçeve 64 KiB.
@@ -142,7 +142,7 @@ Ayrıntı ve altın fixture'lar: `docs/protocol.md`, `api/proto/talky/v1/frames.
 
 ## 5. Veri modeli (özet)
 
-Ayrıntı ve şema göçleri `Talky.Data` paketinin sorumluluğundadır; burada mimariyi
+Ayrıntı ve şema göçleri `Yanki.Data` paketinin sorumluluğundadır; burada mimariyi
 belirleyen kararlar özetlenir.
 
 - **Sıralamanın tek kaynağı**: her konuşmanın kendi `seq` sayacı vardır ve mesajlar
@@ -166,7 +166,7 @@ ve güven ilişkisi vardır. v1'de üç yol desteklenir:
 
 | Yol | Kullanım | Not |
 |---|---|---|
-| Negotiate / Kerberos | Domain'e katılmış masaüstü istemcileri | SPN `HTTP/talky.corp`; kullanıcı hiçbir şey yazmaz |
+| Negotiate / Kerberos | Domain'e katılmış masaüstü istemcileri | SPN `HTTP/yanki.corp`; kullanıcı hiçbir şey yazmaz |
 | ADFS / OIDC | Web ve mobil, ormanlar arası | Yetkilendirme kodu + PKCE |
 | LDAP bind | Kerberos'un ulaşamadığı orman veya hizmet hesapları | Yalnızca gerektiğinde |
 
@@ -174,21 +174,21 @@ Kullanıcı dizini periyodik olarak senkronlanır (orman başına bir bağlayıc
 `objectGUID`'dir (`users.external_id`), `objectSid` ayrıca saklanır; UPN asla anahtar değildir — UPN değişebilir
 (`docs/plan-v1.md` §3.6).
 
-SAML ve **kuruluşlar arası federasyon** (iki ayrı Talky kurulumunun birbiriyle mesajlaşması)
-v1.1'e bırakılmıştır; `Talky.Federation` bugün yalnızca sınır arayüzlerini tutar.
+SAML ve **kuruluşlar arası federasyon** (iki ayrı Yankı kurulumunun birbiriyle mesajlaşması)
+v1.1'e bırakılmıştır; `Yanki.Federation` bugün yalnızca sınır arayüzlerini tutar.
 
 ## 7. Medya: Windows üzerinde LiveKit
 
-- **Sinyalleşme istemciye doğrudan açılmaz.** Kestrel TLS'i sonlandırır ve `talky.exe`
+- **Sinyalleşme istemciye doğrudan açılmaz.** Kestrel TLS'i sonlandırır ve `yanki.exe`
   içindeki YARP (kütüphane olarak, ayrı bir ürün olarak değil) `/media/{node}/rtc` yolunu
   ilgili LiveKit düğümünün 7880 portuna proxy'ler. Böylece istemci tek bir isim
-  (`talky.corp`) ve tek bir sertifika görür; LiveKit düğümleri iç ağda kalır.
+  (`yanki.corp`) ve tek bir sertifika görür; LiveKit düğümleri iç ağda kalır.
 - **Oda yerleşimini backend yapar.** Redis yoktur. Bir toplantı başladığında `api` rolü,
   yükü ve yakınlığı gözeterek bir LiveKit düğümü seçer, o düğüm için bir token üretir ve
   istemciye verir. Bir oda tek bir düğümde yaşar.
 - **Gömülü TURN.** coturn yoktur. UDP 3478 ve TLS 5349; aktarım tahsisleri
   30000–40000/UDP aralığından port alır (bu aralık güvenlik duvarında açık olmalıdır).
-- **Yaşam döngüsü webhook'ları** `https://talky.corp/internal/livekit/webhook` adresine
+- **Yaşam döngüsü webhook'ları** `https://yanki.corp/internal/livekit/webhook` adresine
   gelir; backend odanın boşaldığını böyle öğrenir (`empty_timeout` 60 sn,
   `departure_timeout` 15 sn).
 - **Windows sınırlaması:** LiveKit'in kendi kapasite yönetimi Windows'ta devre dışıdır
@@ -225,19 +225,19 @@ v1.1'e bırakılmıştır; `Talky.Federation` bugün yalnızca sınır arayüzle
 Mobil bildirim FCM ve APNs'e gitmek zorundadır, yani internete çıkış gerekir. İç ağdaki
 `api` düğümlerine internet erişimi vermemek için:
 
-- DMZ'de `talky.exe --role push-relay` çalışır. Aynı binary, aynı yapılandırma biçimi.
+- DMZ'de `yanki.exe --role push-relay` çalışır. Aynı binary, aynı yapılandırma biçimi.
 - İç düğümler relay'e yalnızca **tek yönlü** ve içerik olarak minimum bilgi gönderir:
   hedef cihaz jetonu, sessiz uyandırma yükü ve rozet sayısı. Mesaj metni relay'den geçmez.
 - Relay'in SQL'e erişimi yoktur.
 
 ## 11. Yönetim paneli ve gözlemlenebilirlik
 
-- Metrikler ve sağlık, `talky.exe` içindeki yerleşik yönetim panelindedir; Prometheus ve
+- Metrikler ve sağlık, `yanki.exe` içindeki yerleşik yönetim panelindedir; Prometheus ve
   Grafana kurulmaz. Panel düğüm başına canlı sayaçları (açık WebSocket, saniyedeki mesaj,
   `jobs` gecikmesi, mesh eş durumu, SQL gecikmesi, LiveKit düğüm durumu) ve son 24 saatin
   özetini gösterir.
-- Yapılandırılmış loglar `%ProgramData%\Talky\logs` altına Serilog ile JSON olarak yazılır;
-  servis olarak çalışırken uyarı ve üzeri ayrıca Windows Olay Günlüğü'ne (kaynak `Talky`) gider. Müşterinin bir log toplayıcısı varsa
+- Yapılandırılmış loglar `%ProgramData%\Yanki\logs` altına Serilog ile JSON olarak yazılır;
+  servis olarak çalışırken uyarı ve üzeri ayrıca Windows Olay Günlüğü'ne (kaynak `Yanki`) gider. Müşterinin bir log toplayıcısı varsa
   bu dosyaları okur — zorunlu değildir.
 - `/readyz` yük dengeleyici probudur ve boşaltma sırasında bilinçli olarak 503 döner
   (bkz. `docs/operations.md`, yuvarlanan yükseltme).
@@ -269,7 +269,7 @@ Yeniden başlatmada yeniden bağlanma dalgası en çok 10 sn'ye yayılır: drain
 | gRPC mesh N² bağlantı, düğüm sayısı büyürse | Bağlantı ve CPU maliyeti | 6 düğümde 15 bağlantı; sınır aşılırsa bus'ı hub düğümlere indirgemek mümkün — doğruluk SQL'de olduğu için bu bir veri riski değil |
 | Çok ormanlı AD'de senkronizasyon karmaşıklığı | Yanlış kullanıcı eşleşmesi | `objectGUID` anahtar, `objectSid` saklanır; UPN asla anahtar değil |
 | Lucene.NET indeksinin Türkçe kalitesi | Kötü arama sonuçları | Ayrı Türkçe analiz zinciri; altın sorgu kümesiyle regresyon testi |
-| SMB payı gecikmesi veya DFS yönlendirmesi | Yavaş yükleme/indirme | `IBlobStore` soyutlaması; pay gecikmesi panelde ve dosya modülüyle gelecek `talky doctor` kontrolünde ölçülür (M4) |
+| SMB payı gecikmesi veya DFS yönlendirmesi | Yavaş yükleme/indirme | `IBlobStore` soyutlaması; pay gecikmesi panelde ve dosya modülüyle gelecek `yanki doctor` kontrolünde ölçülür (M4) |
 | Tek binary'nin dağıtım boyutu (~120 MB) | Yükseltme süresi | MSI ~49 MB; yuvarlanan yükseltmede düğüm başına birkaç dakika |
 | AMSI taramasının büyük dosyalarda maliyeti | Yükleme gecikmesi | Tarama asenkron, `jobs` üzerinden; blob temiz sonuç gelene kadar karantinada |
 | Yönetim paneli, olgun bir izleme yığınının yerini tutmaz | Operasyon körlüğü | Loglar dosya olarak dışa açık; müşteri isterse kendi toplayıcısını bağlar |

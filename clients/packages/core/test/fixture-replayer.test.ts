@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadWsFixtures, replayFixture } from '@talky/test-utils';
-import type { WsFixture } from '@talky/test-utils';
+import { loadWsFixtures, replayFixture } from '@yanki/test-utils';
+import type { WsFixture } from '@yanki/test-utils';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness } from './helpers.js';
 
@@ -55,7 +55,7 @@ const RESUME_FIXTURE = {
 let dir: string;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'talky-ws-fixtures-'));
+  dir = mkdtempSync(join(tmpdir(), 'yanki-ws-fixtures-'));
   writeFileSync(join(dir, 'handshake.json'), JSON.stringify(HANDSHAKE_FIXTURE, null, 2), 'utf8');
   writeFileSync(join(dir, 'resume.json'), JSON.stringify(RESUME_FIXTURE, null, 2), 'utf8');
   writeFileSync(join(dir, 'notes.txt'), 'ignored', 'utf8');

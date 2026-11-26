@@ -1,6 +1,6 @@
-import { talkyConfig } from '@talky/config/eslint';
+import { yankiConfig } from '@yanki/config/eslint';
 
-export default talkyConfig({
+export default yankiConfig({
   tsconfigRootDir: import.meta.dirname,
   node: true,
 });

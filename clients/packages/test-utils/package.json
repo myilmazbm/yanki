@@ -1,10 +1,11 @@
 {
-  "name": "@talky/test-utils",
+  "name": "@yanki/test-utils",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
-  "description": "Scriptable Talky mock WebSocket server, in-memory transport, fake clock and golden-fixture replayer.",
+  "description": "Scriptable Yanki mock WebSocket server, in-memory transport, fake clock and golden-fixture replayer.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -15,13 +16,13 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.14.1",
-    "@talky/protocol": "workspace:*",
+    "@yanki/protocol": "workspace:*",
     "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@talky/config": "workspace:*",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
+    "@yanki/config": "workspace:*",
     "eslint": "^9.39.5",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"

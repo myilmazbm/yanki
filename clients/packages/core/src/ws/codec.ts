@@ -1,6 +1,6 @@
 import { create, fromJsonString, toJsonString } from '@bufbuild/protobuf';
-import type { ClientFrame, ServerFrame } from '@talky/protocol/v1';
-import { ClientFrameSchema, ServerFrameSchema } from '@talky/protocol/v1';
+import type { ClientFrame, ServerFrame } from '@yanki/protocol/v1';
+import { ClientFrameSchema, ServerFrameSchema } from '@yanki/protocol/v1';
 
 /**
  * The populated half of `ClientFrame.body` — i.e. every `oneof` case except "no body set".
@@ -33,7 +33,7 @@ export function encodeClientFrame(frame: ClientFrame): string {
 /**
  * Decode one WebSocket text frame into a `ServerFrame`.
  *
- * @throws when the payload is not valid proto3 JSON for `talky.v1.ServerFrame`.
+ * @throws when the payload is not valid proto3 JSON for `yanki.v1.ServerFrame`.
  */
 export function decodeServerFrame(text: string): ServerFrame {
   return fromJsonString(ServerFrameSchema, text, READ_OPTIONS);

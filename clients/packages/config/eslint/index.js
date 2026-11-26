@@ -1,9 +1,9 @@
-// Shared ESLint 9 flat-config presets for the Talky client workspace.
+// Shared ESLint 9 flat-config presets for the Yanki client workspace.
 //
 // Usage from a package (`packages/<name>/eslint.config.js`):
 //
-//   import { talkyConfig } from '@talky/config/eslint';
-//   export default talkyConfig({ tsconfigRootDir: import.meta.dirname, platformAgnostic: true });
+//   import { yankiConfig } from '@yanki/config/eslint';
+//   export default yankiConfig({ tsconfigRootDir: import.meta.dirname, platformAgnostic: true });
 
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
@@ -21,7 +21,7 @@ export const ignores = [
 ];
 
 /**
- * Packages that `@talky/core` must never import. `@talky/core` runs unchanged on the React web
+ * Packages that `@yanki/core` must never import. `@yanki/core` runs unchanged on the React web
  * app, the Tauri desktop shell and React Native, so anything platform-specific has to arrive
  * through the injected `Platform` / `TimerHost` / `WebSocketFactory` seams instead.
  */
@@ -42,7 +42,7 @@ export const forbiddenCoreImports = [
   },
 ];
 
-/** Browser/DOM globals `@talky/core` must not reach for. */
+/** Browser/DOM globals `@yanki/core` must not reach for. */
 export const forbiddenCoreGlobals = [
   { name: 'window', message: 'Use the injected Platform/TimerHost seam instead of `window`.' },
   { name: 'document', message: 'packages/core never touches the DOM.' },
@@ -58,12 +58,12 @@ export const forbiddenCoreGlobals = [
  *
  * @param {object} options
  * @param {string} options.tsconfigRootDir Absolute path of the package root (`import.meta.dirname`).
- * @param {boolean} [options.platformAgnostic] Apply the `@talky/core` boundary rules to `src/**`.
+ * @param {boolean} [options.platformAgnostic] Apply the `@yanki/core` boundary rules to `src/**`.
  * @param {boolean} [options.node] Allow Node globals (tooling, mock server, tests).
  * @param {string[]} [options.extraIgnores] Additional ignore globs.
  * @returns {import('typescript-eslint').ConfigArray}
  */
-export function talkyConfig({
+export function yankiConfig({
   tsconfigRootDir,
   platformAgnostic = false,
   node = false,
@@ -135,4 +135,4 @@ export function talkyConfig({
   );
 }
 
-export default talkyConfig;
+export default yankiConfig;

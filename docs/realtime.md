@@ -1,36 +1,36 @@
-# Talky.Realtime — WebSocket çekirdeği (M0)
+# Yanki.Realtime — WebSocket çekirdeği (M0)
 
-`Talky.Realtime`, `talky.exe`'nin gerçek zamanlı ön kapısıdır: bir düğümde 10–15 bin WebSocket
+`Yanki.Realtime`, `yanki.exe`'nin gerçek zamanlı ön kapısıdır: bir düğümde 10–15 bin WebSocket
 bağlantısını taşır, `docs/protocol.md`'deki v1 el sıkışmasını uygular, geri basınç uygular ve
 dolamalı (rolling) yükseltmede bağlantıları düzgünce boşaltır.
 
-Tel formatı ve çerçeve anlamları **`docs/protocol.md`** ile `api/proto/talky/v1/frames.proto`
+Tel formatı ve çerçeve anlamları **`docs/protocol.md`** ile `api/proto/yanki/v1/frames.proto`
 tarafından tanımlanır; burada yalnızca sunucu tarafı iç işleyiş, ayar düğmeleri ve ölçümler yer alır.
 
 ## Ana hattı bağlama
 
 ```csharp
-builder.Services.AddTalkyRealtime(builder.Configuration);   // Talky:Realtime bölümünü bağlar
+builder.Services.AddYankiRealtime(builder.Configuration);   // Yanki:Realtime bölümünü bağlar
 
 var app = builder.Build();
 app.UseWebSockets();          // ZORUNLU ve endpoint middleware'inden önce olmalı
-app.MapTalkyRealtime();       // Talky:Realtime:Path üzerine haritalar, varsayılan /ws
+app.MapYankiRealtime();       // Yanki:Realtime:Path üzerine haritalar, varsayılan /ws
 ```
 
-- `AddTalkyRealtime(IServiceCollection, IConfiguration)` — seçenekleri bağlar ve
+- `AddYankiRealtime(IServiceCollection, IConfiguration)` — seçenekleri bağlar ve
   `ValidateDataAnnotations().ValidateOnStart()` ile açılışta doğrular. Test ve sabitleme için
-  `AddTalkyRealtime(services, configuration, Action<RealtimeOptions>)` aşırı yüklemesi vardır.
-- `MapTalkyRealtime(IEndpointRouteBuilder)` — `IEndpointConventionBuilder` döndürür, böylece
+  `AddYankiRealtime(services, configuration, Action<RealtimeOptions>)` aşırı yüklemesi vardır.
+- `MapYankiRealtime(IEndpointRouteBuilder)` — `IEndpointConventionBuilder` döndürür, böylece
   `.AllowAnonymous()`, `.RequireHost(...)` gibi kurallar zincirlenebilir. Endpoint adı
-  `TalkyRealtime`.
+  `YankiRealtime`.
 - `UseWebSockets()` çağrılmazsa her istek 400 ile yanıtlanır. WebSocket yükseltmesi olmayan her
   istek 400 alır ve yalnızca `Debug` düzeyinde loglanır (olay 1016).
 - Kimlik doğrulama HTTP değil **`Hello` çerçevesi** üzerinden yapılır. Ana hatta genel bir
   authorization fallback politikası varsa endpoint'te `.AllowAnonymous()` çağırın.
 - Gerçek bir `ISessionAuthenticator` kayıtlı değilse ve geliştirme jetonları kapalıysa modül
   **kapalı-güvenli** (fail-closed) bir doğrulayıcı kaydeder: düğüm açılır, açılışta tek bir uyarı
-  (olay 1017) loglanır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 ile yanıtlanır. Talky.Identity
-  (M1) kendi doğrulayıcısını düz `AddSingleton` ile kaydeder; `AddTalkyRealtime`'dan önce kaydederse
+  (olay 1017) loglanır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 ile yanıtlanır. Yanki.Identity
+  (M1) kendi doğrulayıcısını düz `AddSingleton` ile kaydeder; `AddYankiRealtime`'dan önce kaydederse
   `TryAdd` hiçbir şey yapmaz, sonra kaydederse son kayıt olarak o çözülür — sıra fark etmez.
 
 Modülün ana hattan beklediği kayıtlar: `INodeInfo`, `IDrainCoordinator` ve (M1'den itibaren)
@@ -113,7 +113,7 @@ ve onu boşaltan tek bir yazıcı döngüsü vardır.
 - `Enqueue(frame, ephemeral: true)` — yazarken/çevrimiçi gibi geciktiğinde değerini yitiren
   çerçeveler içindir. Kuyruk **%75** doluluğa ulaştığında bunlar önce düşürülür, böylece kalıcı
   çerçeveler için yer kalır.
-- Düşen her çerçeve `talky.realtime.frames{direction="dropped"}` ile sayılır ve taşma bir uyarı
+- Düşen her çerçeve `yanki.realtime.frames{direction="dropped"}` ile sayılır ve taşma bir uyarı
   logu üretir.
 
 `Channel` `BoundedChannelFullMode.Wait` ile kurulur; amaç beklemek değil, `TryWrite`'ın taşmayı
@@ -145,7 +145,7 @@ bu yüzden tekrar tekrar çağrılması güvenlidir.
 > bağlantısı zaten canlıdır; yeniden bağlanmak onu tahliye eder ve iki cihaz birbirini sonsuza
 > kadar atar. Bunu “başka bir cihazda oturum açıldı” olarak gösterin.
 
-## Ayar düğmeleri (`Talky:Realtime`)
+## Ayar düğmeleri (`Yanki:Realtime`)
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
@@ -154,7 +154,7 @@ bu yüzden tekrar tekrar çağrılması güvenlidir.
 | `HelloTimeoutMs` | `5000` | `Hello` için son tarih. Süpürme aralığını da belirler (`min(bu, 5 sn)`). |
 | `MaxFrameBytes` | `65536` | Kabul edilen en büyük gelen çerçeve; aşılırsa 1009. |
 | `OutboundQueueCapacity` | `256` | Bağlantı başına giden kuyruk. %75'i geçici çerçeve eşiğidir. |
-| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır; `Development` ortamı dışında ana hat (`talky.exe`) bunu açılışta reddeder, `Talky:Server:AllowInsecureHttp=true` olan laboratuvar düğümleri hariç. Kapalıyken ve gerçek doğrulayıcı yokken her `Hello` reddedilir. |
+| `AllowDevTokens` | `false` | `dev:<kullanıcı>` jetonlarını kabul eden geliştirme kimlik doğrulayıcısını kaydeder. **Üretimde asla açmayın.** Açıkken açılışta uyarı loglanır; `Development` ortamı dışında ana hat (`yanki.exe`) bunu açılışta reddeder, `Yanki:Server:AllowInsecureHttp=true` olan laboratuvar düğümleri hariç. Kapalıyken ve gerçek doğrulayıcı yokken her `Hello` reddedilir. |
 | `MaxConnectionsPerUser` | `16` | Kullanıcı başına eşzamanlı bağlantı tavanı. |
 
 Değerler DataAnnotations ile sınırlıdır ve `ValidateOnStart` sayesinde hatalı bir yapılandırma
@@ -170,14 +170,14 @@ aynı kullanıcıdır — çok cihazlı davranış ve bağlantı bütçesi verit
 
 ## Ölçümler ve loglar
 
-`Meter("Talky.Realtime")`:
+`Meter("Yanki.Realtime")`:
 
 | Enstrüman | Tür | Etiketler |
 |---|---|---|
-| `talky.realtime.connections` | UpDownCounter | — |
-| `talky.realtime.frames` | Counter | `direction` = `in` \| `out` \| `dropped`, `type` = çerçeve gövdesi |
-| `talky.realtime.errors` | Counter | `code` = `ErrorCode` |
-| `talky.realtime.handshake_duration` | Histogram (ms) | — |
+| `yanki.realtime.connections` | UpDownCounter | — |
+| `yanki.realtime.frames` | Counter | `direction` = `in` \| `out` \| `dropped`, `type` = çerçeve gövdesi |
+| `yanki.realtime.errors` | Counter | `code` = `ErrorCode` |
+| `yanki.realtime.handshake_duration` | Histogram (ms) | — |
 
 Loglar `[LoggerMessage]` ile üretilir, İngilizcedir, olay id'leri 1000–1017 aralığındadır ve
 **hiçbir zaman jeton ya da kullanıcı içeriği taşımaz** (kimliği doğrulanamayan bağlantıda bile
@@ -186,7 +186,7 @@ yalnızca “token was rejected” yazılır).
 ## Altın fixture'lar
 
 `api/fixtures/ws/*.json` biçimi `docs/protocol.md`'de tanımlıdır. Sunucu tarafı sözleşme testleri
-(`Talky.ContractTests`) `c2s` çerçevelerini birebir gönderir, `s2c` çerçevelerini **yapısal olarak**
+(`Yanki.ContractTests`) `c2s` çerçevelerini birebir gönderir, `s2c` çerçevelerini **yapısal olarak**
 doğrular: beklentide listelenen alanlar eşleşmeli, gerçek çerçeve fazladan alan taşıyabilir (ileri
 uyumluluk) ve `"…"` yalnızca varlık kontrolüdür.
 
@@ -202,14 +202,14 @@ ikisini de yok sayabilir:
 M0 akışları: `handshake_ok`, `ping_pong`, `bad_version`, `unauthenticated`, `hello_required`,
 `already_authenticated`, `bye`, `reconnect_on_drain`.
 
-## Yük aracı: `talky-wsload`
+## Yük aracı: `yanki-wsload`
 
 ```bash
 cd server
-dotnet build tools/Talky.WsLoad/Talky.WsLoad.csproj -c Release
+dotnet build tools/Yanki.WsLoad/Yanki.WsLoad.csproj -c Release
 
-dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll \
-  --url wss://talky.local/ws \
+dotnet tools/Yanki.WsLoad/bin/Release/net10.0/yanki-wsload.dll \
+  --url wss://yanki.local/ws \
   --connections 1000 --ramp 100/s --duration 30s \
   --token "dev:u{i}" --ping-interval 1s [--insecure] [--target-pid <sunucu-pid>]
 ```
@@ -226,15 +226,15 @@ dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll \
 
 ### Ölçülen değerler (M0, geliştirme makinesi, Windows 11, loopback)
 
-Bu sayılar depoya **commit'lenmemiş** bir tezgâh ana hattı (`RealtimeBench`: yalnız `Talky.Realtime` +
+Bu sayılar depoya **commit'lenmemiş** bir tezgâh ana hattı (`RealtimeBench`: yalnız `Yanki.Realtime` +
 Kestrel, Release) karşısında ölçüldü; depodan birebir yeniden üretilemez. Yeniden ölçmek için
-`talky.exe`'yi `Development` ortamında (geliştirme jetonları açık) başlatıp `talky-wsload`'ı ona
+`yanki.exe`'yi `Development` ortamında (geliştirme jetonları açık) başlatıp `yanki-wsload`'ı ona
 yöneltin, örneğin:
 
 ```bash
 cd server
-dotnet run --project src/Talky.Server -c Release -- serve --environment Development --urls https://localhost:18444
-dotnet tools/Talky.WsLoad/bin/Release/net10.0/talky-wsload.dll --url wss://localhost:18444/ws   --connections 1000 --ramp 100/s --duration 30s --token "dev:u{i}" --insecure --target-pid <talky-pid>
+dotnet run --project src/Yanki.Server -c Release -- serve --environment Development --urls https://localhost:18444
+dotnet tools/Yanki.WsLoad/bin/Release/net10.0/yanki-wsload.dll --url wss://localhost:18444/ws   --connections 1000 --ramp 100/s --duration 30s --token "dev:u{i}" --insecure --target-pid <yanki-pid>
 ```
 
 Tezgâh sonuçları:
@@ -261,7 +261,7 @@ M0 yalnızca oturum katmanıdır; taşınan tek uygulama trafiği `Ping`/`Pong`'
   kapatılamıyorsa bugünkü `ResyncRequired` yolu kullanılacak.
 - **Geçici çerçeveler.** `Enqueue(..., ephemeral: true)` yazıyor/çevrimiçi göstergeleri için
   kullanılacak; politika (%75 eşiği) bugünden yerinde.
-- **Küme.** Başka bir düğümdeki alıcılar `talky.cluster.v1` mesh'i üzerinden bulunacak; doğruluk
+- **Küme.** Başka bir düğümdeki alıcılar `yanki.cluster.v1` mesh'i üzerinden bulunacak; doğruluk
   yine bus'a değil SQL'deki `seq`'e ve istemci resync'ine dayanacak.
 - **Hız sınırlama.** `Error{RATE_LIMITED, retryAfterMs}` bugün üretilmiyor; kullanıcı/bağlantı
   başına kota M2 ile gelecek.
@@ -276,12 +276,12 @@ düşürür; bağlantı açık kalır. `Welcome`'dan önce ise her Hello-dışı
 
 ```bash
 cd server
-dotnet test tests/Talky.UnitTests/Talky.UnitTests.csproj -m:1 -p:NodeReuse=false
-dotnet test tests/Talky.IntegrationTests/Talky.IntegrationTests.csproj -m:1 -p:NodeReuse=false
-dotnet test tests/Talky.ContractTests/Talky.ContractTests.csproj -m:1 -p:NodeReuse=false
+dotnet test tests/Yanki.UnitTests/Yanki.UnitTests.csproj -m:1 -p:NodeReuse=false
+dotnet test tests/Yanki.IntegrationTests/Yanki.IntegrationTests.csproj -m:1 -p:NodeReuse=false
+dotnet test tests/Yanki.ContractTests/Yanki.ContractTests.csproj -m:1 -p:NodeReuse=false
 ```
 
-Entegrasyon ve sözleşme testleri `tests/Talky.IntegrationTests/Realtime/Harness` altındaki ortak
+Entegrasyon ve sözleşme testleri `tests/Yanki.IntegrationTests/Realtime/Harness` altındaki ortak
 test ana hattını kullanır: `WebApplication.CreateBuilder` + `UseTestServer`, `INodeInfo`,
-`IDrainCoordinator` ve `ISessionAuthenticator` için test ikizleri. `Talky.Server`'a bağımlı
+`IDrainCoordinator` ve `ISessionAuthenticator` için test ikizleri. `Yanki.Server`'a bağımlı
 değildir, böylece gerçek zamanlı modül tek başına doğrulanabilir.

@@ -1,5 +1,5 @@
 /**
- * `@talky/core` — the platform-agnostic Talky client.
+ * `@yanki/core` — the platform-agnostic Yanki client.
  *
  * Everything here runs unchanged on the React web app, the Tauri desktop shell and React
  * Native: there is no DOM, no Node built-in and no UI framework anywhere in this package.
@@ -51,8 +51,8 @@ export { createFrameDeduper } from './ws/dedupe.js';
 export type { DedupeKeyable, FrameDeduper } from './ws/dedupe.js';
 
 // Errors and events
-export { isTalkyWsError, TalkyWsError } from './errors.js';
-export type { TalkyWsErrorInit, TalkyWsErrorReason } from './errors.js';
+export { isYankiWsError, YankiWsError } from './errors.js';
+export type { YankiWsErrorInit, YankiWsErrorReason } from './errors.js';
 export { createEmitter } from './events.js';
 export type { Emitter, EventMap, EventSubscriber, Listener } from './events.js';
 
