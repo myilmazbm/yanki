@@ -1,8 +1,8 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
-using Talky.Core.Data;
+using Yanki.Core.Data;
 
-namespace Talky.Data.Chat;
+namespace Yanki.Data.Chat;
 
 /// <summary>
 /// The message write hot path, as one parameterized batch and one short transaction.
@@ -55,7 +55,7 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
         BEGIN
             IF @existing_conversation <> @conversation_id
             BEGIN
-                THROW 50409, 'talky: client message id already used in another conversation', 1;
+                THROW 50409, 'yanki: client message id already used in another conversation', 1;
             END;
 
             SET @dedup = 1;
@@ -77,7 +77,7 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
                 IF @seq IS NULL
                 BEGIN
                     ROLLBACK TRANSACTION;
-                    THROW 50404, 'talky: conversation does not exist', 1;
+                    THROW 50404, 'yanki: conversation does not exist', 1;
                 END;
 
                 INSERT INTO dbo.messages
@@ -112,7 +112,7 @@ public sealed class SqlMessageAppender(SqlConnectionSource connections, TimeProv
 
                     IF @existing_conversation <> @conversation_id
                     BEGIN
-                        THROW 50409, 'talky: client message id already used in another conversation', 1;
+                        THROW 50409, 'yanki: client message id already used in another conversation', 1;
                     END;
 
                     SET @dedup = 1;

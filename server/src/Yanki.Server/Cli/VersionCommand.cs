@@ -1,10 +1,10 @@
 using System.Runtime.InteropServices;
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// <c>talky version</c> — one screen of facts that belong in every support ticket.
+/// <c>yanki version</c> — one screen of facts that belong in every support ticket.
 /// </summary>
 internal static class VersionCommand
 {
@@ -12,7 +12,7 @@ internal static class VersionCommand
     /// <returns>Always <see cref="ExitCode.Success"/>.</returns>
     public static int Run()
     {
-        Console.WriteLine($"talky {NodeInfo.ResolveVersion()}");
+        Console.WriteLine($"yanki {NodeInfo.ResolveVersion()}");
         Console.WriteLine($"  runtime   {RuntimeInformation.FrameworkDescription}");
         Console.WriteLine($"  platform  {RuntimeInformation.RuntimeIdentifier}");
         Console.WriteLine($"  os        {RuntimeInformation.OSDescription}");

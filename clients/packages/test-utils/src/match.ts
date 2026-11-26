@@ -1,4 +1,4 @@
-import type { ClientFrameJson } from '@talky/protocol/v1';
+import type { ClientFrameJson } from '@yanki/protocol/v1';
 import { clientFrameCase } from './frames.js';
 import type { FrameMatcher } from './types.js';
 

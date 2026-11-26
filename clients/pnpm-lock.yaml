@@ -8,7 +8,7 @@ importers:
 
   .:
     devDependencies:
-      '@talky/config':
+      '@yanki/config':
         specifier: workspace:*
         version: link:packages/config
       '@types/node':
@@ -65,14 +65,14 @@ importers:
       '@bufbuild/protobuf':
         specifier: ^2.14.1
         version: 2.14.1
-      '@talky/protocol':
+      '@yanki/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
-      '@talky/config':
+      '@yanki/config':
         specifier: workspace:*
         version: link:../config
-      '@talky/test-utils':
+      '@yanki/test-utils':
         specifier: workspace:*
         version: link:../test-utils
       '@types/node':
@@ -109,14 +109,14 @@ importers:
       '@bufbuild/protobuf':
         specifier: ^2.14.1
         version: 2.14.1
-      '@talky/protocol':
+      '@yanki/protocol':
         specifier: workspace:*
         version: link:../protocol
       ws:
         specifier: ^8.21.3
         version: 8.21.3
     devDependencies:
-      '@talky/config':
+      '@yanki/config':
         specifier: workspace:*
         version: link:../config
       '@types/node':

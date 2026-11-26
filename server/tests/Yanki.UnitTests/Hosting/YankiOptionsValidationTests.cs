@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
+using Yanki.Core.Configuration;
 
-namespace Talky.UnitTests.Hosting;
+namespace Yanki.UnitTests.Hosting;
 
 public sealed class NodeOptionsValidationTests
 {
@@ -20,7 +20,7 @@ public sealed class NodeOptionsValidationTests
         var result = Validate(new NodeOptions { Roles = "bogus" });
 
         Assert.True(result.Failed);
-        Assert.Contains("Talky:Node:Roles", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("Yanki:Node:Roles", result.FailureMessage, StringComparison.Ordinal);
         Assert.Contains("push-relay", result.FailureMessage, StringComparison.Ordinal);
     }
 
@@ -40,7 +40,7 @@ public sealed class NodeOptionsValidationTests
         var result = Validate(new NodeOptions { Id = id });
 
         Assert.True(result.Failed);
-        Assert.Contains("Talky:Node:Id", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("Yanki:Node:Id", result.FailureMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public sealed class ServerOptionsValidationTests
         var result = Validate(new ServerOptions { Urls = [] });
 
         Assert.True(result.Failed);
-        Assert.Contains("Talky:Server:Urls", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("Yanki:Server:Urls", result.FailureMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -119,8 +119,8 @@ public sealed class ServerOptionsValidationTests
     [Fact]
     public void Public_url_must_be_absolute()
     {
-        Assert.True(Validate(new ServerOptions { PublicUrl = "/talky" }).Failed);
-        Assert.True(Validate(new ServerOptions { PublicUrl = "https://talky.corp.local" }).Succeeded);
+        Assert.True(Validate(new ServerOptions { PublicUrl = "/yanki" }).Failed);
+        Assert.True(Validate(new ServerOptions { PublicUrl = "https://yanki.corp.local" }).Succeeded);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class ServerOptionsValidationTests
             Certificate = new CertificateOptions
             {
                 Source = CertificateSource.Store,
-                Subject = "talky.corp.local",
+                Subject = "yanki.corp.local",
                 StoreLocation = "Machine",
             },
         });
@@ -231,8 +231,8 @@ public sealed class LoggingOptionsValidationTests
 
     [Theory]
     [InlineData("logs", false)]
-    [InlineData(@"%TALKY_TEST_UNDEFINED_VARIABLE%\logs", false)]
-    [InlineData(@"C:\Talky\logs", true)]
+    [InlineData(@"%YANKI_TEST_UNDEFINED_VARIABLE%\logs", false)]
+    [InlineData(@"C:\Yanki\logs", true)]
     public void Directory_must_be_fully_qualified_after_expansion(string directory, bool valid)
     {
         var result = Validate(new LoggingOptions { Directory = directory });
@@ -240,7 +240,7 @@ public sealed class LoggingOptionsValidationTests
         Assert.Equal(valid, result.Succeeded);
         if (!valid)
         {
-            Assert.Contains("Talky:Logging:Directory", result.FailureMessage, StringComparison.Ordinal);
+            Assert.Contains("Yanki:Logging:Directory", result.FailureMessage, StringComparison.Ordinal);
         }
     }
 

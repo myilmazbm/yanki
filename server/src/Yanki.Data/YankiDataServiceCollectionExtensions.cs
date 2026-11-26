@@ -4,30 +4,30 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
-using Talky.Core.Data;
-using Talky.Core.Diagnostics;
-using Talky.Data.Chat;
-using Talky.Data.Cluster;
-using Talky.Data.Diagnostics;
-using Talky.Data.Jobs;
+using Yanki.Core.Data;
+using Yanki.Core.Diagnostics;
+using Yanki.Data.Chat;
+using Yanki.Data.Cluster;
+using Yanki.Data.Diagnostics;
+using Yanki.Data.Jobs;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
 /// Composition root of the data layer.
 /// </summary>
-public static class TalkyDataServiceCollectionExtensions
+public static class YankiDataServiceCollectionExtensions
 {
     /// <summary>Name of the readiness health check registered for SQL Server.</summary>
     public const string HealthCheckName = "sql";
 
     /// <summary>
-    /// Registers <see cref="TalkyDbContext"/> (pooled, no-tracking, retry on transient failures) and
+    /// Registers <see cref="YankiDbContext"/> (pooled, no-tracking, retry on transient failures) and
     /// every data-layer service: the migration runner, the message appender and reader, the job
     /// queue, the cluster node registry, the <c>sql</c> readiness health check and the <c>sql</c>
-    /// doctor check. Binds and validates <c>Talky:Database</c>.
+    /// doctor check. Binds and validates <c>Yanki:Database</c>.
     /// </summary>
-    public static IServiceCollection AddTalkyData(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddYankiData(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -44,7 +44,7 @@ public static class TalkyDataServiceCollectionExtensions
 
         // Pooled: a message send costs one context rent instead of one context construction, which
         // matters because the model is large and the requests are tiny.
-        services.AddDbContextPool<TalkyDbContext>((serviceProvider, builder) =>
+        services.AddDbContextPool<YankiDbContext>((serviceProvider, builder) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 
@@ -58,7 +58,7 @@ public static class TalkyDataServiceCollectionExtensions
                 sqlServer.CommandTimeout(options.CommandTimeoutSeconds);
             });
 
-            // Nothing in Talky reads an entity in order to mutate it through the change tracker;
+            // Nothing in Yanki reads an entity in order to mutate it through the change tracker;
             // writes go through explicit SQL or through short-lived tracked units of work that opt
             // back in with AsTracking().
             builder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
@@ -77,7 +77,7 @@ public static class TalkyDataServiceCollectionExtensions
         services.AddHealthChecks()
             .AddCheck<SqlHealthCheck>(HealthCheckName, HealthStatus.Unhealthy, ["ready"]);
 
-        // No-op unless Talky:Database:MigrateOnStartup is true; must be registered before the web
+        // No-op unless Yanki:Database:MigrateOnStartup is true; must be registered before the web
         // host appends Kestrel so the schema is current before the node starts listening.
         services.AddHostedService<MigrateOnStartupHostedService>();
 

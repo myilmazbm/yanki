@@ -21,7 +21,7 @@
     image is mirrored internally). Do not run it against production Hyper-V yet.
 
 .PARAMETER Name
-    VM name. Default talky-media-01.
+    VM name. Default yanki-media-01.
 
 .PARAMETER SwitchName
     Hyper-V virtual switch the VM attaches to. Must be an external switch on the media VLAN.
@@ -59,7 +59,7 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $Name = 'talky-media-01',
+    [string] $Name = 'yanki-media-01',
     [Parameter(Mandatory)][string] $SwitchName,
     [ValidateRange(2, 64)][int] $ProcessorCount = 16,
     [ValidateRange(4, 512)][int] $MemoryGB = 32,

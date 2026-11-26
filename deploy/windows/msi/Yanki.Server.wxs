@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Talky Server MSI (WiX v6, x64, per-machine).
+  Yanki Server MSI (WiX v6, x64, per-machine).
 
   Required preprocessor variables (passed by Build-Msi.ps1):
     PublishDir      absolute path of the `dotnet publish` output that is harvested
-    ExeName         file name of the single-file host (talky.exe)
+    ExeName         file name of the single-file host (yanki.exe)
     ProductVersion  MSI ProductVersion, e.g. 0.1.0
 
   Public properties an operator may override on the msiexec command line:
-    INSTALLFOLDER    install directory      (default %ProgramFiles%\Talky)
-    DATADIR          data directory         (default %ProgramData%\Talky)
+    INSTALLFOLDER    install directory      (default %ProgramFiles%\Yanki)
+    DATADIR          data directory         (default %ProgramData%\Yanki)
     SERVICE_ACCOUNT  service logon account   (default LocalSystem)
     SERVICE_PASSWORD service logon password  (empty; ALWAYS empty for gMSA; never stored)
 
-  SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky: an upgrade or a
+  SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Yanki: an upgrade or a
   reinstall after an uninstall that does not pass them keeps the values of the previous
   install; a value passed on the command line of such an install wins and becomes the new
   remembered value. Running msiexec /i with the MSI of the version that is already
@@ -21,21 +21,21 @@
   remembered values (measured on the lab VM, 2026-11-25).
 
   The MSI lays down the files, registers the service STOPPED and creates the Windows
-  Event Log source "Talky". It writes no appsettings.json and opens no firewall port;
-  the node is configured afterwards with deploy\windows\Install-Talky.ps1 -AclOnly and
-  -ConfigOnly, `talky migrate`, Set-TalkyFirewall.ps1 and Start-Service Talky
+  Event Log source "Yanki". It writes no appsettings.json and opens no firewall port;
+  the node is configured afterwards with deploy\windows\Install-Yanki.ps1 -AclOnly and
+  -ConfigOnly, `yanki migrate`, Set-YankiFirewall.ps1 and Start-Service Yanki
   (docs/operations.md).
 
   gMSA note: a group managed service account is passwordless. Install with
-    msiexec /i Talky.Server-<v>.msi SERVICE_ACCOUNT="CORP\talky$" /qn
+    msiexec /i Yanki.Server-<v>.msi SERVICE_ACCOUNT="CORP\yanki$" /qn
   and leave SERVICE_PASSWORD unset. Before the service is started the account needs
   "Log on as a service" and the ACLs applied by
-  deploy\windows\Install-Talky.ps1 -AclOnly.
+  deploy\windows\Install-Yanki.ps1 -AclOnly.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
-  <Package Name="Talky Server"
-           Manufacturer="Talky"
+  <Package Name="Yanki Server"
+           Manufacturer="Yanki"
            Version="$(var.ProductVersion)"
            UpgradeCode="21199CEE-DB76-4FBA-A333-D90BE768217D"
            Scope="perMachine"
@@ -53,12 +53,12 @@
     <MediaTemplate EmbedCab="yes" CompressionLevel="mszip" />
 
     <!-- No launch condition: VersionNT cannot express the Windows Server 2022 (build 20348)
-         floor. deploy\windows\Test-TalkyPrerequisites.ps1 checks the build. -->
+         floor. deploy\windows\Test-YankiPrerequisites.ps1 checks the build. -->
 
     <!-- ARP metadata -->
-    <Property Id="ARPHELPLINK" Value="https://talky.corp/docs" />
-    <Property Id="ARPURLINFOABOUT" Value="https://talky.corp" />
-    <Property Id="ARPCONTACT" Value="Talky Operations" />
+    <Property Id="ARPHELPLINK" Value="https://yanki.corp/docs" />
+    <Property Id="ARPURLINFOABOUT" Value="https://yanki.corp" />
+    <Property Id="ARPCONTACT" Value="Yanki Operations" />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="MSIFASTINSTALL" Value="7" />
@@ -70,22 +70,22 @@
     <!-- Remembered properties: SERVICE_ACCOUNT and DATADIR.
          A major upgrade deletes the old service and creates the new one from the properties of
          the upgrading session, so the values of the first install are written to
-         HKLM\SOFTWARE\Talky (component RememberedProperties) and read back by AppSearch on
+         HKLM\SOFTWARE\Yanki (component RememberedProperties) and read back by AppSearch on
          every later install. Precedence, highest first:
            1. a value given on the msiexec command line (saved to CMDLINE_* before AppSearch,
               which would otherwise overwrite it, and restored after it);
            2. the remembered registry value;
            3. the default (LocalSystem; DATADIR falls back to the Directory table default,
-              %ProgramData%\Talky).
+              %ProgramData%\Yanki).
          The Save/Restore actions run in both sequences without firstSequence: when the UI
          sequence ran, the execute sequence receives the final (secure) value, saves it,
          lets AppSearch overwrite it and restores it, which leaves it unchanged. -->
     <Property Id="SERVICE_ACCOUNT" Secure="yes">
-      <RegistrySearch Id="RememberedServiceAccount" Root="HKLM" Key="SOFTWARE\Talky"
+      <RegistrySearch Id="RememberedServiceAccount" Root="HKLM" Key="SOFTWARE\Yanki"
                       Name="ServiceAccount" Type="raw" Bitness="always64" />
     </Property>
     <Property Id="DATADIR" Secure="yes">
-      <RegistrySearch Id="RememberedDataDir" Root="HKLM" Key="SOFTWARE\Talky"
+      <RegistrySearch Id="RememberedDataDir" Root="HKLM" Key="SOFTWARE\Yanki"
                       Name="DataDir" Type="raw" Bitness="always64" />
     </Property>
 
@@ -96,14 +96,14 @@
     <CustomAction Id="RestoreCmdLineDataDir" Property="DATADIR" Value="[CMDLINE_DATADIR]" />
 
     <!-- Recovery policy: restart after 5 s, 10 s, 30 s; the failure count resets daily.
-         Identical to what Install-Talky.ps1 configures on the script path. Not authored with
+         Identical to what Install-Yanki.ps1 configures on the script path. Not authored with
          ServiceConfigFailureActions: on Windows Server 2025 the MsiServiceConfigFailureActions
          table fails with error 1939 (access denied, 5) for restart actions. A deferred,
          non-impersonated type 34 action runs the system sc.exe as LocalSystem instead;
          Return="check" fails (and rolls back) the install if sc.exe exits non-zero. -->
     <CustomAction Id="ConfigureServiceRecovery"
                   Directory="System64Folder"
-                  ExeCommand="&quot;[System64Folder]sc.exe&quot; failure Talky reset= 86400 actions= restart/5000/restart/10000/restart/30000"
+                  ExeCommand="&quot;[System64Folder]sc.exe&quot; failure Yanki reset= 86400 actions= restart/5000/restart/10000/restart/30000"
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
@@ -128,23 +128,23 @@
       <Custom Action="ConfigureServiceRecovery" After="InstallServices" Condition="NOT REMOVE~=&quot;ALL&quot;" />
     </InstallExecuteSequence>
 
-    <SummaryInformation Description="Talky Server (talky.exe) — chat, calls, meetings, files"
-                        Manufacturer="Talky" />
+    <SummaryInformation Description="Yanki Server (yanki.exe) — chat, calls, meetings, files"
+                        Manufacturer="Yanki" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Talky" />
+      <Directory Id="INSTALLFOLDER" Name="Yanki" />
     </StandardDirectory>
 
-    <!-- DATADIR is a public directory id: msiexec /i ... DATADIR="D:\TalkyData" -->
+    <!-- DATADIR is a public directory id: msiexec /i ... DATADIR="D:\YankiData" -->
     <StandardDirectory Id="CommonAppDataFolder">
-      <Directory Id="DATADIR" Name="Talky">
+      <Directory Id="DATADIR" Name="Yanki">
         <Directory Id="DATALOGSDIR" Name="logs" />
       </Directory>
     </StandardDirectory>
 
-    <Feature Id="Server" Title="Talky Server" Level="1" AllowAbsent="no">
+    <Feature Id="Server" Title="Yanki Server" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="ServerPayload" />
-      <ComponentRef Id="TalkyServiceHost" />
+      <ComponentRef Id="YankiServiceHost" />
       <ComponentGroupRef Id="DataDirectories" />
       <ComponentRef Id="RememberedProperties" />
     </Feature>
@@ -156,7 +156,7 @@
          replaces the remembered one. -->
     <Component Id="RememberedProperties" Directory="INSTALLFOLDER" Guid="5B0E2C55-3F4B-4C47-9F0B-6E1B7A2D9C31"
                Permanent="yes" Bitness="always64">
-      <RegistryKey Root="HKLM" Key="SOFTWARE\Talky">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Yanki">
         <RegistryValue Name="ServiceAccount" Type="string" Value="[SERVICE_ACCOUNT]" KeyPath="yes" />
         <RegistryValue Name="DataDir" Type="string" Value="[DATADIR]" />
       </RegistryKey>
@@ -179,13 +179,13 @@
       </Files>
     </ComponentGroup>
 
-    <Component Id="TalkyServiceHost" Directory="INSTALLFOLDER" Guid="F30A51B3-FD8C-4EC1-81ED-57E33129705C">
-      <File Id="TalkyExe" Name="$(var.ExeName)" Source="$(var.PublishDir)\$(var.ExeName)" KeyPath="yes" />
+    <Component Id="YankiServiceHost" Directory="INSTALLFOLDER" Guid="F30A51B3-FD8C-4EC1-81ED-57E33129705C">
+      <File Id="YankiExe" Name="$(var.ExeName)" Source="$(var.PublishDir)\$(var.ExeName)" KeyPath="yes" />
 
-      <ServiceInstall Id="TalkyServiceInstall"
-                      Name="Talky"
-                      DisplayName="Talky"
-                      Description="Talky server node (chat, calls, meetings, files)."
+      <ServiceInstall Id="YankiServiceInstall"
+                      Name="Yanki"
+                      DisplayName="Yanki"
+                      Description="Yanki server node (chat, calls, meetings, files)."
                       Type="ownProcess"
                       Start="auto"
                       ErrorControl="normal"
@@ -199,17 +199,17 @@
       </ServiceInstall>
 
       <!-- Never started by the MSI: the node has no configuration until
-           Install-Talky.ps1 -ConfigOnly has written <DATADIR>\appsettings.json. -->
-      <ServiceControl Id="TalkyServiceControl"
-                      Name="Talky"
+           Install-Yanki.ps1 -ConfigOnly has written <DATADIR>\appsettings.json. -->
+      <ServiceControl Id="YankiServiceControl"
+                      Name="Yanki"
                       Stop="both"
                       Remove="uninstall"
                       Wait="yes" />
 
-      <!-- Windows Event Log source "Talky" in the Application log. The host does not create
+      <!-- Windows Event Log source "Yanki" in the Application log. The host does not create
            it at run time (a gMSA cannot), so the installer does, with the message file that
            .NET's EventLog.CreateEventSource registers. -->
-      <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Talky"
+      <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Yanki"
                    ForceDeleteOnUninstall="yes">
         <RegistryValue Name="EventMessageFile" Type="expandable"
                        Value="%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll" />

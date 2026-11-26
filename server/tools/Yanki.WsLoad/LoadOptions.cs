@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Talky.WsLoad;
+namespace Yanki.WsLoad;
 
 /// <summary>Command line configuration for the realtime load generator.</summary>
 internal sealed class LoadOptions
@@ -37,10 +37,10 @@ internal sealed class LoadOptions
     public bool SharesOneUser => !TokenTemplate.Contains(IndexPlaceholder, StringComparison.Ordinal);
 
     public const string Usage = """
-        talky-wsload - Talky realtime WebSocket load generator (v0)
+        yanki-wsload - Yanki realtime WebSocket load generator (v0)
 
         Usage:
-          talky-wsload --url wss://host/ws [options]
+          yanki-wsload --url wss://host/ws [options]
 
         Options:
           --url <uri>            Realtime endpoint, ws:// or wss://            (required)

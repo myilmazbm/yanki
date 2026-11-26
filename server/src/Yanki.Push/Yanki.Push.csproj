@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Talky.Core\Talky.Core.csproj" />
-    <ProjectReference Include="..\Talky.Data\Talky.Data.csproj" />
+    <ProjectReference Include="..\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\Yanki.Data\Yanki.Data.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

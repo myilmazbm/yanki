@@ -18,14 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Talky.Core\Talky.Core.csproj" />
-    <ProjectReference Include="..\..\src\Talky.Realtime\Talky.Realtime.csproj" />
-    <ProjectReference Include="..\..\src\Talky.Protocol\Talky.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Realtime\Yanki.Realtime.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Protocol\Yanki.Protocol.csproj" />
   </ItemGroup>
 
   <!-- One realtime test host, shared with the integration tests. -->
   <ItemGroup>
-    <Compile Include="..\Talky.IntegrationTests\Realtime\Harness\*.cs" LinkBase="Realtime\Harness" />
+    <Compile Include="..\Yanki.IntegrationTests\Realtime\Harness\*.cs" LinkBase="Realtime\Harness" />
   </ItemGroup>
 
 </Project>

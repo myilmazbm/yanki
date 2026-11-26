@@ -4,14 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Talky.Data;
+using Yanki.Data;
 
 #nullable disable
 
-namespace Talky.Data.Migrations
+namespace Yanki.Data.Migrations
 {
-    [DbContext(typeof(TalkyDbContext))]
-    partial class TalkyDbContextModelSnapshot : ModelSnapshot
+    [DbContext(typeof(YankiDbContext))]
+    partial class YankiDbContextModelSnapshot : ModelSnapshot
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -22,7 +22,7 @@ namespace Talky.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Talky.Core.Domain.Attachment", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -119,7 +119,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.AuditLog", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -188,7 +188,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Call", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Call", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -262,7 +262,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("calls");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.CallParticipant", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.CallParticipant", b =>
                 {
                     b.Property<Guid>("CallId")
                         .HasColumnType("uniqueidentifier")
@@ -305,7 +305,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("call_participants");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.ClientError", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.ClientError", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -376,7 +376,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.ClusterNode", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.ClusterNode", b =>
                 {
                     b.Property<string>("NodeId")
                         .HasMaxLength(128)
@@ -423,7 +423,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("cluster_nodes");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Conversation", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Conversation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -504,7 +504,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.ConversationMember", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.ConversationMember", b =>
                 {
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uniqueidentifier")
@@ -556,7 +556,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Device", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Device", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -615,7 +615,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("devices");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.DmPair", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.DmPair", b =>
                 {
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uniqueidentifier")
@@ -646,7 +646,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.FederationPeer", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.FederationPeer", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -703,7 +703,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("federation_peers");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.IdentitySource", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.IdentitySource", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -758,7 +758,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Job", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Job", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -852,7 +852,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Message", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Message", b =>
                 {
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uniqueidentifier")
@@ -929,7 +929,7 @@ namespace Talky.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Metric1m", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Metric1m", b =>
                 {
                     b.Property<DateTime>("Bucket")
                         .HasColumnType("datetime2(3)")
@@ -984,7 +984,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("metrics_1m", (string)null);
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Reaction", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Reaction", b =>
                 {
                     b.Property<Guid>("MessageId")
                         .HasColumnType("uniqueidentifier")
@@ -1011,7 +1011,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("reactions");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Session", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Session", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -1077,7 +1077,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("sessions");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Team", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Team", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -1141,7 +1141,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("teams");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.TeamMember", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.TeamMember", b =>
                 {
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier")
@@ -1168,7 +1168,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("team_members");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.ThreadMeta", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.ThreadMeta", b =>
                 {
                     b.Property<Guid>("RootMessageId")
                         .HasColumnType("uniqueidentifier")
@@ -1203,7 +1203,7 @@ namespace Talky.Data.Migrations
                     b.ToTable("thread_meta");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.User", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -1306,79 +1306,79 @@ namespace Talky.Data.Migrations
                     b.ToTable("users");
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Conversation", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Conversation", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.Team", null)
+                    b.HasOne("Yanki.Core.Domain.Team", null)
                         .WithMany()
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.ConversationMember", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.ConversationMember", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.Conversation", null)
+                    b.HasOne("Yanki.Core.Domain.Conversation", null)
                         .WithMany()
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Talky.Core.Domain.User", null)
+                    b.HasOne("Yanki.Core.Domain.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Device", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Device", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.User", null)
+                    b.HasOne("Yanki.Core.Domain.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.DmPair", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.DmPair", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.Conversation", null)
+                    b.HasOne("Yanki.Core.Domain.Conversation", null)
                         .WithMany()
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.Session", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.Session", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.Device", null)
+                    b.HasOne("Yanki.Core.Domain.Device", null)
                         .WithMany()
                         .HasForeignKey("DeviceId")
                         .OnDelete(DeleteBehavior.Cascade);
 
-                    b.HasOne("Talky.Core.Domain.User", null)
+                    b.HasOne("Yanki.Core.Domain.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.TeamMember", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.TeamMember", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.Team", null)
+                    b.HasOne("Yanki.Core.Domain.Team", null)
                         .WithMany()
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Talky.Core.Domain.User", null)
+                    b.HasOne("Yanki.Core.Domain.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Talky.Core.Domain.User", b =>
+            modelBuilder.Entity("Yanki.Core.Domain.User", b =>
                 {
-                    b.HasOne("Talky.Core.Domain.IdentitySource", null)
+                    b.HasOne("Yanki.Core.Domain.IdentitySource", null)
                         .WithMany()
                         .HasForeignKey("IdentitySourceId")
                         .OnDelete(DeleteBehavior.Restrict)

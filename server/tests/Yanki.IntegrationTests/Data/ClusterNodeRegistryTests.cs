@@ -1,12 +1,12 @@
-using Talky.Core.Data;
-using Talky.Core.Hosting;
+using Yanki.Core.Data;
+using Yanki.Core.Hosting;
 
-namespace Talky.IntegrationTests.Data;
+namespace Yanki.IntegrationTests.Data;
 
 /// <summary>
 /// Heartbeat upsert and liveness window of the SQL cluster registry.
 /// </summary>
-public sealed class ClusterNodeRegistryTests(TalkyDatabaseFixture fixture) : IClassFixture<TalkyDatabaseFixture>
+public sealed class ClusterNodeRegistryTests(YankiDatabaseFixture fixture) : IClassFixture<YankiDatabaseFixture>
 {
     [RequiresSqlServerFact]
     public async Task A_heartbeat_registers_the_node_and_later_heartbeats_update_it()

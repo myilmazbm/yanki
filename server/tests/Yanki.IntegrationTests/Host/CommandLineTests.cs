@@ -1,7 +1,7 @@
-using Talky.Server.Cli;
-using Talky.Server.Hosting;
+using Yanki.Server.Cli;
+using Yanki.Server.Hosting;
 
-namespace Talky.IntegrationTests.Host;
+namespace Yanki.IntegrationTests.Host;
 
 /// <summary>
 /// Covers the parts of the command line that the Windows service, the deployment scripts and the
@@ -9,7 +9,7 @@ namespace Talky.IntegrationTests.Host;
 /// </summary>
 public sealed class CommandLineTests
 {
-    static CommandLineTests() => TalkyTestEnvironment.Ensure();
+    static CommandLineTests() => YankiTestEnvironment.Ensure();
 
     [Fact]
     public void Host_settings_are_extracted_from_the_raw_command_line()
@@ -19,18 +19,18 @@ public sealed class CommandLineTests
             "serve",
             "--ENVIRONMENT=Development",
             "--role", "api",
-            "--contentRoot", @"C:\talky",
-            "--applicationName=talky",
-            "--set", "Talky:Server:DrainSeconds=60",
+            "--contentRoot", @"C:\yanki",
+            "--applicationName=yanki",
+            "--set", "Yanki:Server:DrainSeconds=60",
         ];
 
         Assert.Equal(
-            ["--ENVIRONMENT=Development", "--contentRoot", @"C:\talky", "--applicationName=talky"],
+            ["--ENVIRONMENT=Development", "--contentRoot", @"C:\yanki", "--applicationName=yanki"],
             HostStartupArguments.ExtractHostSettings(args));
     }
 
     [Fact]
-    public void Talky_options_are_not_mistaken_for_host_settings()
+    public void Yanki_options_are_not_mistaken_for_host_settings()
     {
         Assert.Empty(HostStartupArguments.ExtractHostSettings(["doctor", "--role", "api,worker", "--urls", "https://+:8443"]));
     }
@@ -40,7 +40,7 @@ public sealed class CommandLineTests
     {
         var withRoot = HostStartupArguments.Empty with
         {
-            HostSettings = HostStartupArguments.ExtractHostSettings(["--contentRoot=C:\\talky"]),
+            HostSettings = HostStartupArguments.ExtractHostSettings(["--contentRoot=C:\\yanki"]),
         };
         Assert.True(withRoot.HasContentRoot);
         Assert.False(HostStartupArguments.Empty.HasContentRoot);
@@ -49,19 +49,19 @@ public sealed class CommandLineTests
     [Fact]
     public async Task Version_command_succeeds()
     {
-        Assert.Equal(ExitCode.Success, await TalkyCommandLine.RunAsync(["version"], CancellationToken.None));
+        Assert.Equal(ExitCode.Success, await YankiCommandLine.RunAsync(["version"], CancellationToken.None));
     }
 
     [Fact]
     public async Task Mistyped_command_fails_without_starting_a_host()
     {
-        Assert.Equal(ExitCode.Failure, await TalkyCommandLine.RunAsync(["doctorr"], CancellationToken.None));
+        Assert.Equal(ExitCode.Failure, await YankiCommandLine.RunAsync(["doctorr"], CancellationToken.None));
     }
 
     [Fact]
     public async Task Unknown_option_fails_without_starting_a_host()
     {
-        Assert.Equal(ExitCode.Failure, await TalkyCommandLine.RunAsync(["version", "--nope"], CancellationToken.None));
+        Assert.Equal(ExitCode.Failure, await YankiCommandLine.RunAsync(["version", "--nope"], CancellationToken.None));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class CommandLineTests
     {
         Assert.Equal(
             ExitCode.InvalidConfiguration,
-            await TalkyCommandLine.RunAsync(["config", "validate", "--role", "bogus"], CancellationToken.None));
+            await YankiCommandLine.RunAsync(["config", "validate", "--role", "bogus"], CancellationToken.None));
     }
 
     [Fact]
@@ -77,8 +77,8 @@ public sealed class CommandLineTests
     {
         Assert.Equal(
             ExitCode.InvalidConfiguration,
-            await TalkyCommandLine.RunAsync(
-                ["config", "validate", "--set", "Talky:Database:ConnectionString="],
+            await YankiCommandLine.RunAsync(
+                ["config", "validate", "--set", "Yanki:Database:ConnectionString="],
                 CancellationToken.None));
     }
 
@@ -87,8 +87,8 @@ public sealed class CommandLineTests
     {
         Assert.Equal(
             ExitCode.InvalidConfiguration,
-            await TalkyCommandLine.RunAsync(
-                ["doctor", "--set", "Talky:Database:ConnectionString=Databse=x"],
+            await YankiCommandLine.RunAsync(
+                ["doctor", "--set", "Yanki:Database:ConnectionString=Databse=x"],
                 CancellationToken.None));
     }
 
@@ -97,20 +97,20 @@ public sealed class CommandLineTests
     {
         Assert.Equal(
             ExitCode.InvalidConfiguration,
-            await TalkyCommandLine.RunAsync(["doctor", "--config", "no-such-file.json"], CancellationToken.None));
+            await YankiCommandLine.RunAsync(["doctor", "--config", "no-such-file.json"], CancellationToken.None));
     }
 
     [Fact]
     public async Task Migrate_applies_the_schema_to_the_configured_database()
     {
-        // Talky.Data is wired into Modules.cs; the test environment points the host at a LocalDB
-        // database, so `talky migrate` must create/upgrade it and exit 0 (idempotent on re-run).
+        // Yanki.Data is wired into Modules.cs; the test environment points the host at a LocalDB
+        // database, so `yanki migrate` must create/upgrade it and exit 0 (idempotent on re-run).
         Assert.Equal(
             ExitCode.Success,
-            await TalkyCommandLine.RunAsync(["migrate"], CancellationToken.None));
+            await YankiCommandLine.RunAsync(["migrate"], CancellationToken.None));
         Assert.Equal(
             ExitCode.Success,
-            await TalkyCommandLine.RunAsync(["migrate"], CancellationToken.None));
+            await YankiCommandLine.RunAsync(["migrate"], CancellationToken.None));
     }
 
     [Fact]
@@ -118,6 +118,6 @@ public sealed class CommandLineTests
     {
         Assert.Equal(
             ExitCode.Success,
-            await TalkyCommandLine.RunAsync(["config", "validate"], CancellationToken.None));
+            await YankiCommandLine.RunAsync(["config", "validate"], CancellationToken.None));
     }
 }

@@ -1,4 +1,4 @@
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>Protocol constants shared by the server implementation and its tests.</summary>
 public static class RealtimeProtocol

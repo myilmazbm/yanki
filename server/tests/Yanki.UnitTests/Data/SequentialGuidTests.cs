@@ -1,8 +1,8 @@
 using System.Data.SqlTypes;
-using Talky.Core.Domain;
-using Talky.Data.ValueGeneration;
+using Yanki.Core.Domain;
+using Yanki.Data.ValueGeneration;
 
-namespace Talky.UnitTests.Data;
+namespace Yanki.UnitTests.Data;
 
 /// <summary>
 /// Pins the GUID strategy the schema depends on: clustered keys must be generated in SQL Server's

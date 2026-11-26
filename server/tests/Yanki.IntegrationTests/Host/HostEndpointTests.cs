@@ -3,11 +3,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.IntegrationTests.Host;
+namespace Yanki.IntegrationTests.Host;
 
-public sealed class HostEndpointTests(TalkyApplicationFactory factory) : IClassFixture<TalkyApplicationFactory>
+public sealed class HostEndpointTests(YankiApplicationFactory factory) : IClassFixture<YankiApplicationFactory>
 {
     private static CancellationToken Token => CancellationToken.None;
 
@@ -80,7 +80,7 @@ public sealed class HostEndpointTests(TalkyApplicationFactory factory) : IClassF
     public async Task Readyz_turns_unhealthy_as_soon_as_the_node_drains()
     {
         // Draining is a one-way transition, so this test owns its host.
-        await using var draining = new TalkyApplicationFactory();
+        await using var draining = new YankiApplicationFactory();
         using var client = draining.CreateClient();
 
         using (var before = await client.GetAsync(new Uri("/readyz", UriKind.Relative), Token))

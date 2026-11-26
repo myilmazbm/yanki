@@ -1,18 +1,18 @@
 using System.Globalization;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Diagnostics;
-using Talky.Core.Hosting;
-using Talky.Server.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Diagnostics;
+using Yanki.Core.Hosting;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
 /// Runs every options validation registered with <c>ValidateOnStart</c> and the development token
-/// guard that <c>talky serve</c> applies, so that a configuration serve refuses is not reported clean.
+/// guard that <c>yanki serve</c> applies, so that a configuration serve refuses is not reported clean.
 /// The <c>Validate()</c> call surfaces sections that no check constructor reads (today
-/// <c>Talky:Realtime</c>). Invalid host sections (<c>Talky:Node</c>, <c>Talky:Server</c>,
-/// <c>Talky:Logging</c>) and invalid <c>Talky:Database</c> options end doctor with exit code 3
+/// <c>Yanki:Realtime</c>). Invalid host sections (<c>Yanki:Node</c>, <c>Yanki:Server</c>,
+/// <c>Yanki:Logging</c>) and invalid <c>Yanki:Database</c> options end doctor with exit code 3
 /// before any row is printed: they fail while the host or the checks are being constructed.
 /// </summary>
 internal sealed class ConfigurationDoctorCheck(
@@ -37,7 +37,7 @@ internal sealed class ConfigurationDoctorCheck(
             var serverOptions = server.Value;
             var loggingOptions = logging.Value;
 
-            TalkyHostFactory.GuardDevTokens(configuration, serverOptions, environment);
+            YankiHostFactory.GuardDevTokens(configuration, serverOptions, environment);
 
             _ = NodeRoles.TryParse(nodeOptions.Roles, out var roles, out _);
 
@@ -48,12 +48,12 @@ internal sealed class ConfigurationDoctorCheck(
                 ["urls"] = string.Join(", ", serverOptions.Urls),
                 ["drainSeconds"] = serverOptions.DrainSeconds.ToString(CultureInfo.InvariantCulture),
                 ["certificateSource"] = serverOptions.Certificate.Source.ToString(),
-                ["logDirectory"] = Logging.TalkyLogging.ExpandDirectory(loggingOptions.Directory),
+                ["logDirectory"] = Logging.YankiLogging.ExpandDirectory(loggingOptions.Directory),
             };
 
             return Task.FromResult(DoctorResult.Ok("Configuration binds and validates.", details));
         }
-        catch (TalkyStartupException ex)
+        catch (YankiStartupException ex)
         {
             return Task.FromResult(DoctorResult.Error(ex.Message));
         }

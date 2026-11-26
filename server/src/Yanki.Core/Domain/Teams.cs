@@ -1,4 +1,4 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// A team owns channels and a membership list. Table <c>teams</c>.

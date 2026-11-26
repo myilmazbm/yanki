@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
-using Talky.Core.Data;
+using Yanki.Core.Data;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
 /// Applies EF Core migrations, serialized across the cluster.
@@ -19,15 +19,15 @@ namespace Talky.Data;
 /// second node blocks for up to 60 seconds and then finds nothing pending.
 /// </para>
 /// <para>
-/// The lock is taken in <c>master</c>, not in the Talky database, for two reasons: the database may
+/// The lock is taken in <c>master</c>, not in the Yanki database, for two reasons: the database may
 /// not exist yet (the runner creates it), and the initial migration turns on
 /// <c>READ_COMMITTED_SNAPSHOT</c>, which wants to be the only connection in the database. The lock
-/// resource name carries the database name so two Talky deployments (or two test databases) on one
+/// resource name carries the database name so two Yanki deployments (or two test databases) on one
 /// instance do not serialize against each other.
 /// </para>
 /// </remarks>
 public sealed partial class EfMigrationRunner(
-    TalkyDbContext dbContext,
+    YankiDbContext dbContext,
     SqlConnectionSource connections,
     ILogger<EfMigrationRunner> logger) : IMigrationRunner
 {
@@ -59,7 +59,7 @@ public sealed partial class EfMigrationRunner(
     /// <inheritdoc />
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
-        var resource = $"talky-migrate:{connections.DatabaseName}";
+        var resource = $"yanki-migrate:{connections.DatabaseName}";
 
         await using var lockConnection = await connections.OpenMasterAsync(cancellationToken);
         await AcquireLockAsync(lockConnection, resource, cancellationToken);

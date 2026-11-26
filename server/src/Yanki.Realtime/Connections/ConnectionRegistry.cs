@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Connections;
+namespace Yanki.Realtime.Connections;
 
 /// <summary>
 /// In-memory connection index. Reads are lock free; the (much rarer) mutations of the per-user

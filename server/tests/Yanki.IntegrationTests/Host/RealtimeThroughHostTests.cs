@@ -2,14 +2,14 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
-namespace Talky.IntegrationTests.Host;
+namespace Yanki.IntegrationTests.Host;
 
 /// <summary>
 /// End-to-end smoke test of the realtime module through the real host composition: proves that
-/// <c>UseWebSockets</c> precedes endpoint execution, that <c>MapTalkyRealtime</c> is mapped, and
+/// <c>UseWebSockets</c> precedes endpoint execution, that <c>MapYankiRealtime</c> is mapped, and
 /// that the dev-token authenticator is active in the test environment.
 /// </summary>
-public sealed class RealtimeThroughHostTests(TalkyApplicationFactory factory) : IClassFixture<TalkyApplicationFactory>
+public sealed class RealtimeThroughHostTests(YankiApplicationFactory factory) : IClassFixture<YankiApplicationFactory>
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 

@@ -1,9 +1,9 @@
 {
-  "name": "@talky/config",
+  "name": "@yanki/config",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared TypeScript / ESLint / Prettier presets for the Talky client workspace.",
+  "description": "Shared TypeScript / ESLint / Prettier presets for the Yanki client workspace.",
   "exports": {
     "./tsconfig/base.json": "./tsconfig/base.json",
     "./tsconfig/core.json": "./tsconfig/core.json",

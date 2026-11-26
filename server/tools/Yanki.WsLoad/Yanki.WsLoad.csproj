@@ -2,14 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>talky-wsload</AssemblyName>
+    <AssemblyName>yanki-wsload</AssemblyName>
     <Description>Realtime WebSocket load generator: opens N connections, completes the handshake, pings, and reports latency percentiles and memory.</Description>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Talky.Protocol\Talky.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\Yanki.Protocol\Yanki.Protocol.csproj" />
   </ItemGroup>
 
 </Project>

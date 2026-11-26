@@ -5,7 +5,7 @@ import type { WebSocketFactory } from '../ws/WebSocketLike.js';
 import type { ClientDescriptor } from '../ws/types.js';
 
 /**
- * Everything host-specific that `@talky/core` may need, in one injected bundle.
+ * Everything host-specific that `@yanki/core` may need, in one injected bundle.
  *
  * DRAFT contract, finalised together with `Storage` by the M2 sync engine. No adapters exist
  * yet; the planned ones are:
@@ -16,7 +16,7 @@ import type { ClientDescriptor } from '../ws/types.js';
  * | Tauri   | SQLite plugin       | global `WebSocket` (webview)  | `@tauri-apps/plugin-notification` |
  * | RN      | op-sqlite / expo-sqlite | RN `WebSocket`            | Notifee / FCM / APNs   |
  *
- * Nothing in this interface is imported by `@talky/core` at runtime — it exists so that hosts
+ * Nothing in this interface is imported by `@yanki/core` at runtime — it exists so that hosts
  * have one thing to implement and one thing to hand over.
  */
 export interface Platform {

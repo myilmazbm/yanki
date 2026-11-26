@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
-using Talky.Core.Diagnostics;
+using Yanki.Core.Diagnostics;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>Outcome of one check, including the time it took.</summary>
 /// <param name="Name">Check name.</param>
@@ -39,7 +39,7 @@ internal static class DoctorRunner
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
-        Justification = "A misbehaving check must be reported as a failed row, never crash 'talky doctor'.")]
+        Justification = "A misbehaving check must be reported as a failed row, never crash 'yanki doctor'.")]
     private static async Task<DoctorCheckOutcome> RunOneAsync(
         IDoctorCheck check,
         TimeProvider timeProvider,

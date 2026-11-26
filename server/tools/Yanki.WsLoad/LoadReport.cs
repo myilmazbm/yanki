@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Talky.WsLoad;
+namespace Yanki.WsLoad;
 
 /// <summary>Aggregated result of one load run.</summary>
 internal sealed class LoadReport
@@ -42,7 +42,7 @@ internal sealed class LoadReport
         CultureInfo culture = CultureInfo.InvariantCulture;
 
         output.WriteLine();
-        output.WriteLine("=== talky-wsload result ===");
+        output.WriteLine("=== yanki-wsload result ===");
         output.WriteLine($"connections requested : {Requested.ToString(culture)}");
         output.WriteLine($"transport connected   : {Connected.ToString(culture)} (failed {ConnectFailures.ToString(culture)})");
         output.WriteLine($"handshakes completed  : {HandshakeMs.Length.ToString(culture)} (failed {HandshakeFailures.ToString(culture)})");

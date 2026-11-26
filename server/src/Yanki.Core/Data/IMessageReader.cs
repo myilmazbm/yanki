@@ -1,6 +1,6 @@
-using Talky.Core.Domain;
+using Yanki.Core.Domain;
 
-namespace Talky.Core.Data;
+namespace Yanki.Core.Data;
 
 /// <summary>
 /// The read hot path. Keyset paging only: history is fetched backwards along the clustered key

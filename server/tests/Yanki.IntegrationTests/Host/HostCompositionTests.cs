@@ -1,14 +1,14 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using Talky.Core.Diagnostics;
-using Talky.Core.Sessions;
-using Talky.IntegrationTests.Data;
-using Talky.Realtime.Sessions;
-using Talky.Server;
-using Talky.Server.Diagnostics;
-using Talky.Server.Hosting;
+using Yanki.Core.Diagnostics;
+using Yanki.Core.Sessions;
+using Yanki.IntegrationTests.Data;
+using Yanki.Realtime.Sessions;
+using Yanki.Server;
+using Yanki.Server.Diagnostics;
+using Yanki.Server.Hosting;
 
-namespace Talky.IntegrationTests.Host;
+namespace Yanki.IntegrationTests.Host;
 
 /// <summary>
 /// Composes the host the way the commands do (<c>serve</c>, <c>doctor</c>) with settings the shared
@@ -18,9 +18,9 @@ namespace Talky.IntegrationTests.Host;
 public sealed class HostCompositionTests : IDisposable
 {
     private readonly string _dataDirectory =
-        Path.Combine(Path.GetTempPath(), "talky-tests", "data-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "yanki-tests", "data-" + Guid.NewGuid().ToString("N"));
 
-    static HostCompositionTests() => TalkyTestEnvironment.Ensure();
+    static HostCompositionTests() => YankiTestEnvironment.Ensure();
 
     public HostCompositionTests() => Directory.CreateDirectory(_dataDirectory);
 
@@ -47,10 +47,10 @@ public sealed class HostCompositionTests : IDisposable
             Urls: ["http://127.0.0.1:0"],
             Settings:
             [
-                "Talky:Realtime:AllowDevTokens=false",
-                "Talky:Database:MigrateOnStartup=false",
-                "Talky:Server:AllowInsecureHttp=true",
-                "Talky:Server:Certificate:Source=DevCert",
+                "Yanki:Realtime:AllowDevTokens=false",
+                "Yanki:Database:MigrateOnStartup=false",
+                "Yanki:Server:AllowInsecureHttp=true",
+                "Yanki:Server:Certificate:Source=DevCert",
             ],
             HostSettings: ["--environment", "Production"])
         {
@@ -58,15 +58,15 @@ public sealed class HostCompositionTests : IDisposable
         };
 
         // The same sequence as ServeCommand, up to (not including) StartAsync.
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
         Modules.AddModules(builder);
         builder.Services.AddHostedService<DrainHostedService>();
 
         await using var app = builder.Build();
         Assert.Equal("Production", app.Environment.EnvironmentName);
 
-        TalkyHostFactory.ValidateStartup(app);
-        TalkyHostFactory.ConfigureApplication(app);
+        YankiHostFactory.ValidateStartup(app);
+        YankiHostFactory.ConfigureApplication(app);
         Modules.MapModules(app);
 
         Assert.IsType<FailClosedSessionAuthenticator>(app.Services.GetRequiredService<ISessionAuthenticator>());
@@ -75,13 +75,13 @@ public sealed class HostCompositionTests : IDisposable
     [RequiresSqlServerFact]
     public async Task Doctor_reports_a_missing_database_well_inside_the_check_timeout()
     {
-        // A fresh machine before 'talky migrate': the server is reachable, the database is not
+        // A fresh machine before 'yanki migrate': the server is reachable, the database is not
         // there. SqlClient's connect retry (10 s by default) used to outlast the check timeout.
-        var server = Environment.GetEnvironmentVariable(TalkyDatabaseFixture.ServerVariable);
+        var server = Environment.GetEnvironmentVariable(YankiDatabaseFixture.ServerVariable);
         var missing = new SqlConnectionStringBuilder
         {
-            DataSource = string.IsNullOrWhiteSpace(server) ? TalkyDatabaseFixture.DefaultServer : server,
-            InitialCatalog = "talky_missing_" + Guid.NewGuid().ToString("N"),
+            DataSource = string.IsNullOrWhiteSpace(server) ? YankiDatabaseFixture.DefaultServer : server,
+            InitialCatalog = "yanki_missing_" + Guid.NewGuid().ToString("N"),
             IntegratedSecurity = true,
             TrustServerCertificate = true,
             Encrypt = false,
@@ -91,13 +91,13 @@ public sealed class HostCompositionTests : IDisposable
         {
             Settings =
             [
-                $"Talky:Database:ConnectionString={missing.ConnectionString}",
-                "Talky:Database:MigrateOnStartup=false",
+                $"Yanki:Database:ConnectionString={missing.ConnectionString}",
+                "Yanki:Database:MigrateOnStartup=false",
             ],
             DataDirectory = _dataDirectory,
         };
 
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
         Modules.AddModules(builder);
         await using var app = builder.Build();
 
@@ -106,7 +106,7 @@ public sealed class HostCompositionTests : IDisposable
 
         Assert.Equal(DoctorSeverity.Error, outcome.Result.Severity);
         Assert.Contains("does not exist", outcome.Result.Message, StringComparison.Ordinal);
-        Assert.Contains("run 'talky migrate'", outcome.Result.Message, StringComparison.Ordinal);
+        Assert.Contains("run 'yanki migrate'", outcome.Result.Message, StringComparison.Ordinal);
         Assert.True(
             outcome.Elapsed < DoctorRunner.CheckTimeout / 2,
             $"The sql check took {outcome.Elapsed.TotalMilliseconds:0} ms.");

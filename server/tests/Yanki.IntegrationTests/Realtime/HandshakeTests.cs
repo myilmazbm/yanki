@@ -2,13 +2,13 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Talky.Core.Sessions;
-using Talky.Protocol.V1;
-using Talky.Realtime.Protocol;
-using Talky.Realtime.Sessions;
-using Talky.Testing.Realtime;
+using Yanki.Core.Sessions;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Protocol;
+using Yanki.Realtime.Sessions;
+using Yanki.Testing.Realtime;
 
-namespace Talky.IntegrationTests.Realtime;
+namespace Yanki.IntegrationTests.Realtime;
 
 public sealed class HandshakeTests
 {

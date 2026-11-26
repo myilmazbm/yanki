@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Talky.Realtime.Protocol;
-using Talky.Testing.Realtime;
+using Yanki.Realtime.Protocol;
+using Yanki.Testing.Realtime;
 
-namespace Talky.ContractTests.Realtime;
+namespace Yanki.ContractTests.Realtime;
 
 /// <summary>
 /// Replays every golden flow in <c>api/fixtures/ws</c> against a real realtime host: the

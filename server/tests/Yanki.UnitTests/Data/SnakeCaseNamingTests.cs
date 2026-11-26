@@ -1,6 +1,6 @@
-using Talky.Data.Modeling;
+using Yanki.Data.Modeling;
 
-namespace Talky.UnitTests.Data;
+namespace Yanki.UnitTests.Data;
 
 public sealed class SnakeCaseNamingTests
 {

@@ -1,7 +1,7 @@
-using Talky.Core.Sessions;
-using Talky.Realtime.Sessions;
+using Yanki.Core.Sessions;
+using Yanki.Realtime.Sessions;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 public sealed class DevTokenSessionAuthenticatorTests
 {

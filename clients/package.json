@@ -1,5 +1,5 @@
 {
-  "name": "talky-clients",
+  "name": "yanki-clients",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",
@@ -13,13 +13,13 @@
     "test": "turbo run test",
     "test:watch": "vitest",
     "build": "turbo run build",
-    "size": "pnpm --filter @talky/core run size",
+    "size": "pnpm --filter @yanki/core run size",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@talky/config": "workspace:*",
     "@types/node": "^24.13.3",
+    "@yanki/config": "workspace:*",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "prettier": "^3.9.6",

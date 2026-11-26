@@ -1,6 +1,6 @@
-using Talky.Core.Domain;
+using Yanki.Core.Domain;
 
-namespace Talky.Core.Data;
+namespace Yanki.Core.Data;
 
 /// <summary>
 /// Everything the data layer needs to persist one outgoing message.

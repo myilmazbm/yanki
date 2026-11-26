@@ -1,15 +1,15 @@
-import { createFakeClock, startMemoryServer } from '@talky/test-utils';
+import { createFakeClock, startMemoryServer } from '@yanki/test-utils';
 import type {
   MemorySocket,
   TimerHostLike,
   WebSocketLike as MockWebSocketLike,
-} from '@talky/test-utils';
+} from '@yanki/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { TimerHost, WebSocketFactory, WebSocketLike } from '../src/index.js';
 import { WS_CLOSED, WS_CLOSING, WS_CONNECTING, WS_OPEN } from '../src/index.js';
 
 /**
- * `@talky/test-utils` mirrors `WebSocketLike` and `TimerHost` structurally instead of importing
+ * `@yanki/test-utils` mirrors `WebSocketLike` and `TimerHost` structurally instead of importing
  * them (a package cycle would break Turborepo's task graph). These assignments are the pin that
  * makes any drift between the two definitions a compile error.
  */
@@ -27,7 +27,7 @@ describe('cross-package contracts', () => {
   it('accepts the memory server factory as a WebSocketFactory', () => {
     const server = startMemoryServer();
     const factory: WebSocketFactory = server.webSocketFactory;
-    const socket = factory('ws://mock.talky.local/ws');
+    const socket = factory('ws://mock.yanki.local/ws');
     expect(mockSocketIsAWebSocket(socket as MemorySocket).readyState).toBe(WS_CONNECTING);
     expect(mirroredSocketIsAWebSocket(socket).readyState).toBe(WS_CONNECTING);
   });

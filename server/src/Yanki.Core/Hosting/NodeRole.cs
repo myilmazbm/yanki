@@ -1,9 +1,9 @@
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
-/// Roles a talky.exe process can run. A single-server deployment runs <see cref="All"/>;
+/// Roles a yanki.exe process can run. A single-server deployment runs <see cref="All"/>;
 /// large deployments run dedicated Api, Worker, Search and PushRelay nodes.
-/// Parsed from <c>--role</c> (comma separated) or <c>Talky:Node:Roles</c>.
+/// Parsed from <c>--role</c> (comma separated) or <c>Yanki:Node:Roles</c>.
 /// </summary>
 [Flags]
 public enum NodeRole

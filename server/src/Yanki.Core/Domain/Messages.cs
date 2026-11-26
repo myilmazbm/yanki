@@ -1,4 +1,4 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// A message. Clustered on <c>(conversation_id, seq)</c> so a conversation's history is physically

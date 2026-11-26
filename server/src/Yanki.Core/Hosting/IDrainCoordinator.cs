@@ -1,4 +1,4 @@
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
 /// Coordinates graceful shutdown ("drain") of a node during rolling upgrades.

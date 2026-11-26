@@ -21,10 +21,10 @@ export interface WebSocketCloseEventLike {
 }
 
 /**
- * The smallest browser-compatible WebSocket surface `@talky/core` needs.
+ * The smallest browser-compatible WebSocket surface `@yanki/core` needs.
  *
  * The global `WebSocket` of browsers, Node ≥ 22, React Native and Tauri's webview all satisfy
- * this structurally, and so does the in-memory socket in `@talky/test-utils`.
+ * this structurally, and so does the in-memory socket in `@yanki/test-utils`.
  */
 export interface WebSocketLike {
   readonly readyState: number;

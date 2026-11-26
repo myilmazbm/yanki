@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Removes a Talky node: the "Talky" service, the firewall rules, the "Talky" event log
+    Removes a Yanki node: the "Yanki" service, the firewall rules, the "Yanki" event log
     source and the program files.
 
 .DESCRIPTION
     Idempotent - anything already gone is reported and skipped.
 
     Data is kept by default. DataDir holds appsettings.json, the logs under
-    %ProgramData%\Talky\logs and the Lucene index; none of it is recreated by a
+    %ProgramData%\Yanki\logs and the Lucene index; none of it is recreated by a
     reinstall, so it is only removed when -RemoveData is given. Nothing in SQL Server
     and nothing on the SMB/DFS file share is touched, ever.
 
@@ -15,32 +15,32 @@
     source, remove InstallDir, then optionally remove DataDir.
 
 .PARAMETER InstallDir
-    Program directory to remove. Default C:\Program Files\Talky.
+    Program directory to remove. Default C:\Program Files\Yanki.
 
 .PARAMETER DataDir
-    Data directory. Kept unless -RemoveData. Default %ProgramData%\Talky.
+    Data directory. Kept unless -RemoveData. Default %ProgramData%\Yanki.
 
 .PARAMETER RemoveData
     Also delete DataDir, including logs and the search index. Irreversible.
 
 .PARAMETER KeepFirewall
-    Leave the Talky firewall rules in place (useful when reinstalling immediately).
+    Leave the Yanki firewall rules in place (useful when reinstalling immediately).
 
 .EXAMPLE
-    .\Uninstall-Talky.ps1 -WhatIf
+    .\Uninstall-Yanki.ps1 -WhatIf
 
 .EXAMPLE
-    .\Uninstall-Talky.ps1 -RemoveData -Confirm:$false
+    .\Uninstall-Yanki.ps1 -RemoveData -Confirm:$false
 
 .NOTES
     Requires an elevated session. PowerShell 5.1 compatible.
     An MSI-installed node is removed with `msiexec /x` instead; this script is for
-    installations made by Install-Talky.ps1.
+    installations made by Install-Yanki.ps1.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [string] $InstallDir = (Join-Path $env:ProgramFiles 'Talky'),
-    [string] $DataDir = (Join-Path $env:ProgramData 'Talky'),
+    [string] $InstallDir = (Join-Path $env:ProgramFiles 'Yanki'),
+    [string] $DataDir = (Join-Path $env:ProgramData 'Yanki'),
     [switch] $RemoveData,
     [switch] $KeepFirewall
 )
@@ -48,8 +48,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ServiceName = 'Talky'
-$FirewallScript = Join-Path $PSScriptRoot 'Set-TalkyFirewall.ps1'
+$ServiceName = 'Yanki'
+$FirewallScript = Join-Path $PSScriptRoot 'Set-YankiFirewall.ps1'
 
 function Test-Elevated {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -63,7 +63,7 @@ if (-not (Test-Elevated)) {
         Write-Warning 'Not elevated. Continuing because -WhatIf was given; a real run needs an elevated session.'
     }
     else {
-        throw 'Uninstall-Talky.ps1 must run in an elevated PowerShell session.'
+        throw 'Uninstall-Yanki.ps1 must run in an elevated PowerShell session.'
     }
 }
 
@@ -96,7 +96,7 @@ if ($KeepFirewall) {
     Write-Host 'firewall kept (-KeepFirewall).'
 }
 elseif (-not (Test-Path -LiteralPath $FirewallScript)) {
-    Write-Warning 'Set-TalkyFirewall.ps1 not found next to this script; firewall rules left in place.'
+    Write-Warning 'Set-YankiFirewall.ps1 not found next to this script; firewall rules left in place.'
 }
 else {
     $firewallArgs = @{ Remove = $true }

@@ -5,29 +5,29 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
-using Talky.Core.Data;
-using Talky.Core.Domain;
-using Talky.Data;
+using Yanki.Core.Data;
+using Yanki.Core.Domain;
+using Yanki.Data;
 
-namespace Talky.IntegrationTests.Data;
+namespace Yanki.IntegrationTests.Data;
 
 /// <summary>
 /// Creates one throw-away SQL Server database per test class, applies the migrations to it through
 /// the real <see cref="IMigrationRunner"/>, and drops it afterwards. The services under test are
-/// resolved from a container built with the real <c>AddTalkyData</c>, so the DI wiring is covered too.
+/// resolved from a container built with the real <c>AddYankiData</c>, so the DI wiring is covered too.
 /// </summary>
 /// <remarks>
-/// Server comes from <c>TALKY_TEST_DB_SERVER</c> and defaults to the developer LocalDB instance.
-/// Setting <c>TALKY_SKIP_DB_TESTS=1</c> skips every test that needs a database and makes this fixture
+/// Server comes from <c>YANKI_TEST_DB_SERVER</c> and defaults to the developer LocalDB instance.
+/// Setting <c>YANKI_SKIP_DB_TESTS=1</c> skips every test that needs a database and makes this fixture
 /// a no-op, so a machine without SQL Server can still run the rest of the suite.
 /// </remarks>
-public sealed class TalkyDatabaseFixture : IAsyncLifetime
+public sealed class YankiDatabaseFixture : IAsyncLifetime
 {
     /// <summary>Set to <c>1</c> to skip everything that needs SQL Server.</summary>
-    public const string SkipVariable = "TALKY_SKIP_DB_TESTS";
+    public const string SkipVariable = "YANKI_SKIP_DB_TESTS";
 
     /// <summary>Overrides the SQL Server instance the tests run against.</summary>
-    public const string ServerVariable = "TALKY_TEST_DB_SERVER";
+    public const string ServerVariable = "YANKI_TEST_DB_SERVER";
 
     /// <summary>Instance used when <see cref="ServerVariable"/> is not set.</summary>
     public const string DefaultServer = @"(localdb)\MSSQLLocalDB";
@@ -39,20 +39,20 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
     public static bool SkipDatabaseTests =>
         string.Equals(Environment.GetEnvironmentVariable(SkipVariable), "1", StringComparison.Ordinal);
 
-    /// <summary>Unique per test class: <c>talky_test_&lt;8 hex&gt;</c>.</summary>
+    /// <summary>Unique per test class: <c>yanki_test_&lt;8 hex&gt;</c>.</summary>
     public string DatabaseName { get; } =
-        "talky_test_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+        "yanki_test_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
 
     /// <summary>Connection string of the throw-away database.</summary>
     public string ConnectionString { get; private set; } = string.Empty;
 
-    /// <summary>Clock every Talky.Data service uses in these tests, so backoff and expiry are testable.</summary>
+    /// <summary>Clock every Yanki.Data service uses in these tests, so backoff and expiry are testable.</summary>
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
     /// <summary>Identity source every seeded user belongs to.</summary>
     public Guid IdentitySourceId { get; private set; }
 
-    /// <summary>Container built with the production <c>AddTalkyData</c> registration.</summary>
+    /// <summary>Container built with the production <c>AddYankiData</c> registration.</summary>
     public IServiceProvider Services =>
         _services ?? throw new InvalidOperationException("The database fixture was skipped or not initialised.");
 
@@ -92,18 +92,18 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Talky:Database:ConnectionString"] = ConnectionString,
+                ["Yanki:Database:ConnectionString"] = ConnectionString,
 
                 // Generous, because a cold LocalDB and a 64-way append storm are both slower than
                 // the 5 s production budget.
-                ["Talky:Database:CommandTimeoutSeconds"] = "60",
+                ["Yanki:Database:CommandTimeoutSeconds"] = "60",
             })
             .Build();
 
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
         services.AddSingleton<TimeProvider>(Clock);
-        services.AddTalkyData(configuration);
+        services.AddYankiData(configuration);
         _services = services.BuildServiceProvider();
 
         await using (var scope = CreateScope())
@@ -169,13 +169,13 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
     public async Task<Guid> CreateConversationAsync(CancellationToken cancellationToken)
     {
         await using var scope = CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<TalkyDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<YankiDbContext>();
 
         var now = Clock.GetUtcNow().UtcDateTime;
         var conversation = new Conversation
         {
             Type = ConversationType.Group,
-            HomeDomain = "talky.test",
+            HomeDomain = "yanki.test",
             Title = "integration",
             LastSeq = 0,
             CreatedAt = now,
@@ -191,7 +191,7 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
     public async Task<Guid[]> CreateUsersAsync(int count, string prefix, CancellationToken cancellationToken)
     {
         await using var scope = CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<TalkyDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<YankiDbContext>();
 
         var now = Clock.GetUtcNow().UtcDateTime;
         var users = new User[count];
@@ -200,7 +200,7 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
             users[i] = new User
             {
                 IdentitySourceId = IdentitySourceId,
-                HomeDomain = "talky.test",
+                HomeDomain = "yanki.test",
                 UserName = $"{prefix}{i}",
                 DisplayName = $"{prefix} {i}",
                 State = UserState.Active,
@@ -217,14 +217,14 @@ public sealed class TalkyDatabaseFixture : IAsyncLifetime
     private async Task<Guid> SeedIdentitySourceAsync()
     {
         await using var scope = CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<TalkyDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<YankiDbContext>();
 
         var now = Clock.GetUtcNow().UtcDateTime;
         var source = new IdentitySource
         {
             Kind = IdentitySourceKind.Local,
             Name = "integration-tests",
-            HomeDomain = "talky.test",
+            HomeDomain = "yanki.test",
             Enabled = true,
             CreatedAt = now,
             UpdatedAt = now,

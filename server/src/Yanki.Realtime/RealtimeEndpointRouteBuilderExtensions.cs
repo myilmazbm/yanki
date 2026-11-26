@@ -4,13 +4,13 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Talky.Core.Sessions;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Connections;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Sessions;
+using Yanki.Core.Sessions;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Connections;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Sessions;
 
-namespace Talky.Realtime;
+namespace Yanki.Realtime;
 
 /// <summary>
 /// Maps the realtime WebSocket endpoint.
@@ -18,10 +18,10 @@ namespace Talky.Realtime;
 public static class RealtimeEndpointRouteBuilderExtensions
 {
     /// <summary>Endpoint name assigned to the realtime route.</summary>
-    public const string EndpointName = "TalkyRealtime";
+    public const string EndpointName = "YankiRealtime";
 
     /// <summary>
-    /// Maps the WebSocket endpoint on <c>Talky:Realtime:Path</c> (default <c>/ws</c>).
+    /// Maps the WebSocket endpoint on <c>Yanki:Realtime:Path</c> (default <c>/ws</c>).
     /// </summary>
     /// <remarks>
     /// <para><c>app.UseWebSockets()</c> must run before the endpoint middleware; without it every
@@ -30,7 +30,7 @@ public static class RealtimeEndpointRouteBuilderExtensions
     /// with a global authorization fallback policy should call <c>.AllowAnonymous()</c> on the
     /// returned builder, or place the route outside the policy.</para>
     /// </remarks>
-    public static IEndpointConventionBuilder MapTalkyRealtime(this IEndpointRouteBuilder endpoints)
+    public static IEndpointConventionBuilder MapYankiRealtime(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
@@ -58,6 +58,6 @@ public static class RealtimeEndpointRouteBuilderExtensions
         return endpoints
             .MapMethods(options.Path, [HttpMethods.Get, HttpMethods.Connect], (RequestDelegate)handler.HandleAsync)
             .WithName(EndpointName)
-            .WithDisplayName("Talky realtime WebSocket");
+            .WithDisplayName("Yanki realtime WebSocket");
     }
 }

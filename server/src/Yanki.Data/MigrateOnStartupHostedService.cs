@@ -2,20 +2,20 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Talky.Core.Data;
+using Yanki.Core.Data;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
 /// Applies pending migrations before the node starts listening when
-/// <c>Talky:Database:MigrateOnStartup</c> is true.
+/// <c>Yanki:Database:MigrateOnStartup</c> is true.
 /// </summary>
 /// <remarks>
-/// Hosted services start in registration order and <c>AddTalkyData</c> runs before the web host
+/// Hosted services start in registration order and <c>AddYankiData</c> runs before the web host
 /// appends Kestrel, so the schema is current before the first request. The runner serializes across
 /// nodes with a SQL Server application lock, so a rolling upgrade that starts several nodes at once
 /// applies each migration exactly once; the others wait and then find nothing pending.
-/// Production defaults keep this off and use <c>talky migrate</c> as an explicit step.
+/// Production defaults keep this off and use <c>yanki migrate</c> as an explicit step.
 /// </remarks>
 internal sealed partial class MigrateOnStartupHostedService(
     IServiceScopeFactory scopeFactory,

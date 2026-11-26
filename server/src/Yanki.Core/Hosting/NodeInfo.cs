@@ -1,8 +1,8 @@
 using System.Reflection;
 using System.Security.Cryptography;
-using Talky.Core.Configuration;
+using Yanki.Core.Configuration;
 
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
 /// Default <see cref="INodeInfo"/>. Registered as a singleton by the host; every field is computed
@@ -49,7 +49,7 @@ public sealed class NodeInfo : INodeInfo
     /// Builds node identity from <see cref="NodeOptions"/>. Roles are expected to be valid; the
     /// options validator rejects bad values long before this runs.
     /// </summary>
-    /// <param name="options">Bound <c>Talky:Node</c> section.</param>
+    /// <param name="options">Bound <c>Yanki:Node</c> section.</param>
     /// <param name="timeProvider">Clock used for <see cref="StartedAt"/>.</param>
     /// <returns>A new <see cref="NodeInfo"/>.</returns>
     /// <exception cref="ArgumentException">The configured roles cannot be parsed.</exception>

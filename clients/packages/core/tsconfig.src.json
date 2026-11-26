@@ -1,6 +1,6 @@
 {
   // The real guard rail: `src/**` must compile with neither the DOM lib nor Node types in
   // scope, so `window`, `document`, `process`, `Buffer` and friends simply do not exist.
-  "extends": "@talky/config/tsconfig/core.json",
+  "extends": "@yanki/config/tsconfig/core.json",
   "include": ["src/**/*.ts"]
 }

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     LiveKit ships a console executable, so it is wrapped with WinSW
-    (github.com/winsw/winsw), which gives it the same service behaviour as talky.exe:
+    (github.com/winsw/winsw), which gives it the same service behaviour as yanki.exe:
     delayed automatic start, restart after 5 s / 10 s / 30 s and rolling logs.
 
     Steps:
@@ -30,7 +30,7 @@
             UDP 3478  embedded TURN
             UDP 30000-40000 TURN relay allocations (turn.relay_range_* in livekit.yaml)
             TCP 7881  media over TCP for UDP-blocked clients
-            TCP 7880  signalling (reverse-proxied by talky.exe; scope it to the API nodes)
+            TCP 7880  signalling (reverse-proxied by yanki.exe; scope it to the API nodes)
             TCP 5349  TURN over TLS
       6. `livekit-service.exe install`. An existing registration is re-created: the old
          service is stopped (see "Stopping" below), the entries this script added for a
@@ -73,7 +73,7 @@
     Directory holding livekit-server.exe. Default C:\Program Files\LiveKit.
 
 .PARAMETER LogDir
-    Service log directory. Default %ProgramData%\Talky\logs\livekit. For the default
+    Service log directory. Default %ProgramData%\Yanki\logs\livekit. For the default
     directory the script owns the DACL on every run: inheritance off, SYSTEM and
     Administrators Full Control, the service account Modify (inherited by the files),
     nobody else (%ProgramData% would otherwise let every user create files there), and an
@@ -134,8 +134,8 @@
 
 .PARAMETER SignalRemoteAddress
     Remote addresses allowed to reach TCP 7880. Default 'LocalSubnet'. In production this
-    should be the Talky API nodes only, since clients reach signalling through
-    https://talky.corp/media/{node}/rtc. Anything that runs lk against the node (the Spike A
+    should be the Yanki API nodes only, since clients reach signalling through
+    https://yanki.corp/media/{node}/rtc. Anything that runs lk against the node (the Spike A
     load generator) must be included too.
 
 .PARAMETER FirewallProfile
@@ -182,7 +182,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string] $InstallDir = (Join-Path $env:ProgramFiles 'LiveKit'),
-    [string] $LogDir = (Join-Path $env:ProgramData 'Talky\logs\livekit'),
+    [string] $LogDir = (Join-Path $env:ProgramData 'Yanki\logs\livekit'),
     [string] $ServiceAccount = 'LocalSystem',
     [string] $WinSwVersion = '2.12.0',
     [string] $WinSwSha256 = '05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da',
@@ -206,7 +206,7 @@ function ConvertTo-NormalPath {
     if ($full -ne [IO.Path]::GetPathRoot($full)) { $full = $full.TrimEnd('\') }
     return $full
 }
-$IsDefaultLogDir = (ConvertTo-NormalPath $LogDir) -eq (ConvertTo-NormalPath (Join-Path $env:ProgramData 'Talky\logs\livekit'))
+$IsDefaultLogDir = (ConvertTo-NormalPath $LogDir) -eq (ConvertTo-NormalPath (Join-Path $env:ProgramData 'Yanki\logs\livekit'))
 $InstallDir = ConvertTo-NormalPath $InstallDir
 $LogDir = ConvertTo-NormalPath $LogDir
 
@@ -252,7 +252,7 @@ $Ports = @(
     @{ Name = 'LiveKit - TURN over TLS (TCP 5349)'; Protocol = 'TCP'; Port = 5349; Remote = @('Any')
        Description = 'TURN over TLS, the last-resort path through strict proxies.' }
     @{ Name = 'LiveKit - signalling (TCP 7880)'; Protocol = 'TCP'; Port = 7880; Remote = $SignalRemoteAddress
-       Description = 'WebSocket signalling; reverse-proxied by talky.exe under /media/{node}/rtc.' }
+       Description = 'WebSocket signalling; reverse-proxied by yanki.exe under /media/{node}/rtc.' }
 )
 
 function Test-Elevated {
@@ -907,7 +907,7 @@ elseif ($PSCmdlet.ShouldProcess($WrapperExe, "Download WinSW $WinSwVersion")) {
     if (-not (Test-Path -LiteralPath $cached)) {
         New-Item -ItemType Directory -Path $WinSwCache -Force | Out-Null
         $url = "https://github.com/winsw/winsw/releases/download/v$WinSwVersion/WinSW-x64.exe"
-        Invoke-WebRequest -Uri $url -OutFile $cached -UseBasicParsing -Headers @{ 'User-Agent' = 'talky-deploy' }
+        Invoke-WebRequest -Uri $url -OutFile $cached -UseBasicParsing -Headers @{ 'User-Agent' = 'yanki-deploy' }
         $verb = 'fetched '
     }
     # Hash the bytes that will be installed, under a name nothing runs, and only then give

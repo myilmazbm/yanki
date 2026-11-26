@@ -1,13 +1,13 @@
 using System.Globalization;
 using System.Runtime;
 using System.Runtime.InteropServices;
-using Talky.Core.Diagnostics;
-using Talky.Core.Hosting;
+using Yanki.Core.Diagnostics;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
-/// Reports the .NET runtime talky.exe is running on, including whether server garbage collection is
+/// Reports the .NET runtime yanki.exe is running on, including whether server garbage collection is
 /// enabled — workstation GC on an API node shows up as latency long before it shows up as an error.
 /// </summary>
 internal sealed class RuntimeDoctorCheck(INodeInfo node) : IDoctorCheck
@@ -20,7 +20,7 @@ internal sealed class RuntimeDoctorCheck(INodeInfo node) : IDoctorCheck
     {
         var details = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["talkyVersion"] = node.Version,
+            ["yankiVersion"] = node.Version,
             ["framework"] = RuntimeInformation.FrameworkDescription,
             ["runtimeIdentifier"] = RuntimeInformation.RuntimeIdentifier,
             ["serverGc"] = GCSettings.IsServerGC ? "yes" : "no",
@@ -44,7 +44,7 @@ internal sealed class RuntimeDoctorCheck(INodeInfo node) : IDoctorCheck
         }
 
         return Task.FromResult(DoctorResult.Ok(
-            string.Create(CultureInfo.InvariantCulture, $"talky {node.Version} on {RuntimeInformation.FrameworkDescription}."),
+            string.Create(CultureInfo.InvariantCulture, $"yanki {node.Version} on {RuntimeInformation.FrameworkDescription}."),
             details));
     }
 }

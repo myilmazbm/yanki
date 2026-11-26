@@ -8,7 +8,7 @@
 export type TimerHandle = unknown;
 
 /**
- * The only clock `@talky/core` is allowed to see.
+ * The only clock `@yanki/core` is allowed to see.
  *
  * Everything time-related in the client (heartbeat cadence, pong deadline, request
  * timeouts, reconnect backoff) goes through this seam, which is what makes the whole state
@@ -24,7 +24,7 @@ export interface TimerHost {
 }
 
 /**
- * `setTimeout` / `clearTimeout` are not declared by the `ES2022` lib and `@talky/core`
+ * `setTimeout` / `clearTimeout` are not declared by the `ES2022` lib and `@yanki/core`
  * deliberately compiles without the DOM lib or Node types, so the two globals it genuinely
  * needs are declared here instead of dragging in a whole platform lib.
  */

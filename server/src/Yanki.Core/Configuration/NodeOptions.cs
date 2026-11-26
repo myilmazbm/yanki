@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>
-/// <c>Talky:Node</c> — identity and roles of this talky.exe process.
+/// <c>Yanki:Node</c> — identity and roles of this yanki.exe process.
 /// </summary>
 public sealed class NodeOptions
 {
@@ -13,13 +13,13 @@ public sealed class NodeOptions
     /// </summary>
     [RegularExpression(
         "^[A-Za-z0-9._-]{1,64}$",
-        ErrorMessage = "Talky:Node:Id must be 1-64 characters of letters, digits, '.', '_' or '-'.")]
+        ErrorMessage = "Yanki:Node:Id must be 1-64 characters of letters, digits, '.', '_' or '-'.")]
     public string? Id { get; set; }
 
     /// <summary>
     /// Comma separated roles, e.g. <c>all</c> or <c>api,worker</c>.
     /// Valid values: <c>api</c>, <c>worker</c>, <c>search</c>, <c>push-relay</c>, <c>all</c>.
     /// </summary>
-    [Required(AllowEmptyStrings = false, ErrorMessage = "Talky:Node:Roles must not be empty.")]
+    [Required(AllowEmptyStrings = false, ErrorMessage = "Yanki:Node:Roles must not be empty.")]
     public string Roles { get; set; } = "all";
 }

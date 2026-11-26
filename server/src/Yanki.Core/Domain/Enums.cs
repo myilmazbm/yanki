@@ -1,11 +1,11 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// Where a <see cref="User"/> comes from. Stored as <c>tinyint</c>.
 /// </summary>
 public enum IdentitySourceKind
 {
-    /// <summary>Local account stored in Talky itself (bootstrap admin, bots, service accounts).</summary>
+    /// <summary>Local account stored in Yanki itself (bootstrap admin, bots, service accounts).</summary>
     Local = 0,
 
     /// <summary>Active Directory / Kerberos.</summary>

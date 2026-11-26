@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// A UTF-8 payload backed by a pooled array. Dispose returns the array to

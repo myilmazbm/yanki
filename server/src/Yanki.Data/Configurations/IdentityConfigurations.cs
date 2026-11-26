@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.ValueGeneration;
-using Talky.Core.Domain;
+using Yanki.Core.Domain;
 
-namespace Talky.Data.Configurations;
+namespace Yanki.Data.Configurations;
 
 internal sealed class IdentitySourceConfiguration : IEntityTypeConfiguration<IdentitySource>
 {

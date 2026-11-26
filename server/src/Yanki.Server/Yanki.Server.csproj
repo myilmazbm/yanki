@@ -1,24 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <!-- Production ships a single binary named talky.exe (Windows service + CLI). -->
-    <AssemblyName>talky</AssemblyName>
-    <RootNamespace>Talky.Server</RootNamespace>
+    <!-- Production ships a single binary named yanki.exe (Windows service + CLI). -->
+    <AssemblyName>yanki</AssemblyName>
+    <RootNamespace>Yanki.Server</RootNamespace>
     <!-- CA1515: the entry point type and the test-visible composition root must stay public. -->
     <NoWarn>$(NoWarn);CA1515</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Talky.Core\Talky.Core.csproj" />
-    <ProjectReference Include="..\Talky.Data\Talky.Data.csproj" />
-    <ProjectReference Include="..\Talky.Realtime\Talky.Realtime.csproj" />
-    <ProjectReference Include="..\Talky.Identity\Talky.Identity.csproj" />
-    <ProjectReference Include="..\Talky.Media\Talky.Media.csproj" />
-    <ProjectReference Include="..\Talky.Files\Talky.Files.csproj" />
-    <ProjectReference Include="..\Talky.Search\Talky.Search.csproj" />
-    <ProjectReference Include="..\Talky.Push\Talky.Push.csproj" />
-    <ProjectReference Include="..\Talky.Federation\Talky.Federation.csproj" />
-    <ProjectReference Include="..\Talky.Protocol\Talky.Protocol.csproj" />
+    <ProjectReference Include="..\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\Yanki.Data\Yanki.Data.csproj" />
+    <ProjectReference Include="..\Yanki.Realtime\Yanki.Realtime.csproj" />
+    <ProjectReference Include="..\Yanki.Identity\Yanki.Identity.csproj" />
+    <ProjectReference Include="..\Yanki.Media\Yanki.Media.csproj" />
+    <ProjectReference Include="..\Yanki.Files\Yanki.Files.csproj" />
+    <ProjectReference Include="..\Yanki.Search\Yanki.Search.csproj" />
+    <ProjectReference Include="..\Yanki.Push\Yanki.Push.csproj" />
+    <ProjectReference Include="..\Yanki.Federation\Yanki.Federation.csproj" />
+    <ProjectReference Include="..\Yanki.Protocol\Yanki.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,8 +36,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Talky.IntegrationTests" />
-    <InternalsVisibleTo Include="Talky.UnitTests" />
+    <InternalsVisibleTo Include="Yanki.IntegrationTests" />
+    <InternalsVisibleTo Include="Yanki.UnitTests" />
   </ItemGroup>
 
 </Project>

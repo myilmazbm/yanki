@@ -1,15 +1,15 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
-using Talky.Core.Data;
-using Talky.Core.Domain;
+using Yanki.Core.Data;
+using Yanki.Core.Domain;
 
-namespace Talky.IntegrationTests.Data;
+namespace Yanki.IntegrationTests.Data;
 
 /// <summary>
 /// Claim exclusivity, backoff and dead-lettering of the SQL job queue.
 /// </summary>
-public sealed class JobQueueTests(TalkyDatabaseFixture fixture) : IClassFixture<TalkyDatabaseFixture>
+public sealed class JobQueueTests(YankiDatabaseFixture fixture) : IClassFixture<YankiDatabaseFixture>
 {
     /// <summary>
     /// The property that lets every worker node poll the same table: 16 claimers draining 200 jobs

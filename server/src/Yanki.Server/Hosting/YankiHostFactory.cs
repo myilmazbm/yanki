@@ -5,30 +5,30 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using Serilog;
-using Talky.Core.Configuration;
-using Talky.Core.Diagnostics;
-using Talky.Core.Hosting;
-using Talky.Server.Diagnostics;
-using Talky.Server.Endpoints;
-using Talky.Server.Logging;
+using Yanki.Core.Configuration;
+using Yanki.Core.Diagnostics;
+using Yanki.Core.Hosting;
+using Yanki.Server.Diagnostics;
+using Yanki.Server.Endpoints;
+using Yanki.Server.Logging;
 
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
-/// Builds the one and only Talky host. Every command uses it: <c>serve</c> runs the resulting
+/// Builds the one and only Yanki host. Every command uses it: <c>serve</c> runs the resulting
 /// application, while <c>migrate</c>, <c>doctor</c> and <c>config validate</c> only need the
 /// service provider it produces.
 /// </summary>
-internal static class TalkyHostFactory
+internal static class YankiHostFactory
 {
     /// <summary>Windows service name; must match the name used by the MSI and by <c>sc.exe</c>.</summary>
-    public const string WindowsServiceName = "Talky";
+    public const string WindowsServiceName = "Yanki";
 
     /// <summary>Seconds added on top of the drain grace period before the host is force stopped.</summary>
     public const int ShutdownTimeoutHeadroomSeconds = 15;
 
     /// <summary>Configuration key of the Realtime module's development token switch.</summary>
-    private const string AllowDevTokensKey = "Talky:Realtime:AllowDevTokens";
+    private const string AllowDevTokensKey = "Yanki:Realtime:AllowDevTokens";
 
     /// <summary>Creates a fully configured builder: configuration stack, logging, options and services.</summary>
     /// <param name="arguments">Command line values that participate in configuration.</param>
@@ -40,7 +40,7 @@ internal static class TalkyHostFactory
         var isWindowsService = WindowsServiceHelpers.IsWindowsService();
 
         // A Windows service starts with C:\Windows\System32 as its working directory, so the
-        // content root is pinned to the directory holding talky.exe unless the command line pins
+        // content root is pinned to the directory holding yanki.exe unless the command line pins
         // one itself (the ASP.NET Core test host does).
         WebApplicationBuilder builder;
         try
@@ -54,17 +54,17 @@ internal static class TalkyHostFactory
         catch (InvalidDataException ex)
         {
             // The default builder loads appsettings.json and appsettings.{Environment}.json from the
-            // content root itself, before TalkyConfigurationSources can wrap their load errors.
+            // content root itself, before YankiConfigurationSources can wrap their load errors.
             Exception cause = ex;
             while (cause.InnerException is not null)
             {
                 cause = cause.InnerException;
             }
 
-            throw new TalkyStartupException($"{ex.Message} {cause.Message}", ex);
+            throw new YankiStartupException($"{ex.Message} {cause.Message}", ex);
         }
 
-        TalkyConfigurationSources.Apply(
+        YankiConfigurationSources.Apply(
             builder.Configuration,
             builder.Environment.EnvironmentName,
             builder.Environment.ContentRootPath,
@@ -106,29 +106,29 @@ internal static class TalkyHostFactory
         }
 
         var configured = configuration
-            .GetSection($"{TalkyConfiguration.ServerSection}:Urls")
+            .GetSection($"{YankiConfiguration.ServerSection}:Urls")
             .Get<string[]>() ?? [];
 
         return configured.Length > 0 ? configured : [ServerOptions.DefaultUrl];
     }
 
-    /// <summary>Binds and validates every <c>Talky</c> section, failing fast at startup.</summary>
+    /// <summary>Binds and validates every <c>Yanki</c> section, failing fast at startup.</summary>
     private static void AddOptions(WebApplicationBuilder builder, string[] urls)
     {
         builder.Services.AddSingleton<IValidateOptions<NodeOptions>, ValidateNodeOptions>();
         builder.Services.AddOptions<NodeOptions>()
-            .Bind(builder.Configuration.GetSection(TalkyConfiguration.NodeSection))
+            .Bind(builder.Configuration.GetSection(YankiConfiguration.NodeSection))
             .ValidateOnStart();
 
         builder.Services.AddSingleton<IValidateOptions<ServerOptions>, ValidateServerOptions>();
         builder.Services.AddOptions<ServerOptions>()
-            .Bind(builder.Configuration.GetSection(TalkyConfiguration.ServerSection))
+            .Bind(builder.Configuration.GetSection(YankiConfiguration.ServerSection))
             .PostConfigure(options => options.Urls = urls)
             .ValidateOnStart();
 
         builder.Services.AddSingleton<IValidateOptions<LoggingOptions>, ValidateLoggingOptions>();
         builder.Services.AddOptions<LoggingOptions>()
-            .Bind(builder.Configuration.GetSection(TalkyConfiguration.LoggingSection))
+            .Bind(builder.Configuration.GetSection(YankiConfiguration.LoggingSection))
             .ValidateOnStart();
 
         // Give the drain enough head room to finish before the host force stops.
@@ -144,7 +144,7 @@ internal static class TalkyHostFactory
         builder.Logging.ClearProviders();
 
         var isDevelopment = builder.Environment.IsDevelopment();
-        builder.Services.AddSerilog((services, configuration) => TalkyLogging.Configure(
+        builder.Services.AddSerilog((services, configuration) => YankiLogging.Configure(
             configuration,
             services.GetRequiredService<IOptions<LoggingOptions>>().Value,
             services.GetRequiredService<INodeInfo>(),
@@ -180,7 +180,7 @@ internal static class TalkyHostFactory
         }
 
         var knownProxies = builder.Configuration
-            .GetSection($"{TalkyConfiguration.ServerSection}:KnownProxies")
+            .GetSection($"{YankiConfiguration.ServerSection}:KnownProxies")
             .Get<string[]>() ?? [];
 
         if (knownProxies.Length == 0)
@@ -212,7 +212,7 @@ internal static class TalkyHostFactory
             kestrel.ConfigureEndpointDefaults(listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
 
             // Resolved when an HTTPS endpoint is actually bound, not while the container is built:
-            // `talky doctor` has to be able to build the host on a node whose certificate is broken.
+            // `yanki doctor` has to be able to build the host on a node whose certificate is broken.
             kestrel.ConfigureHttpsDefaults(https =>
             {
                 var server = kestrel.ApplicationServices.GetRequiredService<IOptions<ServerOptions>>().Value;
@@ -231,7 +231,7 @@ internal static class TalkyHostFactory
     /// that runs but completes no TLS handshake.
     /// </summary>
     /// <param name="app">The built application.</param>
-    /// <exception cref="TalkyStartupException">The node must not serve with this configuration.</exception>
+    /// <exception cref="YankiStartupException">The node must not serve with this configuration.</exception>
     public static void ValidateStartup(WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -279,14 +279,14 @@ internal static class TalkyHostFactory
         }
 
         var logging = app.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
-        var logDirectory = TalkyLogging.ExpandDirectory(logging.Directory);
-        if (TalkyLogging.ProbeWritable(logDirectory) is not null)
+        var logDirectory = YankiLogging.ExpandDirectory(logging.Directory);
+        if (YankiLogging.ProbeWritable(logDirectory) is not null)
         {
             // The file sink is dropped when its directory cannot be created, and writes nothing when
-            // this account cannot write there; say so in the sinks that do work. `talky doctor`
+            // this account cannot write there; say so in the sinks that do work. `yanki doctor`
             // (log-directory) reports the reason.
             app.Logger.LogWarning(
-                "Log directory {LogDirectory} is not usable, so the file log is disabled. Run 'talky doctor' for the reason.",
+                "Log directory {LogDirectory} is not usable, so the file log is disabled. Run 'yanki doctor' for the reason.",
                 logDirectory);
         }
     }
@@ -296,7 +296,7 @@ internal static class TalkyHostFactory
     /// </summary>
     /// <param name="server">Validated server options.</param>
     /// <param name="environment">Host environment.</param>
-    /// <exception cref="TalkyStartupException">The node would run without a real certificate.</exception>
+    /// <exception cref="YankiStartupException">The node would run without a real certificate.</exception>
     public static void GuardInsecureConfiguration(ServerOptions server, IHostEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(server);
@@ -309,19 +309,19 @@ internal static class TalkyHostFactory
             return;
         }
 
-        throw new TalkyStartupException(
-            $"Talky:Server:Certificate:Source is 'DevCert' but the environment is '{environment.EnvironmentName}'. " +
-            "Configure a Store or Pfx certificate, or set Talky:Server:AllowInsecureHttp to true for a lab node.");
+        throw new YankiStartupException(
+            $"Yanki:Server:Certificate:Source is 'DevCert' but the environment is '{environment.EnvironmentName}'. " +
+            "Configure a Store or Pfx certificate, or set Yanki:Server:AllowInsecureHttp to true for a lab node.");
     }
 
     /// <summary>
     /// Refuses development tokens (any caller may sign in as any user) outside development, unless
     /// the node is an explicitly insecure lab node.
     /// </summary>
-    /// <param name="configuration">The assembled configuration; <c>Talky:Realtime:AllowDevTokens</c> is read from it.</param>
+    /// <param name="configuration">The assembled configuration; <c>Yanki:Realtime:AllowDevTokens</c> is read from it.</param>
     /// <param name="server">Validated server options.</param>
     /// <param name="environment">Host environment.</param>
-    /// <exception cref="TalkyStartupException">Dev tokens are on where they must not be.</exception>
+    /// <exception cref="YankiStartupException">Dev tokens are on where they must not be.</exception>
     public static void GuardDevTokens(IConfiguration configuration, ServerOptions server, IHostEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -334,10 +334,10 @@ internal static class TalkyHostFactory
             return;
         }
 
-        throw new TalkyStartupException(
+        throw new YankiStartupException(
             $"{AllowDevTokensKey} is true but the environment is '{environment.EnvironmentName}'; dev tokens let " +
             "any caller sign in as any user. Turn it off, or for a lab node run with --environment Development " +
-            "or set Talky:Server:AllowInsecureHttp to true.");
+            "or set Yanki:Server:AllowInsecureHttp to true.");
     }
 
     /// <summary>Applies the host's own middleware and endpoints; called after <c>builder.Build()</c>.</summary>
@@ -361,8 +361,8 @@ internal static class TalkyHostFactory
             app.UseHsts();
         }
 
-        app.UseSerilogRequestLogging(options => options.GetLevel = TalkyRequestLogging.GetLevel);
+        app.UseSerilogRequestLogging(options => options.GetLevel = YankiRequestLogging.GetLevel);
 
-        TalkyEndpoints.Map(app);
+        YankiEndpoints.Map(app);
     }
 }

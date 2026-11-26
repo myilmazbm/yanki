@@ -1,4 +1,4 @@
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>Where the Kestrel TLS certificate comes from.</summary>
 public enum CertificateSource

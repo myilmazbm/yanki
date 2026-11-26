@@ -1,4 +1,4 @@
-import { pongFrame } from '@talky/test-utils';
+import { pongFrame } from '@yanki/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createHarness } from './helpers.js';
 

@@ -1,11 +1,11 @@
-using Talky.Core.Diagnostics;
-using Talky.Server.Diagnostics;
-using Talky.Server.Hosting;
+using Yanki.Core.Diagnostics;
+using Yanki.Server.Diagnostics;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// <c>talky doctor</c> — runs every registered <see cref="IDoctorCheck"/> in parallel and prints a
+/// <c>yanki doctor</c> — runs every registered <see cref="IDoctorCheck"/> in parallel and prints a
 /// table. Meant to be the first thing an operator runs on a new node.
 /// </summary>
 internal static class DoctorCommand
@@ -16,7 +16,7 @@ internal static class DoctorCommand
     /// <returns><see cref="ExitCode.Failure"/> when any check reported an error.</returns>
     public static async Task<int> RunAsync(HostStartupArguments arguments, CancellationToken cancellationToken)
     {
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
         Modules.AddModules(builder);
 
         await using var app = builder.Build();

@@ -9,14 +9,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Talky.Core\Talky.Core.csproj" />
-    <ProjectReference Include="..\Talky.Protocol\Talky.Protocol.csproj" />
+    <ProjectReference Include="..\Yanki.Core\Yanki.Core.csproj" />
+    <ProjectReference Include="..\Yanki.Protocol\Yanki.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Talky.UnitTests" />
-    <InternalsVisibleTo Include="Talky.IntegrationTests" />
-    <InternalsVisibleTo Include="Talky.ContractTests" />
+    <InternalsVisibleTo Include="Yanki.UnitTests" />
+    <InternalsVisibleTo Include="Yanki.IntegrationTests" />
+    <InternalsVisibleTo Include="Yanki.ContractTests" />
   </ItemGroup>
 
 </Project>

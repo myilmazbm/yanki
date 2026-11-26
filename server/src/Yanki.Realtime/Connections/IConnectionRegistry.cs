@@ -1,6 +1,6 @@
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Connections;
+namespace Yanki.Realtime.Connections;
 
 /// <summary>
 /// Thread-safe index of the realtime connections owned by this node. Registered as a singleton;

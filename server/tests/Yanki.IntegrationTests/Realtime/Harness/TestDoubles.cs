@@ -1,10 +1,10 @@
 using System.Net.WebSockets;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Talky.Core.Hosting;
-using Talky.Core.Sessions;
+using Yanki.Core.Hosting;
+using Yanki.Core.Sessions;
 
-namespace Talky.Testing.Realtime;
+namespace Yanki.Testing.Realtime;
 
 /// <summary>Stand-in for the host's node identity.</summary>
 internal sealed class TestNodeInfo : INodeInfo

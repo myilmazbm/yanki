@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
-using Talky.Protocol.V1;
-using Talky.Realtime.Protocol;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.Testing.Realtime;
+namespace Yanki.Testing.Realtime;
 
 /// <summary>What the server sent: either one frame or the close handshake.</summary>
 internal readonly record struct ServerMessage(

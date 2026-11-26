@@ -1,11 +1,11 @@
-# Talky veri modeli (v0)
+# Yankı veri modeli (v0)
 
-Tek gerçek kaynak: `server/src/Talky.Data`. Varlıklar (POCO) `Talky.Core/Domain` altında, EF Core
-yapılandırmaları `Talky.Data/Configurations` altındadır. Şema `Migrations/20260905131614_Init` ile
+Tek gerçek kaynak: `server/src/Yanki.Data`. Varlıklar (POCO) `Yanki.Core/Domain` altında, EF Core
+yapılandırmaları `Yanki.Data/Configurations` altındadır. Şema `Migrations/20260905131614_Init` ile
 oluşturulur.
 
 Hedef: **SQL Server 2025** (üretimde Always On AG, geliştirmede `(localdb)\MSSQLLocalDB` 17.0).
-10.000–50.000 kullanıcı, tek `talky.exe`, ayrı bir kuyruk/önbellek ürünü yok: iş kuyruğu da küme
+10.000–50.000 kullanıcı, tek `yanki.exe`, ayrı bir kuyruk/önbellek ürünü yok: iş kuyruğu da küme
 üyeliği de bu şemadadır.
 
 ## Genel kurallar
@@ -268,7 +268,7 @@ kolonu gibi indeksin sonuna yazar — kimlik değerini istemci tarafında, gidi�
 avantajını kaybetmeden.
 
 EF izlenen eklemelerde üreticiyi kendisi uygular (`HasValueGenerator<SequentialGuidValueGenerator>()`).
-Ham SQL yazan yollar (iş kuyruğu) aynı üreticiyi `Talky.Data.ValueGeneration.SequentialGuid.Next()`
+Ham SQL yazan yollar (iş kuyruğu) aynı üreticiyi `Yanki.Data.ValueGeneration.SequentialGuid.Next()`
 üzerinden kullanır.
 
 ## Neden filtreli indeks
@@ -311,7 +311,7 @@ yetkilendirme hatasıdır.
 
 SQL Server 2025 ve EF Core 10 yerel `json` tipini destekler, ama v0'da kullanılmıyor:
 
-- Yerel `json` **uyumluluk seviyesi 170** ister. Talky'nin desteklediği kurulum senaryolarında
+- Yerel `json` **uyumluluk seviyesi 170** ister. Yankı'nın desteklediği kurulum senaryolarında
   (mevcut bir AG'ye taşınma, kademeli sürüm yükseltme) veritabanı bir süre daha düşük seviyede
   kalabilir; `nvarchar(max)` her seviyede aynı çalışır.
 - `metadata` sunucu için **opaktır**: sıcak yolda hiçbir sorgu içine bakmaz, indekslenmez,
@@ -329,13 +329,13 @@ kilitlenmiş olmaz.
 
 ## Adlandırma kuralı
 
-`Talky.Data.Modeling.SnakeCaseNaming.UseSnakeCaseNames()`, `OnModelCreating`'in **en sonunda** çalışan
+`Yanki.Data.Modeling.SnakeCaseNaming.UseSnakeCaseNames()`, `OnModelCreating`'in **en sonunda** çalışan
 ~40 satırlık bir `ModelBuilder` geçişidir. Yalnız tablo ve kolon adlarını dönüştürür; anahtar, indeks,
 FK ve `CHECK` adlarını EF'in kendisi (zaten dönüştürülmüş) tablo ve kolon adlarından türetir, bu yüzden
 `PK_messages`, `IX_messages_sender_id_client_msg_id`, `FK_sessions_users_user_id` gibi adlar çıkar.
 
 Üçüncü parti bir adlandırma paketi eklenmedi: ihtiyaç duyulan davranışın tamamı "küçük harf +
-alt çizgi" kuralıdır ve kendimiz sahiplenmek hem `talky.exe`'nin bağımlılık yüzeyini küçük tutar hem
+alt çizgi" kuralıdır ve kendimiz sahiplenmek hem `yanki.exe`'nin bağımlılık yüzeyini küçük tutar hem
 kuralı denetlenebilir kılar.
 
 `ToSnakeCase` zaten snake_case olan adlar için **idempotenttir** (`metrics_1m` → `metrics_1m`).
@@ -369,7 +369,7 @@ sona ekleme yapılır (proto sözleşmelerindeki kuralın aynısı).
 | `JobState` | `jobs.state` | 0 Pending · 1 Running · 2 Succeeded · 3 Dead · 4 Cancelled |
 | `FederationPeerState` | `federation_peers.state` | 0 Pending · 1 Active · 2 Suspended · 3 Revoked |
 
-`cluster_nodes.roles` enum değil, `Talky.Core.Hosting.NodeRole` bit maskesidir (`int`):
+`cluster_nodes.roles` enum değil, `Yanki.Core.Hosting.NodeRole` bit maskesidir (`int`):
 1 Api · 2 Worker · 4 Search · 8 PushRelay.
 
 `audit_logs.action` bilinçli olarak `nvarchar(64)` metindir (`user.disable`, `team.create`,
@@ -409,7 +409,7 @@ Saklama işleri M2'de `jobs` kuyruğunda çalışacaktır; bu belge kalıbı v0'
 
 ## Yapılandırma ve DI
 
-`Talky:Database` bölümü (`DatabaseOptions`, `ValidateDataAnnotations` + `ValidateDatabaseOptions` +
+`Yanki:Database` bölümü (`DatabaseOptions`, `ValidateDataAnnotations` + `ValidateDatabaseOptions` +
 `ValidateOnStart`). `ValidateDatabaseOptions` bağlantı dizesinin `SqlConnectionStringBuilder` ile
 ayrıştırılabildiğini ve bir veritabanı (`Database`/`Initial Catalog`) adlandırdığını denetler; hata
 iletisi bağlantı dizesini asla yazmaz. Seçenekleri kullanan her yol (`serve`, `doctor`, `migrate`)
@@ -417,19 +417,19 @@ böylece olağan "Configuration is invalid" yolundan düşer:
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
-| `Talky:Database:ConnectionString` | — (**zorunlu**) | SQL Server bağlantı dizesi. Varsayılanı yoktur: üretimde sessizce yerel bir örneğe düşmek, başlamamaktan kötüdür. |
-| `Talky:Database:CommandTimeoutSeconds` | `5` | Her sorgunun zaman aşımı. Bilinçli olarak kısa: sıcak yolda saniyelerce süren sorgu beklenecek bir şey değil, bir arızadır. |
-| `Talky:Database:MaxRetryCount` | `3` | **Yalnız EF yolları** için geçici hata (AG yük devretmesi, bağlantı kopması, kilitlenme kurbanı) yeniden denemesi; komut zaman aşımı yeniden denenmez. `0` stratejiyi kapatır. Aşağıdaki "Geçici hatalar" bölümüne bakın. |
-| `Talky:Database:MigrateOnStartup` | `false` | Açıksa host dinlemeye başlamadan önce göçleri uygular. Üretimde kapalı: yükseltme `talky migrate` ile açık ve denetlenebilir bir adımdır. |
+| `Yanki:Database:ConnectionString` | — (**zorunlu**) | SQL Server bağlantı dizesi. Varsayılanı yoktur: üretimde sessizce yerel bir örneğe düşmek, başlamamaktan kötüdür. |
+| `Yanki:Database:CommandTimeoutSeconds` | `5` | Her sorgunun zaman aşımı. Bilinçli olarak kısa: sıcak yolda saniyelerce süren sorgu beklenecek bir şey değil, bir arızadır. |
+| `Yanki:Database:MaxRetryCount` | `3` | **Yalnız EF yolları** için geçici hata (AG yük devretmesi, bağlantı kopması, kilitlenme kurbanı) yeniden denemesi; komut zaman aşımı yeniden denenmez. `0` stratejiyi kapatır. Aşağıdaki "Geçici hatalar" bölümüne bakın. |
+| `Yanki:Database:MigrateOnStartup` | `false` | Açıksa host dinlemeye başlamadan önce göçleri uygular. Üretimde kapalı: yükseltme `yanki migrate` ile açık ve denetlenebilir bir adımdır. |
 
 ### Geçici hatalar: iki ayrı davranış
 
-- **EF yolları** (`TalkyDbContext`: göçler, `EfMessageReader`, ileride EF ile yazılan iş birimleri)
+- **EF yolları** (`YankiDbContext`: göçler, `EfMessageReader`, ileride EF ile yazılan iş birimleri)
   `EnableRetryOnFailure(MaxRetryCount)` ile AG yük devretmesi, bağlantı kopması ve kilitlenme kurbanı
   (1205) sınıfı hataları yeniden dener. Komut zaman aşımını (SqlException -2) yeniden **denemez**:
   `CommandTimeoutSeconds`'ı aşan bir sorgu tek denemeden sonra hata verir (EF bunu bilerek dışarıda
   bırakır; zaman aşımına uğrayan komut sunucuda tamamlanmış olabilir). Bu strateji kullanıcının açtığı
-  işlemleri (`BeginTransaction`) reddeder: `TalkyDbContext` üzerinde işlem açan her iş birimi
+  işlemleri (`BeginTransaction`) reddeder: `YankiDbContext` üzerinde işlem açan her iş birimi
   `Database.CreateExecutionStrategy().ExecuteAsync(...)` içine sarılmalıdır.
 - **Ham SQL yolları** (`SqlMessageAppender`, `SqlJobQueue`, `SqlClusterNodeRegistry`, sağlık ve
   doctor kontrolleri) **asla** yeniden denemez; hata çağırana gider.
@@ -439,25 +439,25 @@ böylece olağan "Configuration is invalid" yolundan düşer:
 Data entegrasyon testleri üretimdeki strateji (`MaxRetryCount = 3`) ile çalışır; yalnız komut zaman
 aşımı soğuk LocalDB için 60 s'ye çıkarılır.
 
-`services.AddTalkyData(builder.Configuration)` şunları kaydeder:
+`services.AddYankiData(builder.Configuration)` şunları kaydeder:
 
 | Servis | Ömür | Not |
 |---|---|---|
-| `TalkyDbContext` | havuzlanmış scoped | `AddDbContextPool`, `NoTracking`, `EnableRetryOnFailure`, `CommandTimeout` |
+| `YankiDbContext` | havuzlanmış scoped | `AddDbContextPool`, `NoTracking`, `EnableRetryOnFailure`, `CommandTimeout` |
 | `IMigrationRunner` → `EfMigrationRunner` | scoped | |
 | `IMessageReader` → `EfMessageReader` | scoped | derlenmiş keyset sorgusu |
 | `IMessageAppender` → `SqlMessageAppender` | singleton | |
 | `IJobQueue` → `SqlJobQueue` | singleton | |
 | `IClusterNodeRegistry` → `SqlClusterNodeRegistry` | singleton | |
-| `IDoctorCheck` → `SqlDoctorCheck` | singleton (enumerable) | `talky doctor` kontrolü, adı `sql` |
+| `IDoctorCheck` → `SqlDoctorCheck` | singleton (enumerable) | `yanki doctor` kontrolü, adı `sql` |
 | `SqlConnectionSource` | singleton | EF dışı yolların ADO.NET bağlantıları |
 | `TimeProvider` | singleton (`TryAdd`) | testler kendi sağlayıcısını önceden kaydedebilir |
-| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, tek gidiş-dönüş, 2 sn bütçe; en az bir göç uygulanmamışsa (`dbo.__EFMigrationsHistory` yok ya da boş: şema oluşturulmamış) `Unhealthy` ve "run 'talky migrate'"; 2 sn içinde yanıt yoksa ileti `talky migrate` ve `talky doctor`'a yönlendirir |
+| Sağlık kontrolü `sql` | — | `AddHealthChecks().AddCheck<SqlHealthCheck>("sql", tags: ["ready"])`, tek gidiş-dönüş, 2 sn bütçe; en az bir göç uygulanmamışsa (`dbo.__EFMigrationsHistory` yok ya da boş: şema oluşturulmamış) `Unhealthy` ve "run 'yanki migrate'"; 2 sn içinde yanıt yoksa ileti `yanki migrate` ve `yanki doctor`'a yönlendirir |
 | `IValidateOptions<DatabaseOptions>` → `ValidateDatabaseOptions` | singleton (enumerable) | bağlantı dizesi ayrıştırılabilir ve veritabanı adlandırıyor |
 
-Host tarafında yapılması gerekenler: `AddTalkyData(builder.Configuration)` çağrısı, hazır olma uç
+Host tarafında yapılması gerekenler: `AddYankiData(builder.Configuration)` çağrısı, hazır olma uç
 noktasının `ready` etiketiyle eşleştirilmesi (`app.MapHealthChecks("/readyz", new() { Predicate = r
-=> r.Tags.Contains("ready") })`), `talky migrate` komutunun `IMigrationRunner`'a bağlanması ve
+=> r.Tags.Contains("ready") })`), `yanki migrate` komutunun `IMigrationRunner`'a bağlanması ve
 `MigrateOnStartup` true ise başlangıçta `MigrateAsync` çağrılması.
 
 ## Göçler
@@ -466,22 +466,22 @@ noktasının `ready` etiketiyle eşleştirilmesi (`app.MapHealthChecks("/readyz"
 
 ```bash
 cd server
-dotnet ef migrations add <Ad> --project src/Talky.Data --startup-project src/Talky.Data
-dotnet build Talky.slnx -m:1 -p:NodeReuse=false     # üretilen kod derlenmeli
-dotnet ef migrations script --project src/Talky.Data --startup-project src/Talky.Data
+dotnet ef migrations add <Ad> --project src/Yanki.Data --startup-project src/Yanki.Data
+dotnet build Yanki.slnx -m:1 -p:NodeReuse=false     # üretilen kod derlenmeli
+dotnet ef migrations script --project src/Yanki.Data --startup-project src/Yanki.Data
 ```
 
-Tasarım zamanı bağlantı dizesi `TalkyDbContextFactory`'den gelir: `TALKY_DB` ortam değişkeni, yoksa
-`Server=(localdb)\MSSQLLocalDB;Database=talky_dev;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False`.
+Tasarım zamanı bağlantı dizesi `YankiDbContextFactory`'den gelir: `YANKI_DB` ortam değişkeni, yoksa
+`Server=(localdb)\MSSQLLocalDB;Database=yanki_dev;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False`.
 
 Boş bir veritabanına uygulayıp doğrulamak için:
 
 ```bash
-TALKY_DB='Server=(localdb)\MSSQLLocalDB;Database=talky_scratch;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False' \
-  dotnet ef database update --project src/Talky.Data --startup-project src/Talky.Data
+YANKI_DB='Server=(localdb)\MSSQLLocalDB;Database=yanki_scratch;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False' \
+  dotnet ef database update --project src/Yanki.Data --startup-project src/Yanki.Data
 ```
 
-`src/Talky.Data/Migrations/.editorconfig` bu klasördeki dosyaları üretilmiş kod sayar; aksi halde
+`src/Yanki.Data/Migrations/.editorconfig` bu klasördeki dosyaları üretilmiş kod sayar; aksi halde
 `TreatWarningsAsErrors` iskele kodunu derleme hatasına çevirirdi.
 
 ### `Init` göçünde elle eklenen iki adım
@@ -510,10 +510,10 @@ TALKY_DB='Server=(localdb)\MSSQLLocalDB;Database=talky_scratch;Trusted_Connectio
 `EfMigrationRunner`:
 
 1. Bağlantı dizesinin bir kopyasıyla `master`'a bağlanır ve
-   `sp_getapplock @Resource = 'talky-migrate:<veritabanı adı>', @LockMode = 'Exclusive',
+   `sp_getapplock @Resource = 'yanki-migrate:<veritabanı adı>', @LockMode = 'Exclusive',
    @LockOwner = 'Session', @LockTimeout = 60000` alır. `Session` sahipliği sayesinde süreç öldürülse
    bile kilit bağlantı kapanınca serbest kalır. Kaynak adı veritabanı adını taşır, böylece aynı örnek
-   üzerindeki iki Talky kurulumu (veya iki test veritabanı) birbirini beklemez.
+   üzerindeki iki Yankı kurulumu (veya iki test veritabanı) birbirini beklemez.
 2. Veritabanı yoksa oluşturur (`RelationalDatabaseCreator`).
 3. Bekleyen göç yoksa hiçbir şey yapmaz; varsa `Database.MigrateAsync()` çağırır.
 4. Kilidi bırakır. Bırakma başarısız olursa yalnız uyarı loglanır (kilit bağlantı kapanınca zaten
@@ -523,8 +523,8 @@ Oluşturma ve göç adımları, sıcak yolun 5 s'lik `CommandTimeoutSeconds`'ı 
 **30 dakikalık** komut zaman aşımıyla çalışır (dolu bir tabloda indeks yeniden oluşturmak dakikalar
 sürer); `GetStatusAsync` kısa zaman aşımını korur.
 
-`talky doctor`'ın `sql` kontrolü: veritabanı yoksa veya oturuma erişilebilir değilse (SQL hatası
-4060) ve hiç göç uygulanmamışsa **Error** ("run 'talky migrate'"); göçlerin bir kısmı bekliyorsa
+`yanki doctor`'ın `sql` kontrolü: veritabanı yoksa veya oturuma erişilebilir değilse (SQL hatası
+4060) ve hiç göç uygulanmamışsa **Error** ("run 'yanki migrate'"); göçlerin bir kısmı bekliyorsa
 **Warning** (kademeli yükseltmede düğüm uyumlu eski şemayı sunabilir).
 
 Kademeli yükseltmede aynı anda başlayan ikinci düğüm en fazla 60 saniye bekler ve ardından bekleyen
@@ -534,14 +534,14 @@ göç bulamaz.
 
 ```bash
 cd server
-dotnet test tests/Talky.UnitTests -m:1 -p:NodeReuse=false          # veritabanı gerekmez
-dotnet test tests/Talky.IntegrationTests -m:1 -p:NodeReuse=false   # LocalDB
-dotnet test tests/Talky.IntegrationTests -m:1 -p:NodeReuse=false --filter "FullyQualifiedName~IntegrationTests.Data"   # yalnız Data testleri
+dotnet test tests/Yanki.UnitTests -m:1 -p:NodeReuse=false          # veritabanı gerekmez
+dotnet test tests/Yanki.IntegrationTests -m:1 -p:NodeReuse=false   # LocalDB
+dotnet test tests/Yanki.IntegrationTests -m:1 -p:NodeReuse=false --filter "FullyQualifiedName~IntegrationTests.Data"   # yalnız Data testleri
 ```
 
-Entegrasyon testleri her test sınıfı için `talky_test_<8 hex>` adında bir veritabanı oluşturur,
+Entegrasyon testleri her test sınıfı için `yanki_test_<8 hex>` adında bir veritabanı oluşturur,
 gerçek `IMigrationRunner` ile göçleri uygular ve sonunda düşürür.
 
-- `TALKY_TEST_DB_SERVER` sunucuyu değiştirir (varsayılan `(localdb)\MSSQLLocalDB`).
-- `TALKY_SKIP_DB_TESTS=1` yalnız **Data** testlerini (`[RequiresSqlServerFact]`) atlar. Host
+- `YANKI_TEST_DB_SERVER` sunucuyu değiştirir (varsayılan `(localdb)\MSSQLLocalDB`).
+- `YANKI_SKIP_DB_TESTS=1` yalnız **Data** testlerini (`[RequiresSqlServerFact]`) atlar. Host
   testleri (`IntegrationTests.Host`) her durumda LocalDB ister ve bu anahtarla atlanmaz.

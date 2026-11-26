@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// WebSocket close codes used by the realtime endpoint. See <c>docs/protocol.md</c>.
@@ -26,7 +26,7 @@ public static class RealtimeCloseCodes
     /// </summary>
     public const WebSocketCloseStatus PolicyViolation = WebSocketCloseStatus.PolicyViolation;
 
-    /// <summary>1009 — frame larger than <c>Talky:Realtime:MaxFrameBytes</c>.</summary>
+    /// <summary>1009 — frame larger than <c>Yanki:Realtime:MaxFrameBytes</c>.</summary>
     public const WebSocketCloseStatus MessageTooBig = WebSocketCloseStatus.MessageTooBig;
 
     /// <summary>1013 — "try again later": the node refuses new connections while draining (no Reconnect frame).</summary>

@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-    Creates, updates or removes the Windows Firewall inbound rules a Talky node needs.
+    Creates, updates or removes the Windows Firewall inbound rules a Yanki node needs.
 
 .DESCRIPTION
-    Talky listens on these inbound ports:
+    Yanki listens on these inbound ports:
 
       TCP 8443  clients and API (HTTPS, terminated by Kestrel)          always
       TCP 8080  plain HTTP, only when a load balancer terminates TLS    opt-in
 
     The gRPC cluster mesh port does not exist before M2; no rule is created for it.
 
-    Every rule is named "Talky - <purpose>" and grouped under "Talky", so
-    `Get-NetFirewallRule -Group Talky` shows the complete footprint and
+    Every rule is named "Yanki - <purpose>" and grouped under "Yanki", so
+    `Get-NetFirewallRule -Group Yanki` shows the complete footprint and
     -Remove cleans it up without touching anything else. This script is the only
-    owner of Talky firewall rules; the MSI creates none.
+    owner of Yanki firewall rules; the MSI creates none.
 
     The script is idempotent: an existing rule is updated in place (port, profile,
     remote address, enabled state) instead of being duplicated.
@@ -33,25 +33,25 @@
     domain-joined). Use 'Any' in a workgroup lab.
 
 .PARAMETER Remove
-    Remove every Talky firewall rule instead of creating them.
+    Remove every Yanki firewall rule instead of creating them.
 
 .EXAMPLE
-    .\Set-TalkyFirewall.ps1 -WhatIf
+    .\Set-YankiFirewall.ps1 -WhatIf
     Show what would change without touching the firewall.
 
 .EXAMPLE
-    .\Set-TalkyFirewall.ps1 -EnableHttp
+    .\Set-YankiFirewall.ps1 -EnableHttp
     Open 8443 to the domain profile and 8080 to the local subnet.
 
 .EXAMPLE
-    .\Set-TalkyFirewall.ps1 -Remove
-    Remove all rules in the "Talky" group.
+    .\Set-YankiFirewall.ps1 -Remove
+    Remove all rules in the "Yanki" group.
 
 .NOTES
     Requires an elevated session. PowerShell 5.1 compatible.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'FirewallProfile',
-    Justification = 'Read from the script scope by Set-TalkyRule.')]
+    Justification = 'Read from the script scope by Set-YankiRule.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [ValidateRange(1, 65535)][int] $HttpsPort = 8443,
@@ -65,7 +65,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Group = 'Talky'
+$Group = 'Yanki'
 
 function Test-Elevated {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -73,7 +73,7 @@ function Test-Elevated {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Set-TalkyRule {
+function Set-YankiRule {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory)][string] $Name,
@@ -102,7 +102,7 @@ function Set-TalkyRule {
     }
 }
 
-function Remove-TalkyRule {
+function Remove-YankiRule {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param([Parameter(Mandatory)][string] $Name)
     $existing = Get-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue
@@ -122,16 +122,16 @@ if (-not (Test-Elevated)) {
         Write-Warning 'Not elevated. Continuing because -WhatIf was given; a real run needs an elevated session.'
     }
     else {
-        throw 'Set-TalkyFirewall.ps1 must run in an elevated PowerShell session.'
+        throw 'Set-YankiFirewall.ps1 must run in an elevated PowerShell session.'
     }
 }
 
 $rules = @(
-    @{ Name = 'Talky - HTTPS (clients and API)'; Port = $HttpsPort; Remote = @('Any')
-       Description = 'Inbound TLS traffic for Talky clients, REST API and WebSocket sessions.' }
+    @{ Name = 'Yanki - HTTPS (clients and API)'; Port = $HttpsPort; Remote = @('Any')
+       Description = 'Inbound TLS traffic for Yanki clients, REST API and WebSocket sessions.' }
 )
 if ($EnableHttp) {
-    $rules += @{ Name = 'Talky - HTTP (behind load balancer)'; Port = $HttpPort; Remote = @('LocalSubnet')
+    $rules += @{ Name = 'Yanki - HTTP (behind load balancer)'; Port = $HttpPort; Remote = @('LocalSubnet')
                  Description = 'Plain HTTP for a TLS-terminating load balancer on an isolated back-end network.' }
 }
 
@@ -142,12 +142,12 @@ if ($Remove) {
     if ($inGroup.Count -eq 0) {
         Write-Host "No firewall rules in group '$Group'."
     }
-    foreach ($rule in $inGroup) { Remove-TalkyRule -Name $rule.DisplayName }
+    foreach ($rule in $inGroup) { Remove-YankiRule -Name $rule.DisplayName }
     return
 }
 
 foreach ($rule in $rules) {
-    Set-TalkyRule -Name $rule.Name -Description $rule.Description -Port $rule.Port -RemoteAddress $rule.Remote
+    Set-YankiRule -Name $rule.Name -Description $rule.Description -Port $rule.Port -RemoteAddress $rule.Remote
 }
 
 if (-not $WhatIfPreference) {

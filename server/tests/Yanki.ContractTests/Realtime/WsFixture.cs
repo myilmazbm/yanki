@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Talky.ContractTests.Realtime;
+namespace Yanki.ContractTests.Realtime;
 
 /// <summary>
 /// A golden flow from <c>api/fixtures/ws</c>. See <c>docs/protocol.md</c> for the base format and

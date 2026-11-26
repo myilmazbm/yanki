@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Diagnostics;
+namespace Yanki.Realtime.Diagnostics;
 
 /// <summary>
 /// Source-generated log messages for the realtime endpoint. Messages are English, contain no user
@@ -50,7 +50,7 @@ internal static partial class RealtimeLog
     public static partial void EndpointConfigured(ILogger logger, string path, int heartbeatIntervalMs, int helloTimeoutMs, int maxFrameBytes, int outboundQueueCapacity, int maxConnectionsPerUser);
 
     [LoggerMessage(EventId = 1011, Level = LogLevel.Warning,
-        Message = "Development token authentication is ENABLED (Talky:Realtime:AllowDevTokens). Any 'dev:<user>' token is accepted without verification. Never enable this outside development.")]
+        Message = "Development token authentication is ENABLED (Yanki:Realtime:AllowDevTokens). Any 'dev:<user>' token is accepted without verification. Never enable this outside development.")]
     public static partial void DevTokensEnabled(ILogger logger);
 
     [LoggerMessage(EventId = 1012, Level = LogLevel.Information,

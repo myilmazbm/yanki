@@ -1,13 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace Talky.Data.Modeling;
+namespace Yanki.Data.Modeling;
 
 /// <summary>
 /// Stores every enum property as <c>tinyint</c> instead of EF's default <c>int</c>.
 /// </summary>
 /// <remarks>
-/// All Talky enums are small, closed sets with explicit numeric values (see
-/// <c>Talky.Core.Domain</c>). One byte instead of four keeps the narrow, very hot rows
+/// All Yanki enums are small, closed sets with explicit numeric values (see
+/// <c>Yanki.Core.Domain</c>). One byte instead of four keeps the narrow, very hot rows
 /// (<c>messages</c>, <c>conversation_members</c>, <c>jobs</c>) smaller, which means more rows per
 /// 8 KB page and fewer logical reads. Flag enums are stored as their own integer column instead
 /// (see <c>cluster_nodes.roles</c>), so nothing here has to widen.

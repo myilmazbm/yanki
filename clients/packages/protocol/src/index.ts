@@ -1,1 +1,1 @@
-export * from './gen/talky/v1/frames_pb.js';
+export * from './gen/yanki/v1/frames_pb.js';

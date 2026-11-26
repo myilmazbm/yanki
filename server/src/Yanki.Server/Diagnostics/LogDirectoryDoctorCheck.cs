@@ -1,10 +1,10 @@
 using System.Globalization;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Diagnostics;
-using Talky.Server.Logging;
+using Yanki.Core.Configuration;
+using Yanki.Core.Diagnostics;
+using Yanki.Server.Logging;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
 /// Creates the configured log directory if needed and proves it is writable by the current account
@@ -21,11 +21,11 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
         string directory;
         try
         {
-            directory = TalkyLogging.ExpandDirectory(logging.Value.Directory);
+            directory = YankiLogging.ExpandDirectory(logging.Value.Directory);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return Task.FromResult(DoctorResult.Error($"Talky:Logging:Directory is not a usable path: {ex.Message}"));
+            return Task.FromResult(DoctorResult.Error($"Yanki:Logging:Directory is not a usable path: {ex.Message}"));
         }
 
         var details = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -34,7 +34,7 @@ internal sealed class LogDirectoryDoctorCheck(IOptions<LoggingOptions> logging) 
             ["retainedFiles"] = logging.Value.RetainedFileCount.ToString(CultureInfo.InvariantCulture),
         };
 
-        var error = TalkyLogging.ProbeWritable(directory);
+        var error = YankiLogging.ProbeWritable(directory);
         if (error is not null)
         {
             details["error"] = error;

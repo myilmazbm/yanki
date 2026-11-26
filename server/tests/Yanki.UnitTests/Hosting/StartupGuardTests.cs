@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting.Internal;
-using Talky.Core.Configuration;
-using Talky.Server.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Server.Hosting;
 
-namespace Talky.UnitTests.Hosting;
+namespace Yanki.UnitTests.Hosting;
 
 public sealed class StartupGuardTests
 {
@@ -31,19 +31,19 @@ public sealed class StartupGuardTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Talky:Realtime:AllowDevTokens"] = allowDevTokens ? "true" : "false",
+                ["Yanki:Realtime:AllowDevTokens"] = allowDevTokens ? "true" : "false",
             })
             .Build();
 
         void Guards()
         {
-            TalkyHostFactory.GuardInsecureConfiguration(server, environment);
-            TalkyHostFactory.GuardDevTokens(configuration, server, environment);
+            YankiHostFactory.GuardInsecureConfiguration(server, environment);
+            YankiHostFactory.GuardDevTokens(configuration, server, environment);
         }
 
         if (refused)
         {
-            Assert.Throws<TalkyStartupException>(Guards);
+            Assert.Throws<YankiStartupException>(Guards);
         }
         else
         {

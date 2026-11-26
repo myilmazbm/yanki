@@ -1,10 +1,10 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
-/// Clock helpers for the SQL layer. Nothing in Talky.Data ever calls <c>DateTime.UtcNow</c>: every
+/// Clock helpers for the SQL layer. Nothing in Yanki.Data ever calls <c>DateTime.UtcNow</c>: every
 /// timestamp comes from an injected <see cref="TimeProvider"/> so tests can control time.
 /// </summary>
 internal static class SqlTime

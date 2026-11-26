@@ -3,8 +3,8 @@
   WinSW wrapper for the LiveKit SFU.
 
   LiveKit ships a plain console executable, so a wrapper turns it into a Windows service
-  with the same behaviour as the Talky service: delayed automatic start, graded restart
-  recovery and rolling logs under %ProgramData%\Talky\logs\livekit.
+  with the same behaviour as the Yanki service: delayed automatic start, graded restart
+  recovery and rolling logs under %ProgramData%\Yanki\logs\livekit.
 
   Install-LiveKitService.ps1 copies this file next to WinSW-x64.exe (renamed
   livekit-service.exe, so WinSW picks up livekit-service.xml) and substitutes the
@@ -13,7 +13,7 @@
 <service>
   <id>LiveKit</id>
   <name>LiveKit</name>
-  <description>LiveKit SFU media node for Talky (WebRTC signalling, media and embedded TURN).</description>
+  <description>LiveKit SFU media node for Yanki (WebRTC signalling, media and embedded TURN).</description>
 
   <executable>%BASE%\livekit-server.exe</executable>
   <arguments>--config "%BASE%\livekit.yaml"</arguments>
@@ -22,7 +22,7 @@
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
 
-  <!-- Same recovery ladder as the Talky service: 5 s, 10 s, then 30 s (the last one
+  <!-- Same recovery ladder as the Yanki service: 5 s, 10 s, then 30 s (the last one
        repeats). Install-LiveKitService.ps1 restores exactly this with sc.exe after a
        failed start ($RecoveryActions there); keep both in step. -->
   <onfailure action="restart" delay="5 sec" />

@@ -3,21 +3,21 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
-using Talky.Server.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// The talky.exe command line. Running the executable without a command is identical to
-/// <c>talky serve</c>, which is what the Windows service does: the installers register it with
+/// The yanki.exe command line. Running the executable without a command is identical to
+/// <c>yanki serve</c>, which is what the Windows service does: the installers register it with
 /// options only (<c>--data-dir</c>) and no command.
 /// </summary>
-internal static class TalkyCommandLine
+internal static class YankiCommandLine
 {
     /// <summary>File in <c>&lt;data-dir&gt;\logs</c> that records failures which ended the service process.</summary>
-    public const string StartupLogFileName = "talky-startup.log";
+    public const string StartupLogFileName = "yanki-startup.log";
 
     /// <summary>Parses <paramref name="args"/> and runs the selected command.</summary>
     /// <param name="args">Raw command line arguments.</param>
@@ -54,8 +54,8 @@ internal static class TalkyCommandLine
             {
                 await ReportFailureAsync(
                     [unexpected.StartsWith('-')
-                        ? $"Unknown option '{unexpected}'. Run 'talky --help' to see the available options."
-                        : $"Unknown command '{unexpected}'. Run 'talky --help' to see the available commands."],
+                        ? $"Unknown option '{unexpected}'. Run 'yanki --help' to see the available options."
+                        : $"Unknown command '{unexpected}'. Run 'yanki --help' to see the available commands."],
                     parseResult);
                 return ExitCode.Failure;
             }
@@ -72,7 +72,7 @@ internal static class TalkyCommandLine
 
             return await parseResult.InvokeAsync(configuration, cancellationToken);
         }
-        catch (TalkyStartupException ex)
+        catch (YankiStartupException ex)
         {
             await ReportFailureAsync([ex.Message], parseResult);
             return ExitCode.InvalidConfiguration;
@@ -95,7 +95,7 @@ internal static class TalkyCommandLine
         }
         catch (Exception ex)
         {
-            await ReportFailureAsync([$"talky failed unexpectedly: {ex}"], parseResult);
+            await ReportFailureAsync([$"yanki failed unexpectedly: {ex}"], parseResult);
             return ExitCode.Failure;
         }
     }
@@ -106,7 +106,7 @@ internal static class TalkyCommandLine
     /// <summary>
     /// Reports a failure that ends the process on stderr. Only when the process runs as a Windows
     /// service, whose stderr nobody sees, the same text also goes, best effort, to the Windows event
-    /// log (source <c>Talky</c>) and to <c>&lt;data-dir&gt;\logs\talky-startup.log</c>; an interactive
+    /// log (source <c>Yanki</c>) and to <c>&lt;data-dir&gt;\logs\yanki-startup.log</c>; an interactive
     /// command or a test run writes neither. Neither needs the host or its logger, which usually do
     /// not exist yet when this runs.
     /// </summary>
@@ -162,7 +162,7 @@ internal static class TalkyCommandLine
             }
 
             var directory = Path.Combine(
-                TalkyConfigurationSources.ResolveDataDirectory(HostStartupArguments.Empty with { DataDirectory = dataDirectory }),
+                YankiConfigurationSources.ResolveDataDirectory(HostStartupArguments.Empty with { DataDirectory = dataDirectory }),
                 "logs");
             Directory.CreateDirectory(directory);
 
@@ -183,14 +183,14 @@ internal static class TalkyCommandLine
     {
         var configOption = new Option<string?>("--config", "-c")
         {
-            Description = "Extra JSON configuration file, layered on top of appsettings.json and %ProgramData%\\Talky.",
+            Description = "Extra JSON configuration file, layered on top of appsettings.json and %ProgramData%\\Yanki.",
             HelpName = "file",
             Recursive = true,
         };
 
         var dataDirOption = new Option<string?>("--data-dir")
         {
-            Description = "Data directory of this node (default %ProgramData%\\Talky). Its appsettings.json is loaded, logs default to <dir>\\logs.",
+            Description = "Data directory of this node (default %ProgramData%\\Yanki). Its appsettings.json is loaded, logs default to <dir>\\logs.",
             HelpName = "dir",
             Recursive = true,
         };
@@ -204,7 +204,7 @@ internal static class TalkyCommandLine
 
         var urlsOption = new Option<string[]>("--urls")
         {
-            Description = "Endpoints Kestrel binds to, e.g. https://+:8443. Replaces Talky:Server:Urls entirely.",
+            Description = "Endpoints Kestrel binds to, e.g. https://+:8443. Replaces Yanki:Server:Urls entirely.",
             HelpName = "urls",
             AllowMultipleArgumentsPerToken = true,
             Recursive = true,
@@ -212,7 +212,7 @@ internal static class TalkyCommandLine
 
         var setOption = new Option<string[]>("--set")
         {
-            Description = "Override a single configuration key, e.g. --set Talky:Server:DrainSeconds=60. Repeatable.",
+            Description = "Override a single configuration key, e.g. --set Yanki:Server:DrainSeconds=60. Repeatable.",
             HelpName = "key=value",
             AllowMultipleArgumentsPerToken = false,
             Recursive = true,
@@ -228,7 +228,7 @@ internal static class TalkyCommandLine
             DataDirectory = parseResult.GetValue(dataDirOption),
         };
 
-        var serve = new Command("serve", "Run the Talky server. This is what the Windows service starts.");
+        var serve = new Command("serve", "Run the Yanki server. This is what the Windows service starts.");
         serve.SetAction((parseResult, token) => ServeCommand.RunAsync(Arguments(parseResult), token));
 
         var migrate = new Command("migrate", "Show and apply pending database migrations, then exit.");
@@ -237,7 +237,7 @@ internal static class TalkyCommandLine
         var doctor = new Command("doctor", "Run every environment check and print a report.");
         doctor.SetAction((parseResult, token) => DoctorCommand.RunAsync(Arguments(parseResult), token));
 
-        var version = new Command("version", "Print the talky.exe version and runtime information.");
+        var version = new Command("version", "Print the yanki.exe version and runtime information.");
         version.SetAction(_ => VersionCommand.Run());
 
         var configValidate = new Command("validate", "Bind and validate configuration, then print the effective values.");
@@ -247,7 +247,7 @@ internal static class TalkyCommandLine
         config.Subcommands.Add(configValidate);
 
         var root = new RootCommand(
-            "Talky server: on-premises messaging, calling and meetings. Running talky with no command serves.")
+            "Yanki server: on-premises messaging, calling and meetings. Running yanki with no command serves.")
         {
             // Generic host settings (--environment, --contentRoot, --applicationName, --webroot)
             // arrive on the command line from deployment scripts and from the ASP.NET Core test

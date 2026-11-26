@@ -1,7 +1,7 @@
-namespace Talky.Core.Diagnostics;
+namespace Yanki.Core.Diagnostics;
 
 /// <summary>
-/// One check executed by <c>talky doctor</c> (and shown in the admin panel's environment page).
+/// One check executed by <c>yanki doctor</c> (and shown in the admin panel's environment page).
 /// Modules register their checks in DI (<c>services.AddSingleton&lt;IDoctorCheck, SqlDoctorCheck&gt;()</c>).
 /// Checks must never throw; they return <see cref="DoctorResult"/> with a human-readable, English message.
 /// </summary>

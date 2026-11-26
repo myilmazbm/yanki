@@ -1,4 +1,4 @@
-namespace Talky.WsLoad;
+namespace Yanki.WsLoad;
 
 /// <summary>
 /// Collects latency samples per connection so the hot path never contends on a shared structure;

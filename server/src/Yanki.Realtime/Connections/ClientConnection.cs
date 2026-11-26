@@ -1,13 +1,13 @@
 using System.Net.WebSockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Talky.Core.Sessions;
-using Talky.Protocol.V1;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Protocol;
+using Yanki.Core.Sessions;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.Realtime.Connections;
+namespace Yanki.Realtime.Connections;
 
 /// <summary>
 /// One accepted realtime WebSocket connection: identity, a bounded outbound queue and the single

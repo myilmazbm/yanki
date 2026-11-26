@@ -1,6 +1,6 @@
 using System.Data.SqlTypes;
 
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// A DM, group or channel. Owns the per-conversation message counter <see cref="LastSeq"/>,

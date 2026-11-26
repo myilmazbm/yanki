@@ -1,4 +1,4 @@
-import { ErrorCode } from '@talky/protocol/v1';
+import { ErrorCode } from '@yanki/protocol/v1';
 import { describe, expect, it } from 'vitest';
 import { createHarness, seededRandom } from './helpers.js';
 

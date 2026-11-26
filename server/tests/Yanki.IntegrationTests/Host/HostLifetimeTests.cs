@@ -2,13 +2,13 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
-using Talky.Server.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
+using Yanki.Server.Hosting;
 
-namespace Talky.IntegrationTests.Host;
+namespace Yanki.IntegrationTests.Host;
 
-public sealed class HostLifetimeTests(TalkyApplicationFactory factory) : IClassFixture<TalkyApplicationFactory>
+public sealed class HostLifetimeTests(YankiApplicationFactory factory) : IClassFixture<YankiApplicationFactory>
 {
     private static CancellationToken TestToken => CancellationToken.None;
 
@@ -36,7 +36,7 @@ public sealed class HostLifetimeTests(TalkyApplicationFactory factory) : IClassF
         var host = factory.Services.GetRequiredService<IOptions<HostOptions>>().Value;
 
         Assert.Equal(
-            TimeSpan.FromSeconds(server.DrainSeconds + TalkyHostFactory.ShutdownTimeoutHeadroomSeconds),
+            TimeSpan.FromSeconds(server.DrainSeconds + YankiHostFactory.ShutdownTimeoutHeadroomSeconds),
             host.ShutdownTimeout);
     }
 
@@ -55,7 +55,7 @@ public sealed class HostLifetimeTests(TalkyApplicationFactory factory) : IClassF
     {
         // A real shutdown of a real host: the load balancer has to be able to see the node go
         // unhealthy before Kestrel stops accepting connections.
-        await using var shuttingDown = new TalkyApplicationFactory();
+        await using var shuttingDown = new YankiApplicationFactory();
         using var client = shuttingDown.CreateClient();
 
         using (var before = await client.GetAsync(new Uri("/readyz", UriKind.Relative), TestToken))
@@ -66,7 +66,7 @@ public sealed class HostLifetimeTests(TalkyApplicationFactory factory) : IClassF
         shuttingDown.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
 
         HttpStatusCode? observed = null;
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(TalkyTestEnvironment.DrainSeconds + 10);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(YankiTestEnvironment.DrainSeconds + 10);
         while (DateTimeOffset.UtcNow < deadline)
         {
             try
@@ -92,7 +92,7 @@ public sealed class HostLifetimeTests(TalkyApplicationFactory factory) : IClassF
     public async Task Entering_the_stopping_phase_drains_the_node()
     {
         // Draining is a one-way transition, so this test owns its host.
-        await using var stopping = new TalkyApplicationFactory();
+        await using var stopping = new YankiApplicationFactory();
         using var client = stopping.CreateClient();
 
         var coordinator = stopping.Services.GetRequiredService<IDrainCoordinator>();

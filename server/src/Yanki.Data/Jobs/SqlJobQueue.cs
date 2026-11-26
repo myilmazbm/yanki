@@ -1,10 +1,10 @@
 using System.Data;
 using System.Globalization;
-using Talky.Core.Data;
-using Talky.Core.Domain;
-using Talky.Data.ValueGeneration;
+using Yanki.Core.Data;
+using Yanki.Core.Domain;
+using Yanki.Data.ValueGeneration;
 
-namespace Talky.Data.Jobs;
+namespace Yanki.Data.Jobs;
 
 /// <summary>
 /// The <c>jobs</c> table used as a queue.

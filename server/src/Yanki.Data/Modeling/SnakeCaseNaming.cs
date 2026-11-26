@@ -1,14 +1,14 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 
-namespace Talky.Data.Modeling;
+namespace Yanki.Data.Modeling;
 
 /// <summary>
 /// Turns the CLR names EF derives by convention into <c>snake_case</c> database names.
 /// <para>
 /// This is a small <see cref="ModelBuilder"/> pass instead of a third-party naming package: the whole
 /// behaviour we need is "lower-case with underscores, unless a configuration said otherwise", and
-/// owning it keeps the dependency surface of talky.exe smaller and the rule auditable.
+/// owning it keeps the dependency surface of yanki.exe smaller and the rule auditable.
 /// </para>
 /// <para>
 /// It only renames tables and columns. Key, index, foreign key and check constraint names are left to

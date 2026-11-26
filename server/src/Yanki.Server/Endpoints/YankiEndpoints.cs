@@ -1,16 +1,16 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Endpoints;
+namespace Yanki.Server.Endpoints;
 
 /// <summary>Liveness response of <c>GET /healthz</c>.</summary>
 /// <param name="Status">Always <c>ok</c>; the endpoint answers as long as the process can serve.</param>
 public sealed record LivenessResponse(string Status);
 
 /// <summary>Response of <c>GET /api/v1/ping</c>.</summary>
-/// <param name="Version">Informational version of talky.exe.</param>
+/// <param name="Version">Informational version of yanki.exe.</param>
 /// <param name="NodeId">Id of the node that answered.</param>
 /// <param name="Roles">Roles the node runs, e.g. <c>["api","worker"]</c>.</param>
 /// <param name="ServerTime">Server clock, used by clients to detect skew.</param>
@@ -20,7 +20,7 @@ public sealed record PingResponse(string Version, string NodeId, IReadOnlyList<s
 /// The endpoints owned by the host itself. Module endpoints are mapped from
 /// <see cref="Modules.MapModules(WebApplication)"/>.
 /// </summary>
-internal static class TalkyEndpoints
+internal static class YankiEndpoints
 {
     /// <summary>Liveness probe: is the process alive at all.</summary>
     public const string LivenessPath = "/healthz";

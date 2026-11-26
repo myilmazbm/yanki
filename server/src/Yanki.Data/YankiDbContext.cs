@@ -1,16 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Talky.Core.Domain;
-using Talky.Data.Modeling;
+using Yanki.Core.Domain;
+using Yanki.Data.Modeling;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
-/// The single EF Core model for Talky. Registered pooled and with
-/// <see cref="QueryTrackingBehavior.NoTracking"/> by <c>AddTalkyData</c>; the write hot paths
+/// The single EF Core model for Yanki. Registered pooled and with
+/// <see cref="QueryTrackingBehavior.NoTracking"/> by <c>AddYankiData</c>; the write hot paths
 /// (message append, job queue, cluster heartbeat) bypass it and use parameterized SQL directly.
 /// </summary>
-public sealed class TalkyDbContext(DbContextOptions<TalkyDbContext> options) : DbContext(options)
+public sealed class YankiDbContext(DbContextOptions<YankiDbContext> options) : DbContext(options)
 {
     public DbSet<IdentitySource> IdentitySources => Set<IdentitySource>();
 
@@ -58,7 +58,7 @@ public sealed class TalkyDbContext(DbContextOptions<TalkyDbContext> options) : D
     {
         ArgumentNullException.ThrowIfNull(configurationBuilder);
 
-        // Every timestamp in Talky is UTC with millisecond resolution: datetime2(3) is 6 bytes
+        // Every timestamp in Yanki is UTC with millisecond resolution: datetime2(3) is 6 bytes
         // instead of the 8 bytes of the default datetime2(7), and milliseconds are as fine as any
         // of our clocks (and as the wire protocol) actually are.
         // SQL Server hands datetime2 back with Kind=Unspecified; mark it Utc on read (nullable
@@ -73,7 +73,7 @@ public sealed class TalkyDbContext(DbContextOptions<TalkyDbContext> options) : D
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(TalkyDbContext).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(YankiDbContext).Assembly);
         modelBuilder.UseTinyIntEnums();
 
         // Last: the snake_case pass reads the names the configurations left behind.

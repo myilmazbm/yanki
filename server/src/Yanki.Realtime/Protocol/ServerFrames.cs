@@ -1,7 +1,7 @@
 using Google.Protobuf.WellKnownTypes;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// Builds the server→client frames of protocol version 1. Every frame carries a fresh UUIDv7

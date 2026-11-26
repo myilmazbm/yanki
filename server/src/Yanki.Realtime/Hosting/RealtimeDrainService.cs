@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Talky.Core.Hosting;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Connections;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Protocol;
+using Yanki.Core.Hosting;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Connections;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.Realtime.Hosting;
+namespace Yanki.Realtime.Hosting;
 
 /// <summary>
 /// Watches <see cref="IDrainCoordinator.DrainToken"/> and empties the node gracefully during a

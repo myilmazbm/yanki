@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Validates a Talky Server MSI without installing anything on the current machine.
+    Validates a Yanki Server MSI without installing anything on the current machine.
 
 .DESCRIPTION
     Runs an administrative install (msiexec /a) into a throwaway folder, which extracts the
@@ -9,15 +9,15 @@
       * the administrative install succeeded (exit code 0);
       * the host executable and the harvested payload were laid down, without .pdb files
         and without msalruntime.dll (excluded: no redistribution grant in its licence);
-      * the MSI declares the "Talky" service with delayed automatic start;
+      * the MSI declares the "Yanki" service with delayed automatic start;
       * the recovery policy (restart after 5 s / 10 s / 30 s, reset after a day) comes from
         the deferred, non-impersonated custom action ConfigureServiceRecovery running
         sc.exe after InstallServices, and NOT from the MsiServiceConfigFailureActions
         table, which fails on Windows Server 2025 with error 1939;
-      * SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Talky (a permanent
+      * SERVICE_ACCOUNT and DATADIR are remembered under HKLM\SOFTWARE\Yanki (a permanent
         component writes them, AppSearch reads them back) and a command-line value wins
         over the remembered one; SERVICE_ACCOUNT falls back to LocalSystem;
-      * the MSI opens no firewall port (Set-TalkyFirewall.ps1 owns the firewall);
+      * the MSI opens no firewall port (Set-YankiFirewall.ps1 owns the firewall);
       * SERVICE_PASSWORD stays empty, hidden and is never written to the registry
         (gMSA accounts are passwordless);
       * UpgradeCode and ARP metadata are what operations expects.
@@ -25,7 +25,7 @@
     No service is registered and nothing is written outside the temp folder.
 
 .PARAMETER MsiPath
-    MSI to validate. Defaults to the newest artifacts\Talky.Server-*.msi.
+    MSI to validate. Defaults to the newest artifacts\Yanki.Server-*.msi.
 
 .PARAMETER WorkDir
     Extraction folder. Defaults to a new folder under $env:TEMP; removed afterwards
@@ -38,7 +38,7 @@
     .\Test-Msi.ps1 -Verbose
 
 .EXAMPLE
-    .\Test-Msi.ps1 -MsiPath D:\drop\Talky.Server-1.0.0.msi -KeepWorkDir
+    .\Test-Msi.ps1 -MsiPath D:\drop\Yanki.Server-1.0.0.msi -KeepWorkDir
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -53,15 +53,15 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
 if (-not $MsiPath) {
-    $candidate = Get-ChildItem -Path (Join-Path $RepoRoot 'artifacts') -Filter 'Talky.Server-*.msi' -ErrorAction SilentlyContinue |
+    $candidate = Get-ChildItem -Path (Join-Path $RepoRoot 'artifacts') -Filter 'Yanki.Server-*.msi' -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $candidate) { throw 'No artifacts\Talky.Server-*.msi found. Run Build-Msi.ps1 first.' }
+    if (-not $candidate) { throw 'No artifacts\Yanki.Server-*.msi found. Run Build-Msi.ps1 first.' }
     $MsiPath = $candidate.FullName
 }
 $MsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
 
 if (-not $WorkDir) {
-    $WorkDir = Join-Path $env:TEMP ('talky-msi-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $WorkDir = Join-Path $env:TEMP ('yanki-msi-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 }
 
 $script:Failures = New-Object System.Collections.Generic.List[string]
@@ -125,7 +125,7 @@ if ($PSCmdlet.ShouldProcess($WorkDir, 'Administrative install (msiexec /a) extra
     Assert-True ($proc.ExitCode -eq 0) "msiexec /a exited with 0 (actual: $($proc.ExitCode); log: $log)"
 
     # An administrative install lays the tree out under the short names from the Directory
-    # table (PFiles64\Talky, CommApp\Talky), so locate the payload instead of hard-coding it.
+    # table (PFiles64\Yanki, CommApp\Yanki), so locate the payload instead of hard-coding it.
     $exe = Get-ChildItem -LiteralPath $WorkDir -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue |
         Select-Object -First 1
     Assert-True ($null -ne $exe) 'host executable extracted'
@@ -147,7 +147,7 @@ foreach ($row in (Get-MsiTable -Path $MsiPath -Query 'SELECT `Property`,`Value` 
 }
 
 Assert-True ($props.ContainsKey('UpgradeCode') -and $props['UpgradeCode'] -eq '{21199CEE-DB76-4FBA-A333-D90BE768217D}') `
-    'UpgradeCode is the stable Talky Server upgrade code'
+    'UpgradeCode is the stable Yanki Server upgrade code'
 Assert-True ($props.ContainsKey('ProductVersion')) `
     ('ProductVersion present: ' + $(if ($props.ContainsKey('ProductVersion')) { $props['ProductVersion'] } else { 'MISSING' }))
 Assert-True ($props.ContainsKey('ALLUSERS') -and $props['ALLUSERS'] -eq '1') 'per-machine install (ALLUSERS=1)'
@@ -177,8 +177,8 @@ $service = Get-MsiTable -Path $MsiPath `
     -ColumnCount 7
 Assert-True ($service.Count -eq 1) 'exactly one ServiceInstall row'
 if ($service.Count -eq 1) {
-    Assert-True ($service[0][0] -eq 'Talky') 'service name is "Talky"'
-    Assert-True ($service[0][1] -eq 'Talky') 'service display name is "Talky"'
+    Assert-True ($service[0][0] -eq 'Yanki') 'service name is "Yanki"'
+    Assert-True ($service[0][1] -eq 'Yanki') 'service display name is "Yanki"'
     Assert-True ($service[0][2] -eq '16') 'service type is ownProcess (16)'
     Assert-True ($service[0][3] -eq '2') 'service start type is auto (2)'
     Assert-True ($service[0][4] -eq '[SERVICE_ACCOUNT]') 'service account comes from SERVICE_ACCOUNT'
@@ -187,7 +187,7 @@ if ($service.Count -eq 1) {
 }
 
 $control = Get-MsiTable -Path $MsiPath -Query 'SELECT `Name`,`Event` FROM `ServiceControl`' -ColumnCount 2
-Assert-True ($control.Count -ge 1 -and $control[0][0] -eq 'Talky') 'ServiceControl targets the Talky service'
+Assert-True ($control.Count -ge 1 -and $control[0][0] -eq 'Yanki') 'ServiceControl targets the Yanki service'
 
 # ConfigType 3 = SERVICE_CONFIG_DELAYED_AUTO_START_INFO, Argument 1 = enabled.
 $cfg = Get-MsiTable -Path $MsiPath -Query 'SELECT `Name`,`ConfigType`,`Argument` FROM `MsiServiceConfig`' -ColumnCount 3
@@ -222,8 +222,8 @@ function Get-Seq {
     return -1
 }
 
-# Same policy Install-Talky.ps1 sets with sc.exe on the script path.
-$recoveryTarget = '"[System64Folder]sc.exe" failure Talky reset= 86400 actions= restart/5000/restart/10000/restart/30000'
+# Same policy Install-Yanki.ps1 sets with sc.exe on the script path.
+$recoveryTarget = '"[System64Folder]sc.exe" failure Yanki reset= 86400 actions= restart/5000/restart/10000/restart/30000'
 $ca = if ($customActions.ContainsKey('ConfigureServiceRecovery')) { $customActions['ConfigureServiceRecovery'] } else { $null }
 Assert-True ($null -ne $ca) 'custom action ConfigureServiceRecovery exists'
 if ($ca) {
@@ -247,12 +247,12 @@ $registry = Get-MsiTable -Path $MsiPath -Query 'SELECT `Root`,`Key`,`Name`,`Valu
 function Find-RegistryRow {
     param([string] $Name)
     # The leading comma keeps a one-row result an array of rows instead of unrolling it.
-    return , @($registry | Where-Object { $_[0] -eq '2' -and $_[1] -eq 'SOFTWARE\Talky' -and $_[2] -eq $Name })
+    return , @($registry | Where-Object { $_[0] -eq '2' -and $_[1] -eq 'SOFTWARE\Yanki' -and $_[2] -eq $Name })
 }
 $regAccount = Find-RegistryRow 'ServiceAccount'
 $regDataDir = Find-RegistryRow 'DataDir'
-Assert-True ($regAccount.Count -eq 1 -and $regAccount[0][3] -eq '[SERVICE_ACCOUNT]') 'HKLM\SOFTWARE\Talky\ServiceAccount is written from [SERVICE_ACCOUNT]'
-Assert-True ($regDataDir.Count -eq 1 -and $regDataDir[0][3] -eq '[DATADIR]') 'HKLM\SOFTWARE\Talky\DataDir is written from [DATADIR]'
+Assert-True ($regAccount.Count -eq 1 -and $regAccount[0][3] -eq '[SERVICE_ACCOUNT]') 'HKLM\SOFTWARE\Yanki\ServiceAccount is written from [SERVICE_ACCOUNT]'
+Assert-True ($regDataDir.Count -eq 1 -and $regDataDir[0][3] -eq '[DATADIR]') 'HKLM\SOFTWARE\Yanki\DataDir is written from [DATADIR]'
 Assert-True (@($registry | Where-Object { $_[3] -match 'SERVICE_PASSWORD' }).Count -eq 0) 'SERVICE_PASSWORD is never written to the registry'
 
 $rememberComponent = if ($regAccount.Count -eq 1) { $regAccount[0][4] } else { '' }
@@ -277,8 +277,8 @@ foreach ($pair in @(@('SERVICE_ACCOUNT', 'ServiceAccount'), @('DATADIR', 'DataDi
     $prop = $pair[0]; $valueName = $pair[1]
     $loc = if ($appSearch.ContainsKey($prop) -and $locators.ContainsKey($appSearch[$prop])) { $locators[$appSearch[$prop]] } else { $null }
     # Type 18 = msidbLocatorTypeRawValue (2) + msidbLocatorType64bit (16).
-    Assert-True ($null -ne $loc -and $loc[1] -eq '2' -and $loc[2] -eq 'SOFTWARE\Talky' -and $loc[3] -eq $valueName -and $loc[4] -eq '18') `
-        "AppSearch reads $prop from HKLM\SOFTWARE\Talky\$valueName (64-bit, raw)"
+    Assert-True ($null -ne $loc -and $loc[1] -eq '2' -and $loc[2] -eq 'SOFTWARE\Yanki' -and $loc[3] -eq $valueName -and $loc[4] -eq '18') `
+        "AppSearch reads $prop from HKLM\SOFTWARE\Yanki\$valueName (64-bit, raw)"
 }
 
 # Command line beats the remembered value; LocalSystem is the default of last resort.
@@ -308,7 +308,7 @@ foreach ($seqName in 'InstallExecuteSequence', 'InstallUISequence') {
         "$seqName`: the LocalSystem default is applied after the command-line value is restored"
 }
 
-# The firewall has one owner, Set-TalkyFirewall.ps1: the MSI must carry no firewall table.
+# The firewall has one owner, Set-YankiFirewall.ps1: the MSI must carry no firewall table.
 $fwTables = @($tables | Where-Object { $_ -match 'FirewallException$' })
 Assert-True ($fwTables.Count -eq 0) 'the MSI opens no firewall port'
 

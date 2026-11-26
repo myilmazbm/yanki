@@ -1,10 +1,10 @@
-using Talky.Core.Data;
-using Talky.Server.Hosting;
+using Yanki.Core.Data;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// <c>talky migrate</c> — prints the migration status and then applies whatever is pending.
+/// <c>yanki migrate</c> — prints the migration status and then applies whatever is pending.
 /// Run once per upgrade, before the nodes are restarted.
 /// </summary>
 internal static class MigrateCommand
@@ -19,7 +19,7 @@ internal static class MigrateCommand
         Justification = "A failing migration must print one readable line and exit 1, not a stack trace.")]
     public static async Task<int> RunAsync(HostStartupArguments arguments, CancellationToken cancellationToken)
     {
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
         Modules.AddModules(builder);
 
         await using var app = builder.Build();

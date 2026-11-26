@@ -1,4 +1,4 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// One call or meeting. The media itself is handled by LiveKit; this row is the durable record

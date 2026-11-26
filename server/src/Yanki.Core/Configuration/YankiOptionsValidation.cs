@@ -3,9 +3,9 @@ using System.Globalization;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Options;
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>
 /// Shared helper that turns <see cref="System.ComponentModel.DataAnnotations"/> attributes into
@@ -40,11 +40,11 @@ internal static class DataAnnotationsValidation
             return;
         }
 
-        failures.Add($"{key} '{value}' must be a fully qualified path (after environment variables are expanded), e.g. '%ProgramData%\\Talky\\logs'.");
+        failures.Add($"{key} '{value}' must be a fully qualified path (after environment variables are expanded), e.g. '%ProgramData%\\Yanki\\logs'.");
     }
 }
 
-/// <summary>Validates <c>Talky:Node</c>.</summary>
+/// <summary>Validates <c>Yanki:Node</c>.</summary>
 public sealed class ValidateNodeOptions : IValidateOptions<NodeOptions>
 {
     /// <inheritdoc />
@@ -57,14 +57,14 @@ public sealed class ValidateNodeOptions : IValidateOptions<NodeOptions>
 
         if (!NodeRoles.TryParse(options.Roles, out _, out var roleError))
         {
-            failures.Add($"Talky:Node:Roles is invalid. {roleError}");
+            failures.Add($"Yanki:Node:Roles is invalid. {roleError}");
         }
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }
 
-/// <summary>Validates <c>Talky:Server</c> including its nested certificate section.</summary>
+/// <summary>Validates <c>Yanki:Server</c> including its nested certificate section.</summary>
 public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
 {
     /// <inheritdoc />
@@ -86,7 +86,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
     {
         if (options.Urls.Length == 0)
         {
-            failures.Add("Talky:Server:Urls must contain at least one url, for example 'https://+:8443'.");
+            failures.Add("Yanki:Server:Urls must contain at least one url, for example 'https://+:8443'.");
             return;
         }
 
@@ -94,7 +94,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
         {
             if (string.IsNullOrWhiteSpace(url))
             {
-                failures.Add("Talky:Server:Urls must not contain empty entries.");
+                failures.Add("Yanki:Server:Urls must not contain empty entries.");
                 continue;
             }
 
@@ -104,14 +104,14 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
             var isHttps = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
             if (!isHttp && !isHttps)
             {
-                failures.Add($"Talky:Server:Urls entry '{url}' must start with 'http://' or 'https://'.");
+                failures.Add($"Yanki:Server:Urls entry '{url}' must start with 'http://' or 'https://'.");
                 continue;
             }
 
             if (isHttp && !options.AllowInsecureHttp)
             {
                 failures.Add(
-                    $"Talky:Server:Urls entry '{url}' is plain HTTP. Set Talky:Server:AllowInsecureHttp to true " +
+                    $"Yanki:Server:Urls entry '{url}' is plain HTTP. Set Yanki:Server:AllowInsecureHttp to true " +
                     "if this node really must listen without TLS.");
             }
         }
@@ -127,7 +127,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
         if (!Uri.TryCreate(options.PublicUrl, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            failures.Add($"Talky:Server:PublicUrl '{options.PublicUrl}' must be an absolute http or https url.");
+            failures.Add($"Yanki:Server:PublicUrl '{options.PublicUrl}' must be an absolute http or https url.");
         }
     }
 
@@ -137,7 +137,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
         {
             if (!IPAddress.TryParse(proxy, out _))
             {
-                failures.Add($"Talky:Server:KnownProxies entry '{proxy}' is not a valid IP address.");
+                failures.Add($"Yanki:Server:KnownProxies entry '{proxy}' is not a valid IP address.");
             }
         }
     }
@@ -146,7 +146,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
     {
         if (certificate is null)
         {
-            failures.Add("Talky:Server:Certificate must not be null.");
+            failures.Add("Yanki:Server:Certificate must not be null.");
             return;
         }
 
@@ -161,24 +161,24 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
                 if (string.IsNullOrWhiteSpace(certificate.Thumbprint) && string.IsNullOrWhiteSpace(certificate.Subject))
                 {
                     failures.Add(
-                        "Talky:Server:Certificate:Source is 'Store' but neither Thumbprint nor Subject is set.");
+                        "Yanki:Server:Certificate:Source is 'Store' but neither Thumbprint nor Subject is set.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(certificate.Thumbprint) &&
                     !IsHexadecimal(NormalizeThumbprint(certificate.Thumbprint)))
                 {
-                    failures.Add("Talky:Server:Certificate:Thumbprint must be a hexadecimal certificate thumbprint.");
+                    failures.Add("Yanki:Server:Certificate:Thumbprint must be a hexadecimal certificate thumbprint.");
                 }
 
                 if (string.IsNullOrWhiteSpace(certificate.StoreName))
                 {
-                    failures.Add("Talky:Server:Certificate:StoreName must not be empty.");
+                    failures.Add("Yanki:Server:Certificate:StoreName must not be empty.");
                 }
 
                 if (!Enum.TryParse<StoreLocation>(certificate.StoreLocation, ignoreCase: true, out _))
                 {
                     failures.Add(
-                        $"Talky:Server:Certificate:StoreLocation '{certificate.StoreLocation}' is invalid. " +
+                        $"Yanki:Server:Certificate:StoreLocation '{certificate.StoreLocation}' is invalid. " +
                         "Use 'LocalMachine' or 'CurrentUser'.");
                 }
 
@@ -187,18 +187,18 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
             case CertificateSource.Pfx:
                 if (string.IsNullOrWhiteSpace(certificate.PfxPath))
                 {
-                    failures.Add("Talky:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
+                    failures.Add("Yanki:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
                 }
 
                 DataAnnotationsValidation.RequireFullyQualifiedPath(
-                    certificate.PfxPath, "Talky:Server:Certificate:PfxPath", failures);
+                    certificate.PfxPath, "Yanki:Server:Certificate:PfxPath", failures);
 
                 break;
 
             default:
                 failures.Add(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Talky:Server:Certificate:Source '{certificate.Source}' is not supported."));
+                    $"Yanki:Server:Certificate:Source '{certificate.Source}' is not supported."));
                 break;
         }
     }
@@ -211,7 +211,7 @@ public sealed class ValidateServerOptions : IValidateOptions<ServerOptions>
         value.Length > 0 && value.All(char.IsAsciiHexDigit);
 }
 
-/// <summary>Validates <c>Talky:Logging</c>.</summary>
+/// <summary>Validates <c>Yanki:Logging</c>.</summary>
 public sealed class ValidateLoggingOptions : IValidateOptions<LoggingOptions>
 {
     private static readonly string[] Levels = ["Verbose", "Debug", "Information", "Warning", "Error", "Fatal"];
@@ -223,13 +223,13 @@ public sealed class ValidateLoggingOptions : IValidateOptions<LoggingOptions>
 
         var failures = new List<string>();
         DataAnnotationsValidation.Collect(options, failures);
-        DataAnnotationsValidation.RequireFullyQualifiedPath(options.Directory, "Talky:Logging:Directory", failures);
+        DataAnnotationsValidation.RequireFullyQualifiedPath(options.Directory, "Yanki:Logging:Directory", failures);
 
         if (!string.IsNullOrWhiteSpace(options.MinimumLevel) &&
             !Levels.Contains(options.MinimumLevel, StringComparer.OrdinalIgnoreCase))
         {
             failures.Add(
-                $"Talky:Logging:MinimumLevel '{options.MinimumLevel}' is invalid. " +
+                $"Yanki:Logging:MinimumLevel '{options.MinimumLevel}' is invalid. " +
                 $"Valid levels: {string.Join(", ", Levels)}.");
         }
 

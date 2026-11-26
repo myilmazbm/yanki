@@ -1,21 +1,21 @@
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
 /// Thrown when the node cannot start for a reason the operator can fix (missing certificate,
 /// insecure production setup, unreadable configuration file). The CLI turns it into a one-line
 /// error message and a non-zero exit code instead of a stack trace.
 /// </summary>
-public sealed class TalkyStartupException : Exception
+public sealed class YankiStartupException : Exception
 {
     /// <summary>Creates the exception.</summary>
-    public TalkyStartupException()
-        : base("The Talky host cannot start.")
+    public YankiStartupException()
+        : base("The Yanki host cannot start.")
     {
     }
 
     /// <summary>Creates the exception with an operator-facing message.</summary>
     /// <param name="message">One line, English, safe to print and log.</param>
-    public TalkyStartupException(string message)
+    public YankiStartupException(string message)
         : base(message)
     {
     }
@@ -23,7 +23,7 @@ public sealed class TalkyStartupException : Exception
     /// <summary>Creates the exception with an operator-facing message and the underlying cause.</summary>
     /// <param name="message">One line, English, safe to print and log.</param>
     /// <param name="innerException">Underlying cause.</param>
-    public TalkyStartupException(string message, Exception innerException)
+    public YankiStartupException(string message, Exception innerException)
         : base(message, innerException)
     {
     }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Talky.ContractTests.Realtime;
+namespace Yanki.ContractTests.Realtime;
 
 /// <summary>
 /// Structural comparison used by the golden fixtures: the expectation lists the fields that matter,

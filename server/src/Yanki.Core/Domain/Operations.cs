@@ -1,4 +1,4 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// A unit of background work. Claimed with <c>READPAST</c> so many workers can drain the table
@@ -47,7 +47,7 @@ public sealed class Job
 }
 
 /// <summary>
-/// Heartbeat row for one running talky.exe process. Used for cluster discovery and the admin
+/// Heartbeat row for one running yanki.exe process. Used for cluster discovery and the admin
 /// panel's node list. Table <c>cluster_nodes</c>.
 /// </summary>
 public sealed class ClusterNode
@@ -63,7 +63,7 @@ public sealed class ClusterNode
     /// <summary>Informational version of the binary; a rolling upgrade shows two values here.</summary>
     public string Version { get; set; } = string.Empty;
 
-    /// <summary>Bitmask of <c>Talky.Core.Hosting.NodeRole</c>.</summary>
+    /// <summary>Bitmask of <c>Yanki.Core.Hosting.NodeRole</c>.</summary>
     public int Roles { get; set; }
 
     public DateTime StartedAt { get; set; }

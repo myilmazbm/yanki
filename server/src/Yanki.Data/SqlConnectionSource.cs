@@ -1,7 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
 /// Hands out ADO.NET connections for the paths that do not go through EF: the message appender, the
@@ -41,19 +41,19 @@ public sealed class SqlConnectionSource
     /// <summary>The same connection string pointed at <c>master</c>, for server-scoped work.</summary>
     public string MasterConnectionString { get; }
 
-    /// <summary>The Talky database without connect retries or pooling, for one-shot diagnostics.</summary>
+    /// <summary>The Yanki database without connect retries or pooling, for one-shot diagnostics.</summary>
     private string ProbeConnectionString { get; }
 
     /// <summary>Command timeout, in seconds, from <see cref="DatabaseOptions.CommandTimeoutSeconds"/>.</summary>
     public int CommandTimeoutSeconds => _options.CommandTimeoutSeconds;
 
-    /// <summary>Opens a connection to the Talky database.</summary>
+    /// <summary>Opens a connection to the Yanki database.</summary>
     public Task<SqlConnection> OpenAsync(CancellationToken cancellationToken) =>
         OpenAsync(_options.ConnectionString, cancellationToken);
 
     /// <summary>
-    /// Opens an unpooled connection to the Talky database that does not retry at open, so a
-    /// missing database or a refused login is reported immediately. For <c>talky doctor</c> only;
+    /// Opens an unpooled connection to the Yanki database that does not retry at open, so a
+    /// missing database or a refused login is reported immediately. For <c>yanki doctor</c> only;
     /// request paths use <see cref="OpenAsync(CancellationToken)"/>.
     /// </summary>
     public Task<SqlConnection> OpenProbeAsync(CancellationToken cancellationToken) =>

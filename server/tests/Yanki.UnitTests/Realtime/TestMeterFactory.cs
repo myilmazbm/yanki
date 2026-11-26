@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 /// <summary>Minimal <see cref="IMeterFactory"/> so metric-emitting types can be unit tested.</summary>
 internal sealed class TestMeterFactory : IMeterFactory

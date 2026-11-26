@@ -2,18 +2,18 @@ using System.Data;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using Talky.Core.Data;
-using Talky.Core.Diagnostics;
+using Yanki.Core.Data;
+using Yanki.Core.Diagnostics;
 
-namespace Talky.Data.Diagnostics;
+namespace Yanki.Data.Diagnostics;
 
 /// <summary>
-/// The <c>sql</c> check of <c>talky doctor</c>: can we reach the database, is it configured the way
+/// The <c>sql</c> check of <c>yanki doctor</c>: can we reach the database, is it configured the way
 /// the design assumes, and is the schema up to date.
 /// </summary>
 /// <remarks>
 /// <c>READ_COMMITTED_SNAPSHOT</c> being off is reported as a warning rather than an error: the node
-/// still works, but readers start blocking behind writers, which is exactly the failure mode Talky's
+/// still works, but readers start blocking behind writers, which is exactly the failure mode Yanki's
 /// read paths are designed to avoid. Pending migrations are a warning for the same reason - the node
 /// may still be serving a compatible older schema during a rolling upgrade. A database that is
 /// missing, not accessible, or has no migration applied at all is an error: there is no schema to
@@ -77,7 +77,7 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
             details["error"] = ex.Message;
             return DoctorResult.Error(
                 $"Database '{connections.DatabaseName}' does not exist or is not accessible to this login; " +
-                "run 'talky migrate' to create it, or check the login's rights.",
+                "run 'yanki migrate' to create it, or check the login's rights.",
                 details);
         }
         catch (SqlException ex)
@@ -114,7 +114,7 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
         if (appliedCount == 0)
         {
             return DoctorResult.Error(
-                $"Database '{connections.DatabaseName}' has no Talky schema (no migration applied); run 'talky migrate'.",
+                $"Database '{connections.DatabaseName}' has no Yanki schema (no migration applied); run 'yanki migrate'.",
                 details);
         }
 
@@ -126,7 +126,7 @@ public sealed class SqlDoctorCheck(SqlConnectionSource connections, IServiceScop
 
         if (pendingCount > 0)
         {
-            problems.Add($"{pendingCount} migration(s) pending (run 'talky migrate')");
+            problems.Add($"{pendingCount} migration(s) pending (run 'yanki migrate')");
         }
 
         var summary = $"SQL Server {details["productVersion"]} ({details["edition"]}), " +

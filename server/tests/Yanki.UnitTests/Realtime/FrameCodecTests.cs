@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
-using Talky.Protocol.V1;
-using Talky.Realtime.Protocol;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 public sealed class FrameCodecTests
 {

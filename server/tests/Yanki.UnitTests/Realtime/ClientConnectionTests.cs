@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using Talky.Core.Sessions;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Connections;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Protocol;
+using Yanki.Core.Sessions;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Connections;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 public sealed class ClientConnectionTests : IDisposable
 {

@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Publishes the Talky host and builds the per-machine Talky Server MSI with WiX v6.
+    Publishes the Yanki host and builds the per-machine Yanki Server MSI with WiX v6.
 
 .DESCRIPTION
-    Runs `dotnet publish` for server/src/Talky.Server (win-x64, self-contained, single file),
-    restores the local WiX dotnet tool and then compiles deploy/windows/msi/Talky.Server.wxs into artifacts/Talky.Server-<version>.msi.
+    Runs `dotnet publish` for server/src/Yanki.Server (win-x64, self-contained, single file),
+    restores the local WiX dotnet tool and then compiles deploy/windows/msi/Yanki.Server.wxs into artifacts/Yanki.Server-<version>.msi.
 
     Everything is written under <repo>/artifacts, which is git-ignored.
 
@@ -23,7 +23,7 @@
 
 .EXAMPLE
     .\Build-Msi.ps1
-    Publish and build artifacts\Talky.Server-0.1.0.msi.
+    Publish and build artifacts\Yanki.Server-0.1.0.msi.
 
 .EXAMPLE
     .\Build-Msi.ps1 -Version 1.2.3 -SkipPublish
@@ -45,8 +45,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
-$WxsPath = Join-Path $PSScriptRoot 'Talky.Server.wxs'
-$ExeName = 'talky.exe'
+$WxsPath = Join-Path $PSScriptRoot 'Yanki.Server.wxs'
+$ExeName = 'yanki.exe'
 
 function Invoke-Native {
     param(
@@ -83,9 +83,9 @@ if (-not $PublishDir) { $PublishDir = Join-Path $RepoRoot 'artifacts\publish' }
 if (-not $OutputDir) { $OutputDir = Join-Path $RepoRoot 'artifacts' }
 
 if (-not $SkipPublish) {
-    if ($PSCmdlet.ShouldProcess($PublishDir, 'dotnet publish Talky.Server (win-x64, self-contained, single file)')) {
+    if ($PSCmdlet.ShouldProcess($PublishDir, 'dotnet publish Yanki.Server (win-x64, self-contained, single file)')) {
         Invoke-Native dotnet @(
-            'publish', 'server/src/Talky.Server',
+            'publish', 'server/src/Yanki.Server',
             '-c', 'Release',
             '-r', 'win-x64',
             '--self-contained',
@@ -111,7 +111,7 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     }
 }
-$msiPath = Join-Path $OutputDir "Talky.Server-$Version.msi"
+$msiPath = Join-Path $OutputDir "Yanki.Server-$Version.msi"
 
 if ($PSCmdlet.ShouldProcess('wix', 'dotnet tool restore')) {
     Invoke-Native dotnet @('tool', 'restore')
@@ -124,7 +124,7 @@ if ($PSCmdlet.ShouldProcess('wix', 'dotnet tool restore')) {
 #     "Failed to change current configuration of failure action ... Error: 5" and
 #     error 1939, rolling the install back. The package therefore has no
 #     ServiceConfigFailureActions; the custom action ConfigureServiceRecovery runs
-#     sc.exe failure instead (see Talky.Server.wxs).
+#     sc.exe failure instead (see Yanki.Server.wxs).
 # The warning is still raised for ServiceConfig, hence -sw1149.
 $wixArgs = @(
     'wix', 'build',

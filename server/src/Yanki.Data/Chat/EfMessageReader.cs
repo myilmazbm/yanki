@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Talky.Core.Data;
-using Talky.Core.Domain;
+using Yanki.Core.Data;
+using Yanki.Core.Domain;
 
-namespace Talky.Data.Chat;
+namespace Yanki.Data.Chat;
 
 /// <summary>
 /// Keyset history paging over the clustered key <c>(conversation_id, seq)</c>.
@@ -14,10 +14,10 @@ namespace Talky.Data.Chat;
 /// <c>TOP (n) ... WHERE conversation_id = @c AND seq &lt; @before ORDER BY seq DESC</c>, which the
 /// clustered index answers as a single backwards range scan: no sort, no OFFSET, no COUNT.
 /// </remarks>
-public sealed class EfMessageReader(TalkyDbContext dbContext) : IMessageReader
+public sealed class EfMessageReader(YankiDbContext dbContext) : IMessageReader
 {
-    private static readonly Func<TalkyDbContext, Guid, long, int, IAsyncEnumerable<Message>> PageQuery =
-        EF.CompileAsyncQuery((TalkyDbContext db, Guid conversationId, long beforeSeq, int limit) =>
+    private static readonly Func<YankiDbContext, Guid, long, int, IAsyncEnumerable<Message>> PageQuery =
+        EF.CompileAsyncQuery((YankiDbContext db, Guid conversationId, long beforeSeq, int limit) =>
             db.Messages
                 .AsNoTracking()
                 .Where(m => m.ConversationId == conversationId && m.Seq < beforeSeq)

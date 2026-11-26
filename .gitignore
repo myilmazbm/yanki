@@ -45,7 +45,7 @@ clients/apps/mobile/android/
 *.mobileprovision
 
 # --- Generated (regenerated in CI, committed only under clients/packages/protocol/src/gen) ---
-api/openapi/talky.v1.json
+api/openapi/yanki.v1.json
 
 # --- Local data ---
 .data/

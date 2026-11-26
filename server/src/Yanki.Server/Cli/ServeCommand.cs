@@ -1,9 +1,9 @@
-using Talky.Server.Hosting;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// <c>talky serve</c> — and the default command, so the Windows service command line carries only
+/// <c>yanki serve</c> — and the default command, so the Windows service command line carries only
 /// options (<c>--data-dir</c>) and no command.
 /// </summary>
 internal static class ServeCommand
@@ -14,7 +14,7 @@ internal static class ServeCommand
     /// <returns><see cref="ExitCode.Success"/> after a graceful shutdown.</returns>
     public static async Task<int> RunAsync(HostStartupArguments arguments, CancellationToken cancellationToken)
     {
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
 
         Modules.AddModules(builder);
 
@@ -24,8 +24,8 @@ internal static class ServeCommand
 
         await using var app = builder.Build();
 
-        TalkyHostFactory.ValidateStartup(app);
-        TalkyHostFactory.ConfigureApplication(app);
+        YankiHostFactory.ValidateStartup(app);
+        YankiHostFactory.ConfigureApplication(app);
         Modules.MapModules(app);
 
         await app.StartAsync(cancellationToken);

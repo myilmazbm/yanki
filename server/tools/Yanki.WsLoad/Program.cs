@@ -1,4 +1,4 @@
-using Talky.WsLoad;
+using Yanki.WsLoad;
 
 if (args.Length == 0 || args.Contains("--help") || args.Contains("-h") || args.Contains("-?"))
 {
@@ -17,7 +17,7 @@ if (options.SharesOneUser && options.Connections > 1)
 {
     Console.WriteLine(
         $"Warning: every connection uses the token '{options.TokenTemplate}', so they all map to one user. " +
-        "The server evicts the oldest connections beyond Talky:Realtime:MaxConnectionsPerUser. " +
+        "The server evicts the oldest connections beyond Yanki:Realtime:MaxConnectionsPerUser. " +
         "Use a token containing '{i}' to spread the load over separate users.");
 }
 
@@ -29,7 +29,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 
 Console.WriteLine(
-    $"talky-wsload -> {options.Url}: {options.Connections} connections, ramp {options.RampPerSecond}/s, " +
+    $"yanki-wsload -> {options.Url}: {options.Connections} connections, ramp {options.RampPerSecond}/s, " +
     $"hold {options.Duration.TotalSeconds:F0} s, ping every {options.PingInterval.TotalMilliseconds:F0} ms.");
 
 var runner = new LoadRunner(options, Console.Out);

@@ -1,16 +1,16 @@
-# Talky gerçek zamanlı protokolü (v1)
+# Yankı gerçek zamanlı protokolü (v1)
 
-Tek gerçek kaynak: `api/proto/talky/v1/frames.proto`. Bu belge proto'da ifade edilemeyen
-davranış kurallarını tanımlar. Sunucu (`Talky.Realtime`) ve istemci (`@talky/core`) bu kurallara
+Tek gerçek kaynak: `api/proto/yanki/v1/frames.proto`. Bu belge proto'da ifade edilemeyen
+davranış kurallarını tanımlar. Sunucu (`Yanki.Realtime`) ve istemci (`@yanki/core`) bu kurallara
 uyar; `api/fixtures/ws/*.json` altın akışları her iki tarafın testlerinde çalıştırılır.
 
 ## Uç nokta
 
-- Uç nokta `/ws`'dir (`Talky:Realtime:Path`), sorgu parametresi yoktur; protokol sürümü `Hello.protoVersion` ile
+- Uç nokta `/ws`'dir (`Yanki:Realtime:Path`), sorgu parametresi yoktur; protokol sürümü `Hello.protoVersion` ile
   taşınır. HTTP/1.1 GET upgrade ve HTTP/2 extended CONNECT (RFC 8441) kabul edilir.
 - Kimlik doğrulama bugün yalnızca `Hello.token` üzerindendir. Çerez ile kimliği doğrulanan web istemcileri
   `Hello.token`'ı boş bırakacaksa (frames.proto yorumu), bu M1'de bir Origin izin listesi ve HttpContext'e erişen bir
-  doğrulayıcı gerektirir: sunucu çerez değerini token olarak doğrular ve `Origin`, `Talky:Server:PublicUrl` veya
+  doğrulayıcı gerektirir: sunucu çerez değerini token olarak doğrular ve `Origin`, `Yanki:Server:PublicUrl` veya
   yapılandırılmış izin listesiyle eşleşmiyorsa upgrade'i **reddetmelidir**.
 
 ## Kodlama
@@ -22,19 +22,19 @@ uyar; `api/fixtures/ws/*.json` altın akışları her iki tarafın testlerinde �
 - Bilinmeyen veya boş `oneof` gövdesi: `Welcome`'dan önce her Hello-dışı çerçeve gibi `Error{HELLO_REQUIRED}` + 1008;
   `Welcome`'dan sonra `Error{INVALID_FRAME, rid}` ve bağlantı **açık kalır** (eski düğümde yeni istemci için ileri
   uyumluluk). Ayrıştırılamayan JSON ve binary çerçeve `Error{INVALID_FRAME}` + 1003.
-- Azami çerçeve boyutu varsayılan 64 KiB (`Talky:Realtime:MaxFrameBytes`); aşılırsa `Error{INVALID_FRAME}` ve kapatma kodu 1009.
+- Azami çerçeve boyutu varsayılan 64 KiB (`Yanki:Realtime:MaxFrameBytes`); aşılırsa `Error{INVALID_FRAME}` ve kapatma kodu 1009.
 
 ## El sıkışma
 
-1. İstemci bağlanır ve **5 sn** (`Talky:Realtime:HelloTimeoutMs`) içinde `Hello` gönderir; aksi halde sunucu
+1. İstemci bağlanır ve **5 sn** (`Yanki:Realtime:HelloTimeoutMs`) içinde `Hello` gönderir; aksi halde sunucu
    `Error{HELLO_REQUIRED}` gönderip 1008 ile kapatır. Süre yalnızca `Hello` çerçevesinin alınmasını kapsar; `Hello`
    alındıktan sonra kimlik doğrulama sürerken bağlantı kapatılmaz. Bu bir zamanlama hatasıdır, kimlik hatası değil
    (askıya alınmış mobil uygulama, donmuş sekme): `Error{HELLO_REQUIRED}` + 1008 alan istemci normal backoff ile
    yeniden bağlanır.
 2. `protoVersion != 1` → `Error{PROTOCOL_VERSION_UNSUPPORTED}`, kapatma 1002.
 3. Token doğrulanamazsa → `Error{UNAUTHENTICATED}`, kapatma 1008. Gerçek bir doğrulayıcı yokken (M1 öncesi, geliştirme
-   jetonları kapalı) düğüm açılır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 alır. `Talky:Realtime:AllowDevTokens=true`
-   Development dışında, `Talky:Server:AllowInsecureHttp=true` değilse başlangıçta reddedilir.
+   jetonları kapalı) düğüm açılır ve her `Hello` `Error{UNAUTHENTICATED}` + 1008 alır. `Yanki:Realtime:AllowDevTokens=true`
+   Development dışında, `Yanki:Server:AllowInsecureHttp=true` değilse başlangıçta reddedilir.
 4. Başarı → `Welcome`. `Hello`'dan sonra ikinci bir `Hello` → `Error{ALREADY_AUTHENTICATED}` (bağlantı açık kalır).
 5. `Welcome`'dan önce gelen diğer tüm çerçeveler → `Error{HELLO_REQUIRED}`, kapatma 1008.
 

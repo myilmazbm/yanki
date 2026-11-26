@@ -3,18 +3,18 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
-using Talky.Core.Data;
-using Talky.Core.Diagnostics;
-using Talky.Data;
-using Talky.Data.Diagnostics;
+using Yanki.Core.Data;
+using Yanki.Core.Diagnostics;
+using Yanki.Data;
+using Yanki.Data.Diagnostics;
 
-namespace Talky.IntegrationTests.Data;
+namespace Yanki.IntegrationTests.Data;
 
 /// <summary>
 /// The fixture has already run <see cref="IMigrationRunner.MigrateAsync"/> against an empty database,
 /// so every assertion here is about the state that left behind.
 /// </summary>
-public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture<TalkyDatabaseFixture>
+public sealed class MigrationTests(YankiDatabaseFixture fixture) : IClassFixture<YankiDatabaseFixture>
 {
     [RequiresSqlServerFact]
     public async Task Migrations_apply_to_an_empty_database_and_leave_nothing_pending()
@@ -109,10 +109,10 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddTalkyData(new ConfigurationBuilder()
+        services.AddYankiData(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Talky:Database:ConnectionString"] = TempDbConnectionString(),
+                ["Yanki:Database:ConnectionString"] = TempDbConnectionString(),
             })
             .Build());
         await using var provider = services.BuildServiceProvider();
@@ -133,7 +133,7 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
         var result = await check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.Contains("talky migrate", result.Description, StringComparison.Ordinal);
+        Assert.Contains("yanki migrate", result.Description, StringComparison.Ordinal);
     }
 
     [RequiresSqlServerFact]
@@ -159,7 +159,7 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
             var result = await check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
             Assert.Equal(HealthStatus.Unhealthy, result.Status);
-            Assert.Contains("run 'talky migrate'", result.Description, StringComparison.Ordinal);
+            Assert.Contains("run 'yanki migrate'", result.Description, StringComparison.Ordinal);
         }
         finally
         {
@@ -184,7 +184,7 @@ public sealed class MigrationTests(TalkyDatabaseFixture fixture) : IClassFixture
         Assert.Equal(HealthStatus.Healthy, report.Entries["sql"].Status);
     }
 
-    /// <summary>The fixture's server, pointed at tempdb: reachable, but without a Talky schema.</summary>
+    /// <summary>The fixture's server, pointed at tempdb: reachable, but without a Yanki schema.</summary>
     private string TempDbConnectionString() =>
         new SqlConnectionStringBuilder(fixture.ConnectionString) { InitialCatalog = "tempdb" }.ConnectionString;
 }

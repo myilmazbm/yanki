@@ -1,19 +1,19 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Talky.Realtime.Configuration;
+namespace Yanki.Realtime.Configuration;
 
 /// <summary>
-/// Configuration for the realtime WebSocket front door, bound from the <c>Talky:Realtime</c>
+/// Configuration for the realtime WebSocket front door, bound from the <c>Yanki:Realtime</c>
 /// configuration section and validated at startup.
 /// </summary>
 public sealed class RealtimeOptions
 {
     /// <summary>Configuration section these options are bound from.</summary>
-    public const string SectionName = "Talky:Realtime";
+    public const string SectionName = "Yanki:Realtime";
 
     /// <summary>Route the WebSocket endpoint is mapped on. Must start with '/'.</summary>
     [Required]
-    [RegularExpression("^/[A-Za-z0-9._~/-]*$", ErrorMessage = "Talky:Realtime:Path must be an absolute route starting with '/'.")]
+    [RegularExpression("^/[A-Za-z0-9._~/-]*$", ErrorMessage = "Yanki:Realtime:Path must be an absolute route starting with '/'.")]
     public string Path { get; set; } = "/ws";
 
     /// <summary>

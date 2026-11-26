@@ -1,5 +1,5 @@
 #cloud-config
-# Talky media appliance - Ubuntu LTS + LiveKit SFU, seeded through cloud-init NoCloud.
+# Yanki media appliance - Ubuntu LTS + LiveKit SFU, seeded through cloud-init NoCloud.
 #
 # Fallback path for Spike A: used only if LiveKit on Windows Server fails the criteria in
 # docs/livekit-windows-spike.md. The appliance is sealed - the customer never logs in for
@@ -15,8 +15,8 @@ manage_etc_hosts: true
 ssh_pwauth: false
 disable_root: true
 users:
-  - name: talkyops
-    gecos: Talky platform team (break-glass)
+  - name: yankiops
+    gecos: Yanki platform team (break-glass)
     groups: [adm, sudo]
     shell: /bin/bash
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
@@ -35,7 +35,7 @@ packages:
 
 write_files:
   # LiveKit configuration - the same shape as deploy/livekit/livekit.yaml, with the ports
-  # and lifecycle values the Talky design fixed.
+  # and lifecycle values the Yanki design fixed.
   - path: /etc/livekit/livekit.yaml
     permissions: '0640'
     owner: livekit:livekit
@@ -59,7 +59,7 @@ write_files:
       webhook:
         api_key: __API_KEY__
         urls:
-          - https://talky.corp/internal/livekit/webhook
+          - https://yanki.corp/internal/livekit/webhook
       room:
         empty_timeout: 60
         departure_timeout: 15
@@ -73,7 +73,7 @@ write_files:
     permissions: '0644'
     content: |
       [Unit]
-      Description=LiveKit SFU (Talky media node)
+      Description=LiveKit SFU (Yanki media node)
       After=network-online.target
       Wants=network-online.target
 
@@ -122,11 +122,11 @@ runcmd:
   - [ install, -d, -o, livekit, -g, livekit, -m, '0750', /var/log/livekit ]
   - [ install, -d, -o, livekit, -g, livekit, -m, '0750', /etc/livekit ]
   - [ /usr/local/sbin/install-livekit.sh ]
-  # The TURN certificate and key are delivered out of band (the same PKI as talky.corp).
+  # The TURN certificate and key are delivered out of band (the same PKI as yanki.corp).
   - [ systemctl, daemon-reload ]
   - [ systemctl, enable, --now, livekit ]
-  # Only the media ports. Signalling (7880) is restricted to the Talky API nodes, which
-  # reverse-proxy it under https://talky.corp/media/{node}/rtc.
+  # Only the media ports. Signalling (7880) is restricted to the Yanki API nodes, which
+  # reverse-proxy it under https://yanki.corp/media/{node}/rtc.
   - [ ufw, default, deny, incoming ]
   - [ ufw, default, allow, outgoing ]
   - [ ufw, allow, 7882/udp ]
@@ -139,6 +139,6 @@ runcmd:
 
 power_state:
   mode: reboot
-  message: Talky media appliance provisioned
+  message: Yanki media appliance provisioned
   timeout: 30
   condition: true

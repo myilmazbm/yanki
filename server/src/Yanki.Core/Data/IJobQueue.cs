@@ -1,6 +1,6 @@
-using Talky.Core.Domain;
+using Yanki.Core.Domain;
 
-namespace Talky.Core.Data;
+namespace Yanki.Core.Data;
 
 /// <summary>
 /// A job handed to a worker by <see cref="IJobQueue.ClaimAsync"/>.

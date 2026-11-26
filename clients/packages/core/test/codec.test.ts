@@ -1,5 +1,5 @@
 import { create } from '@bufbuild/protobuf';
-import { HelloSchema, PingSchema } from '@talky/protocol/v1';
+import { HelloSchema, PingSchema } from '@yanki/protocol/v1';
 import { describe, expect, it } from 'vitest';
 import { clientFrame, decodeServerFrame, encodeClientFrame } from '../src/index.js';
 

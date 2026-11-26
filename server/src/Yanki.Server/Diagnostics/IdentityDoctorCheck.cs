@@ -1,10 +1,10 @@
 using System.Security.Principal;
-using Talky.Core.Diagnostics;
+using Yanki.Core.Diagnostics;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
-/// Reports the identity <c>talky doctor</c> runs under. Doctor is run by an operator, usually
+/// Reports the identity <c>yanki doctor</c> runs under. Doctor is run by an operator, usually
 /// elevated, never by the service control manager, so this is an informational row: the service
 /// account itself is not tested here.
 /// </summary>

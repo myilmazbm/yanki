@@ -1,14 +1,14 @@
 using System.Globalization;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
-using Talky.Server.Hosting;
-using Talky.Server.Logging;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
+using Yanki.Server.Hosting;
+using Yanki.Server.Logging;
 
-namespace Talky.Server.Cli;
+namespace Yanki.Server.Cli;
 
 /// <summary>
-/// <c>talky config validate</c> — binds every <c>Talky</c> section, reports validation failures and
+/// <c>yanki config validate</c> — binds every <c>Yanki</c> section, reports validation failures and
 /// prints the effective values, so an operator can see exactly what the node would start with.
 /// </summary>
 internal static class ConfigValidateCommand
@@ -19,13 +19,13 @@ internal static class ConfigValidateCommand
     /// <returns><see cref="ExitCode.InvalidConfiguration"/> when anything failed to validate.</returns>
     public static async Task<int> RunAsync(HostStartupArguments arguments, CancellationToken cancellationToken)
     {
-        var builder = TalkyHostFactory.CreateBuilder(arguments);
+        var builder = YankiHostFactory.CreateBuilder(arguments);
         Modules.AddModules(builder);
 
         await using var app = builder.Build();
 
         // Runs every options validation registered with ValidateOnStart (host and modules), exactly
-        // as serve does before it starts listening. Failures are reported by TalkyCommandLine.
+        // as serve does before it starts listening. Failures are reported by YankiCommandLine.
         app.Services.GetRequiredService<IStartupValidator>().Validate();
 
         var node = app.Services.GetRequiredService<IOptions<NodeOptions>>().Value;
@@ -35,10 +35,10 @@ internal static class ConfigValidateCommand
         var exitCode = ExitCode.Success;
         try
         {
-            TalkyHostFactory.GuardInsecureConfiguration(server, app.Environment);
-            TalkyHostFactory.GuardDevTokens(app.Configuration, server, app.Environment);
+            YankiHostFactory.GuardInsecureConfiguration(server, app.Environment);
+            YankiHostFactory.GuardDevTokens(app.Configuration, server, app.Environment);
         }
-        catch (TalkyStartupException ex)
+        catch (YankiStartupException ex)
         {
             await Console.Error.WriteLineAsync($"Configuration is invalid: {ex.Message}");
             exitCode = ExitCode.InvalidConfiguration;
@@ -48,23 +48,23 @@ internal static class ConfigValidateCommand
 
         Console.WriteLine($"environment                 {app.Environment.EnvironmentName}");
         Console.WriteLine($"content root                {app.Environment.ContentRootPath}");
-        Console.WriteLine($"Talky:Node:Id               {node.Id ?? "(generated per process)"}");
-        Console.WriteLine($"Talky:Node:Roles            {NodeRoles.Format(roles)}");
-        Console.WriteLine($"Talky:Server:Urls           {string.Join(", ", server.Urls)}");
-        Console.WriteLine($"Talky:Server:PublicUrl      {server.PublicUrl ?? "(not set; reserved)"}");
-        Console.WriteLine($"Talky:Server:AllowInsecureHttp {server.AllowInsecureHttp}");
-        Console.WriteLine($"Talky:Server:DrainSeconds   {server.DrainSeconds.ToString(CultureInfo.InvariantCulture)}");
-        Console.WriteLine($"Talky:Server:KnownProxies   {(server.KnownProxies.Length == 0 ? "(none)" : string.Join(", ", server.KnownProxies))}");
+        Console.WriteLine($"Yanki:Node:Id               {node.Id ?? "(generated per process)"}");
+        Console.WriteLine($"Yanki:Node:Roles            {NodeRoles.Format(roles)}");
+        Console.WriteLine($"Yanki:Server:Urls           {string.Join(", ", server.Urls)}");
+        Console.WriteLine($"Yanki:Server:PublicUrl      {server.PublicUrl ?? "(not set; reserved)"}");
+        Console.WriteLine($"Yanki:Server:AllowInsecureHttp {server.AllowInsecureHttp}");
+        Console.WriteLine($"Yanki:Server:DrainSeconds   {server.DrainSeconds.ToString(CultureInfo.InvariantCulture)}");
+        Console.WriteLine($"Yanki:Server:KnownProxies   {(server.KnownProxies.Length == 0 ? "(none)" : string.Join(", ", server.KnownProxies))}");
         Console.WriteLine($"  Certificate:Source        {server.Certificate.Source}");
         Console.WriteLine($"  Certificate:StoreLocation {server.Certificate.StoreLocation}\\{server.Certificate.StoreName}");
         Console.WriteLine($"  Certificate:Thumbprint    {server.Certificate.Thumbprint ?? "(none)"}");
         Console.WriteLine($"  Certificate:Subject       {server.Certificate.Subject ?? "(none)"}");
         Console.WriteLine($"  Certificate:PfxPath       {server.Certificate.PfxPath ?? "(none)"}");
-        Console.WriteLine($"Talky:Logging:Directory     {TalkyLogging.ExpandDirectory(logging.Directory)}");
-        Console.WriteLine($"Talky:Logging:MinimumLevel  {logging.MinimumLevel}");
-        Console.WriteLine($"Talky:Logging:RetainedFileCount {logging.RetainedFileCount.ToString(CultureInfo.InvariantCulture)}");
-        Console.WriteLine($"Talky:Logging:EventLog      {FormatTriState(logging.EventLog)}");
-        Console.WriteLine($"Talky:Logging:Console       {FormatTriState(logging.Console)}");
+        Console.WriteLine($"Yanki:Logging:Directory     {YankiLogging.ExpandDirectory(logging.Directory)}");
+        Console.WriteLine($"Yanki:Logging:MinimumLevel  {logging.MinimumLevel}");
+        Console.WriteLine($"Yanki:Logging:RetainedFileCount {logging.RetainedFileCount.ToString(CultureInfo.InvariantCulture)}");
+        Console.WriteLine($"Yanki:Logging:EventLog      {FormatTriState(logging.EventLog)}");
+        Console.WriteLine($"Yanki:Logging:Console       {FormatTriState(logging.Console)}");
 
         if (exitCode == ExitCode.Success)
         {

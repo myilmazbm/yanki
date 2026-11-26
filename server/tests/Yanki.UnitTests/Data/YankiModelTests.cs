@@ -2,16 +2,16 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Talky.Core.Domain;
-using Talky.Data;
+using Yanki.Core.Domain;
+using Yanki.Data;
 
-namespace Talky.UnitTests.Data;
+namespace Yanki.UnitTests.Data;
 
 /// <summary>
 /// Model-shape tests. They build the EF model in memory and never touch a database, so they are the
 /// cheap guard rail for the schema decisions the design depends on.
 /// </summary>
-public sealed partial class TalkyModelTests
+public sealed partial class YankiModelTests
 {
     private static readonly IModel Model = CreateModel();
 
@@ -197,11 +197,11 @@ public sealed partial class TalkyModelTests
     {
         // UseSqlServer only needs a syntactically valid connection string to build the model; nothing
         // here opens a connection.
-        var options = new DbContextOptionsBuilder<TalkyDbContext>()
-            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=talky_model_only")
+        var options = new DbContextOptionsBuilder<YankiDbContext>()
+            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=yanki_model_only")
             .Options;
 
-        using var context = new TalkyDbContext(options);
+        using var context = new YankiDbContext(options);
 
         // The design-time model keeps the provider annotations (clustered keys, value generator
         // factories) that the runtime model trims away.

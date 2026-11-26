@@ -1,8 +1,8 @@
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
 /// Parsing and formatting of <see cref="NodeRole"/> values as they appear on the command line
-/// (<c>--role api,worker</c>) and in configuration (<c>Talky:Node:Roles</c>).
+/// (<c>--role api,worker</c>) and in configuration (<c>Yanki:Node:Roles</c>).
 /// </summary>
 public static class NodeRoles
 {

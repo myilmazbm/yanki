@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
-using Talky.Protocol.V1;
-using Talky.Testing.Realtime;
+using Yanki.Protocol.V1;
+using Yanki.Testing.Realtime;
 
-namespace Talky.IntegrationTests.Realtime;
+namespace Yanki.IntegrationTests.Realtime;
 
 /// <summary>
 /// Server→client liveness must be the RFC 6455 control ping, configured on the accept context, so

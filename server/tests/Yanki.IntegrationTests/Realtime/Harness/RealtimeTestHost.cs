@@ -3,18 +3,18 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Talky.Core.Hosting;
-using Talky.Realtime;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Connections;
+using Yanki.Core.Hosting;
+using Yanki.Realtime;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Connections;
 
-namespace Talky.Testing.Realtime;
+namespace Yanki.Testing.Realtime;
 
 /// <summary>
-/// A minimal in-memory host that wires only <c>AddTalkyRealtime</c> / <c>MapTalkyRealtime</c> plus
+/// A minimal in-memory host that wires only <c>AddYankiRealtime</c> / <c>MapYankiRealtime</c> plus
 /// test doubles for the contracts owned by other modules (<see cref="INodeInfo"/>,
 /// <see cref="IDrainCoordinator"/>, <c>ISessionAuthenticator</c>). Deliberately independent of
-/// Talky.Server so the realtime module can be verified on its own.
+/// Yanki.Server so the realtime module can be verified on its own.
 /// </summary>
 internal sealed class RealtimeTestHost : IAsyncDisposable
 {
@@ -56,9 +56,9 @@ internal sealed class RealtimeTestHost : IAsyncDisposable
         builder.Services.AddSingleton<IDrainCoordinator>(drain);
         builder.Services.AddSingleton(accepts);
 
-        // Runs before AddTalkyRealtime so a test-supplied ISessionAuthenticator wins the TryAdd.
+        // Runs before AddYankiRealtime so a test-supplied ISessionAuthenticator wins the TryAdd.
         configureServices?.Invoke(builder.Services);
-        builder.Services.AddTalkyRealtime(builder.Configuration, configureOptions);
+        builder.Services.AddYankiRealtime(builder.Configuration, configureOptions);
 
         WebApplication app = builder.Build();
         app.UseWebSockets();
@@ -67,7 +67,7 @@ internal sealed class RealtimeTestHost : IAsyncDisposable
             accepts.Wrap(context);
             await next(context);
         });
-        app.MapTalkyRealtime();
+        app.MapYankiRealtime();
 
         await app.StartAsync();
 

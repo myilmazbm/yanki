@@ -1,12 +1,12 @@
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
 /// The subset of the command line that influences configuration. Extracted before the host is
 /// built, because the configuration sources themselves depend on it.
 /// </summary>
 /// <param name="ConfigFile">Value of <c>--config</c>: an extra JSON file layered on top of the defaults.</param>
-/// <param name="Roles">Value of <c>--role</c>, overriding <c>Talky:Node:Roles</c>.</param>
-/// <param name="Urls">Value of <c>--urls</c>, overriding <c>Talky:Server:Urls</c>.</param>
+/// <param name="Roles">Value of <c>--role</c>, overriding <c>Yanki:Node:Roles</c>.</param>
+/// <param name="Urls">Value of <c>--urls</c>, overriding <c>Yanki:Server:Urls</c>.</param>
 /// <param name="Settings">Values of <c>--set key=value</c>, overriding any single configuration key.</param>
 /// <param name="HostSettings">
 /// Generic host settings (<c>--environment</c>, <c>--contentRoot</c>, <c>--applicationName</c>,
@@ -22,10 +22,10 @@ internal sealed record HostStartupArguments(
 {
     /// <summary>
     /// Value of <c>--data-dir</c>: the node's data directory. Its <c>appsettings.json</c> and
-    /// <c>appsettings.Local.json</c> replace the <c>%ProgramData%\Talky</c> pair as configuration
-    /// sources, <c>Talky:Logging:Directory</c> defaults to <c>&lt;dir&gt;\logs</c>, and the resolved
-    /// path is published as <c>Talky:DataDirectory</c> (reserved; no module reads it yet).
-    /// This is what the Windows service (MSI / Install-Talky.ps1) passes.
+    /// <c>appsettings.Local.json</c> replace the <c>%ProgramData%\Yanki</c> pair as configuration
+    /// sources, <c>Yanki:Logging:Directory</c> defaults to <c>&lt;dir&gt;\logs</c>, and the resolved
+    /// path is published as <c>Yanki:DataDirectory</c> (reserved; no module reads it yet).
+    /// This is what the Windows service (MSI / Install-Yanki.ps1) passes.
     /// </summary>
     public string? DataDirectory { get; init; }
 
@@ -38,7 +38,7 @@ internal sealed record HostStartupArguments(
 
     /// <summary>
     /// Picks the generic host settings out of a raw command line. Everything else is left to the
-    /// Talky command parser: feeding the whole command line to <c>AddCommandLine</c> would fail on
+    /// Yanki command parser: feeding the whole command line to <c>AddCommandLine</c> would fail on
     /// bare tokens such as <c>doctor</c>.
     /// </summary>
     /// <param name="args">Raw process arguments.</param>

@@ -1,13 +1,13 @@
 using Serilog.Events;
-using Talky.Server.Endpoints;
+using Yanki.Server.Endpoints;
 
-namespace Talky.Server.Logging;
+namespace Yanki.Server.Logging;
 
 /// <summary>
 /// Level selection for <c>UseSerilogRequestLogging</c>. Probes are polled every couple of seconds by
 /// the load balancer and by the service watchdog; logging them would bury everything else.
 /// </summary>
-internal static class TalkyRequestLogging
+internal static class YankiRequestLogging
 {
     /// <summary>Chooses the level a completed request is logged at.</summary>
     /// <param name="context">The request context.</param>
@@ -27,6 +27,6 @@ internal static class TalkyRequestLogging
     }
 
     private static bool IsProbe(PathString path) =>
-        path.Equals(TalkyEndpoints.LivenessPath, StringComparison.OrdinalIgnoreCase) ||
-        path.Equals(TalkyEndpoints.ReadinessPath, StringComparison.OrdinalIgnoreCase);
+        path.Equals(YankiEndpoints.LivenessPath, StringComparison.OrdinalIgnoreCase) ||
+        path.Equals(YankiEndpoints.ReadinessPath, StringComparison.OrdinalIgnoreCase);
 }

@@ -2,15 +2,15 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
-namespace Talky.Data;
+namespace Yanki.Data;
 
 /// <summary>
-/// Configuration section <c>Talky:Database</c>.
+/// Configuration section <c>Yanki:Database</c>.
 /// </summary>
 public sealed class DatabaseOptions
 {
     /// <summary>Configuration path this options object is bound to.</summary>
-    public const string SectionName = "Talky:Database";
+    public const string SectionName = "Yanki:Database";
 
     /// <summary>
     /// SQL Server connection string. Required; there is no default, because silently falling back to
@@ -35,7 +35,7 @@ public sealed class DatabaseOptions
 
     /// <summary>
     /// Applies pending migrations during host startup. Off by default: production upgrades run
-    /// <c>talky migrate</c> as an explicit, auditable step.
+    /// <c>yanki migrate</c> as an explicit, auditable step.
     /// </summary>
     public bool MigrateOnStartup { get; set; }
 }
@@ -74,7 +74,7 @@ public sealed class ValidateDatabaseOptions : IValidateOptions<DatabaseOptions>
         if (string.IsNullOrWhiteSpace(builder.InitialCatalog))
         {
             return ValidateOptionsResult.Fail(
-                $"{DatabaseOptions.SectionName}:ConnectionString must name the Talky database " +
+                $"{DatabaseOptions.SectionName}:ConnectionString must name the Yanki database " +
                 "(Database or Initial Catalog).");
         }
 

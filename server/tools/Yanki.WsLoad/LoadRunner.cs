@@ -2,9 +2,9 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.WsLoad;
+namespace Yanki.WsLoad;
 
 /// <summary>Opens N realtime connections, keeps them alive with application pings, and reports.</summary>
 internal sealed class LoadRunner(LoadOptions options, TextWriter output)

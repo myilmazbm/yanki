@@ -7,7 +7,7 @@ export const DEFAULT_CLOCK_START_MS = 1_725_540_000_000;
 const MAX_TIMERS_PER_ADVANCE = 100_000;
 
 /**
- * Virtual clock that satisfies `@talky/core`'s `TimerHost`.
+ * Virtual clock that satisfies `@yanki/core`'s `TimerHost`.
  *
  * This — not Vitest's global fake timers — is how the realtime tests control time: the client
  * only ever reads the clock through the injected `TimerHost`, so real network I/O (the `ws`

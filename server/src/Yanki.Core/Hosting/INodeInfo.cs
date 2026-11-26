@@ -1,13 +1,13 @@
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
-/// Identity of the running talky.exe process. Registered as a singleton by the host.
+/// Identity of the running yanki.exe process. Registered as a singleton by the host.
 /// </summary>
 public interface INodeInfo
 {
     /// <summary>
     /// Stable id of this node. Defaults to the machine name plus a short random suffix so two
-    /// processes on one host never collide; can be pinned via <c>Talky:Node:Id</c>.
+    /// processes on one host never collide; can be pinned via <c>Yanki:Node:Id</c>.
     /// </summary>
     string NodeId { get; }
 

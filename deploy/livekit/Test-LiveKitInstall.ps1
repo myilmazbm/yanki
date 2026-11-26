@@ -18,7 +18,7 @@
     (checksums verified by the scripts) unless the %TEMP% caches already hold them.
 
     The test reads the livekit.yaml template next to it and writes a filled copy to
-    InstallDir itself (node IP, TURN domain, certificate and key paths, key "talky", an API
+    InstallDir itself (node IP, TURN domain, certificate and key paths, key "yanki", an API
     secret generated on this machine); the template is never modified.
     The secret is never printed; it reaches lk only through the environment, and the
     livekit.yaml holding it is deleted at the end, whether the run passed or failed, together
@@ -128,7 +128,7 @@ $LoadTest = Join-Path $PSScriptRoot 'Invoke-LiveKitLoadTest.ps1'
 $Template = Join-Path $PSScriptRoot 'livekit.yaml'
 $ConfigPath = Join-Path $InstallDir 'livekit.yaml'
 $ServerExe = Join-Path $InstallDir 'livekit-server.exe'
-$LogDir = Join-Path $env:ProgramData 'Talky\logs\livekit'
+$LogDir = Join-Path $env:ProgramData 'Yanki\logs\livekit'
 $ErrLog = Join-Path $LogDir 'livekit-service.err.log'
 $OutLog = Join-Path $LogDir 'livekit-service.out.log'
 $NetworkService = 'NT AUTHORITY\NetworkService'
@@ -249,10 +249,10 @@ function Write-NodeConfig {
     param([Parameter(Mandatory)][string] $Cert, [Parameter(Mandatory)][string] $Key)
     $quote = { param($p) '"' + $p.Replace('\', '\\') + '"' }
     $yaml = [IO.File]::ReadAllText($Template)
-    $yaml = $yaml.Replace('"<10.20.30.41>"', "`"$NodeIp`"").Replace('"<media-01.talky.corp>"', "`"$TurnDomain`"")
+    $yaml = $yaml.Replace('"<10.20.30.41>"', "`"$NodeIp`"").Replace('"<media-01.yanki.corp>"', "`"$TurnDomain`"")
     $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-cert.pem>"', (& $quote $Cert))
     $yaml = $yaml.Replace('"<C:\\Program Files\\LiveKit\\turn-key.pem>"', (& $quote $Key))
-    $yaml = $yaml.Replace('"<talky>": "<api-secret-at-least-32-chars>"', "`"talky`": `"$secret`"")
+    $yaml = $yaml.Replace('"<yanki>": "<api-secret-at-least-32-chars>"', "`"yanki`": `"$secret`"")
     [IO.File]::WriteAllText($ConfigPath, $yaml, (New-Object System.Text.UTF8Encoding($false)))
     return @($yaml -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '"<[^"]*>"' }).Count
 }
@@ -407,7 +407,7 @@ try {
     # --- leg b: media through the node ---------------------------------------------------
     Write-Host '--- leg b: Invoke-LiveKitLoadTest.ps1 (1 publisher, 4 subscribers, 30 s, generator on the node) ---'
     $env:LIVEKIT_URL = 'ws://127.0.0.1:7880'
-    $env:LIVEKIT_API_KEY = 'talky'
+    $env:LIVEKIT_API_KEY = 'yanki'
     $env:LIVEKIT_API_SECRET = $secret
     # -SkipCpuCheck: the spike's CPU threshold means nothing with the generator on a small VM.
     & $LoadTest -Room smoke -VideoPublishers 1 -Subscribers 4 -Duration 30s -OutputDir $WorkDir -CliVersion $CliVersion -SkipCpuCheck -Confirm:$false
@@ -441,14 +441,14 @@ try {
         # stale state. Write that state as a move leaves it elsewhere: unprotected, the
         # staging folder's entries flagged inherited. SetFileSecurity stores the DACL as
         # given; the .NET and SetNamedSecurityInfo paths would re-apply the parent's entries.
-        Add-Type -Namespace TalkyTest -Name Native -MemberDefinition @'
+        Add-Type -Namespace YankiTest -Name Native -MemberDefinition @'
 [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 public static extern bool SetFileSecurity(string fileName, int securityInformation, byte[] securityDescriptor);
 '@
         $sd = New-Object Security.AccessControl.RawSecurityDescriptor('D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)')
         $bytes = New-Object byte[] $sd.BinaryLength
         $sd.GetBinaryForm($bytes, 0)
-        if (-not [TalkyTest.Native]::SetFileSecurity($keyB, 4, $bytes)) { throw "SetFileSecurity failed ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))." }
+        if (-not [YankiTest.Native]::SetFileSecurity($keyB, 4, $bytes)) { throw "SetFileSecurity failed ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))." }
         Write-Host "moved    $keyB (this Windows protected the moved file; stale unprotected DACL written directly)"
     }
     $movedAcl = (Get-Item -LiteralPath $keyB).GetAccessControl('Access')

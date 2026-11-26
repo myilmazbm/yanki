@@ -1,17 +1,17 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Diagnostics;
+namespace Yanki.Realtime.Diagnostics;
 
 /// <summary>
 /// <c>System.Diagnostics.Metrics</c> instruments for the realtime endpoint, published on the
-/// <c>Talky.Realtime</c> meter (observable out of process, for example with <c>dotnet-counters</c>).
+/// <c>Yanki.Realtime</c> meter (observable out of process, for example with <c>dotnet-counters</c>).
 /// </summary>
 public sealed class RealtimeMetrics : IDisposable
 {
     /// <summary>Name of the meter the instruments are published on.</summary>
-    public const string MeterName = "Talky.Realtime";
+    public const string MeterName = "Yanki.Realtime";
 
     private const string DirectionTag = "direction";
     private const string TypeTag = "type";
@@ -31,22 +31,22 @@ public sealed class RealtimeMetrics : IDisposable
         _meter = meterFactory.Create(MeterName);
 
         _connections = _meter.CreateUpDownCounter<long>(
-            "talky.realtime.connections",
+            "yanki.realtime.connections",
             unit: "{connection}",
             description: "Open realtime WebSocket connections on this node.");
 
         _frames = _meter.CreateCounter<long>(
-            "talky.realtime.frames",
+            "yanki.realtime.frames",
             unit: "{frame}",
             description: "Realtime frames processed, tagged by direction and frame type.");
 
         _errors = _meter.CreateCounter<long>(
-            "talky.realtime.errors",
+            "yanki.realtime.errors",
             unit: "{error}",
             description: "Protocol errors returned to clients, tagged by error code.");
 
         _handshakeDuration = _meter.CreateHistogram<double>(
-            "talky.realtime.handshake_duration",
+            "yanki.realtime.handshake_duration",
             unit: "ms",
             description: "Time from WebSocket accept to Welcome being queued.");
     }

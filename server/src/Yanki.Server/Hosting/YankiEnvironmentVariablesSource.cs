@@ -1,21 +1,21 @@
 using System.Collections;
-using Talky.Core.Configuration;
+using Yanki.Core.Configuration;
 
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
-/// Configuration source for <c>TALKY_</c> prefixed environment variables. The prefix stands for the
-/// <c>Talky</c> root section and <c>__</c> separates sections, so <c>TALKY_Server__DrainSeconds=60</c>
-/// sets <c>Talky:Server:DrainSeconds</c>.
+/// Configuration source for <c>YANKI_</c> prefixed environment variables. The prefix stands for the
+/// <c>Yanki</c> root section and <c>__</c> separates sections, so <c>YANKI_Server__DrainSeconds=60</c>
+/// sets <c>Yanki:Server:DrainSeconds</c>.
 /// </summary>
-internal sealed class TalkyEnvironmentVariablesSource : IConfigurationSource
+internal sealed class YankiEnvironmentVariablesSource : IConfigurationSource
 {
     /// <inheritdoc />
-    public IConfigurationProvider Build(IConfigurationBuilder builder) => new TalkyEnvironmentVariablesProvider();
+    public IConfigurationProvider Build(IConfigurationBuilder builder) => new YankiEnvironmentVariablesProvider();
 }
 
-/// <summary>Provider behind <see cref="TalkyEnvironmentVariablesSource"/>.</summary>
-internal sealed class TalkyEnvironmentVariablesProvider : ConfigurationProvider
+/// <summary>Provider behind <see cref="YankiEnvironmentVariablesSource"/>.</summary>
+internal sealed class YankiEnvironmentVariablesProvider : ConfigurationProvider
 {
     /// <inheritdoc />
     public override void Load()
@@ -24,7 +24,7 @@ internal sealed class TalkyEnvironmentVariablesProvider : ConfigurationProvider
 
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
         {
-            var key = TalkyConfiguration.TryMapEnvironmentVariable(entry.Key as string);
+            var key = YankiConfiguration.TryMapEnvironmentVariable(entry.Key as string);
             if (key is not null)
             {
                 data[key] = entry.Value as string;

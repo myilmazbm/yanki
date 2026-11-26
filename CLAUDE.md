@@ -1,24 +1,24 @@
-# Talky — çalışma kuralları (Claude Code için)
+# Yankı — çalışma kuralları (Claude Code için)
 
-Talky, tamamen on-prem çalışan kurumsal Teams/Skype tarzı iletişim platformudur. Öncelik sırası:
+Yankı, tamamen on-prem çalışan kurumsal Teams/Skype tarzı iletişim platformudur. Öncelik sırası:
 **çok hızlı → hatasız → az ayrı ürün (yönetilebilirlik)**. Kullanıcıyla Türkçe yazışılır; kod, tanımlayıcılar,
 yorumlar ve log mesajları İngilizcedir.
 
 ## Kilitli mimari kararlar (değiştirmeden önce kullanıcıya sor)
-- Backend **.NET 10 / C#**, tek binary `talky.exe`, Windows servisi (gMSA), roller `api|worker|search|push-relay|all`.
-- Üretim yalnızca **Windows Server**. Üretim ürünleri **tam olarak üç**: `talky.exe`, **SQL Server 2025**, **LiveKit**.
+- Backend **.NET 10 / C#**, tek binary `yanki.exe`, Windows servisi (gMSA), roller `api|worker|search|push-relay|all`.
+- Üretim yalnızca **Windows Server**. Üretim ürünleri **tam olarak üç**: `yanki.exe`, **SQL Server 2025**, **LiveKit**.
   NATS/Redis/MinIO/coturn/Caddy/Prometheus/Grafana/Sentry/Elasticsearch **eklenmez**; işlev binary'ye veya SQL'e taşınır.
-- Node'lar arası yayın: binary içinde gRPC tam-mesh (`api/proto/talky/cluster/v1/mesh.proto`). **Doğruluk bus'a dayanmaz**;
+- Node'lar arası yayın: binary içinde gRPC tam-mesh (`api/proto/yanki/cluster/v1/mesh.proto`). **Doğruluk bus'a dayanmaz**;
   SQL'deki konuşma başına `seq` ve istemcinin resync'i esastır.
 - Arama: gömülü Lucene.NET (`--role search`); dosyalar SMB/DFS (`IBlobStore`); virüs tarama Windows Defender AMSI.
-- İstemciler: React web + Tauri 2 masaüstü (Windows öncelikli) + React Native/Expo mobil; ortak TS `@talky/core`.
+- İstemciler: React web + Tauri 2 masaüstü (Windows öncelikli) + React Native/Expo mobil; ortak TS `@yanki/core`.
 - Ölçek 10k–50k kullanıcı; çok-forest AD v1 (Negotiate/Kerberos + ADFS OIDC + LDAP bind); federasyon ve SAML v1.1.
 - Tam plan: `docs/plan-v1.md`. Protokol kuralları: `docs/protocol.md` (normatif).
 
 ## Derleme / test
 ```bash
-cd server && timeout 480 dotnet build Talky.slnx -m:1 -p:NodeReuse=false     # uyarılar hatadır
-cd server && dotnet test Talky.slnx -m:1 -p:NodeReuse=false
+cd server && timeout 480 dotnet build Yanki.slnx -m:1 -p:NodeReuse=false     # uyarılar hatadır
+cd server && dotnet test Yanki.slnx -m:1 -p:NodeReuse=false
 cd clients && pnpm install && pnpm gen && pnpm typecheck && pnpm lint && pnpm test
 ```
 - `dotnet add package` bu ortamda merkezi paket yönetimiyle asılı kalabiliyor; kullanırsan `timeout 120` ile sar, takılırsa görevi

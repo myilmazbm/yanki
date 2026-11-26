@@ -1,5 +1,5 @@
-import { findFixturesDir, helloProfile, loadWsFixtures, replayFixture } from '@talky/test-utils';
-import type { WsFixture } from '@talky/test-utils';
+import { findFixturesDir, helloProfile, loadWsFixtures, replayFixture } from '@yanki/test-utils';
+import type { WsFixture } from '@yanki/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { ClientPlatform, WsClientOptions } from '../src/index.js';
 import { createHarness } from './helpers.js';

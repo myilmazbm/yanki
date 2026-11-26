@@ -1,9 +1,9 @@
-using Talky.Protocol.V1;
-using Talky.Realtime.Connections;
-using Talky.Realtime.Protocol;
-using Talky.Testing.Realtime;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Connections;
+using Yanki.Realtime.Protocol;
+using Yanki.Testing.Realtime;
 
-namespace Talky.IntegrationTests.Realtime;
+namespace Yanki.IntegrationTests.Realtime;
 
 public sealed class BackpressureTests
 {

@@ -1,7 +1,7 @@
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>
-/// <c>Talky:Server:Certificate</c> — how the HTTPS server certificate is located.
+/// <c>Yanki:Server:Certificate</c> — how the HTTPS server certificate is located.
 /// </summary>
 public sealed class CertificateOptions
 {
@@ -20,7 +20,7 @@ public sealed class CertificateOptions
     /// <summary>SHA-1 thumbprint of the certificate. Preferred over <see cref="Subject"/>.</summary>
     public string? Thumbprint { get; set; }
 
-    /// <summary>Subject substring used when no thumbprint is configured, e.g. <c>talky.corp.local</c>.</summary>
+    /// <summary>Subject substring used when no thumbprint is configured, e.g. <c>yanki.corp.local</c>.</summary>
     public string? Subject { get; set; }
 
     /// <summary>Absolute path of the .pfx file when <see cref="Source"/> is <see cref="CertificateSource.Pfx"/>.</summary>

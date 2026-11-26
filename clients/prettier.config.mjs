@@ -1,1 +1,1 @@
-export { default } from '@talky/config/prettier';
+export { default } from '@yanki/config/prettier';

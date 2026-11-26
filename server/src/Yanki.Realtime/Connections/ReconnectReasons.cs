@@ -1,4 +1,4 @@
-namespace Talky.Realtime.Connections;
+namespace Yanki.Realtime.Connections;
 
 /// <summary>
 /// Values the server puts in <c>Reconnect.reason</c>. Clients switch on these, so they are part of
@@ -13,7 +13,7 @@ public static class ReconnectReasons
     public const string Draining = "draining";
 
     /// <summary>
-    /// The user opened more simultaneous connections than <c>Talky:Realtime:MaxConnectionsPerUser</c>
+    /// The user opened more simultaneous connections than <c>Yanki:Realtime:MaxConnectionsPerUser</c>
     /// allows and this (oldest) connection was evicted. The client must NOT reconnect automatically:
     /// a newer connection of the same user is already live, and reconnecting would evict that one in
     /// turn. Surface it as "signed in on another device" instead.

@@ -1,10 +1,10 @@
 {
-  "name": "@talky/core",
+  "name": "@yanki/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "sideEffects": false,
-  "description": "Platform-agnostic Talky client core: realtime WebSocket client, storage/platform seams.",
+  "description": "Platform-agnostic Yanki client core: realtime WebSocket client, storage/platform seams.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -16,12 +16,12 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.14.1",
-    "@talky/protocol": "workspace:*"
+    "@yanki/protocol": "workspace:*"
   },
   "devDependencies": {
-    "@talky/config": "workspace:*",
-    "@talky/test-utils": "workspace:*",
     "@types/node": "^24.13.3",
+    "@yanki/config": "workspace:*",
+    "@yanki/test-utils": "workspace:*",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "typescript": "^5.9.3",

@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>
-/// <c>Talky:Server</c> — Kestrel endpoints, TLS and graceful shutdown.
+/// <c>Yanki:Server</c> — Kestrel endpoints, TLS and graceful shutdown.
 /// </summary>
 public sealed class ServerOptions
 {
@@ -32,7 +32,7 @@ public sealed class ServerOptions
     /// Seconds the node keeps serving in-flight work after shutdown starts, while readiness reports
     /// unhealthy so the load balancer stops routing new traffic.
     /// </summary>
-    [Range(0, 3600, ErrorMessage = "Talky:Server:DrainSeconds must be between 0 and 3600.")]
+    [Range(0, 3600, ErrorMessage = "Yanki:Server:DrainSeconds must be between 0 and 3600.")]
     public int DrainSeconds { get; set; } = DefaultDrainSeconds;
 
     /// <summary>

@@ -2,34 +2,34 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Talky.Core.Sessions;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Connections;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Hosting;
-using Talky.Realtime.Sessions;
+using Yanki.Core.Sessions;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Connections;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Hosting;
+using Yanki.Realtime.Sessions;
 
-namespace Talky.Realtime;
+namespace Yanki.Realtime;
 
 /// <summary>
 /// Registers the realtime WebSocket module. Pair with
-/// <see cref="RealtimeEndpointRouteBuilderExtensions.MapTalkyRealtime"/> and
+/// <see cref="RealtimeEndpointRouteBuilderExtensions.MapYankiRealtime"/> and
 /// <c>app.UseWebSockets()</c>.
 /// </summary>
 public static class RealtimeServiceCollectionExtensions
 {
     /// <summary>
     /// Adds the realtime module, binding <see cref="RealtimeOptions"/> from the
-    /// <c>Talky:Realtime</c> configuration section and validating it at startup.
+    /// <c>Yanki:Realtime</c> configuration section and validating it at startup.
     /// </summary>
-    public static IServiceCollection AddTalkyRealtime(this IServiceCollection services, IConfiguration configuration) =>
-        AddTalkyRealtime(services, configuration, configure: null);
+    public static IServiceCollection AddYankiRealtime(this IServiceCollection services, IConfiguration configuration) =>
+        AddYankiRealtime(services, configuration, configure: null);
 
     /// <summary>
     /// Adds the realtime module and applies <paramref name="configure"/> after configuration
     /// binding. Intended for tests and for hosts that pin a value in code.
     /// </summary>
-    public static IServiceCollection AddTalkyRealtime(
+    public static IServiceCollection AddYankiRealtime(
         this IServiceCollection services,
         IConfiguration configuration,
         Action<RealtimeOptions>? configure)
@@ -49,7 +49,7 @@ public static class RealtimeServiceCollectionExtensions
             .ValidateDataAnnotations()
             .Validate(
                 static o => o.EphemeralDropThreshold < o.OutboundQueueCapacity,
-                "Talky:Realtime:OutboundQueueCapacity must leave room above the ephemeral drop threshold.")
+                "Yanki:Realtime:OutboundQueueCapacity must leave room above the ephemeral drop threshold.")
             .ValidateOnStart();
 
         services.AddMetrics();
@@ -62,7 +62,7 @@ public static class RealtimeServiceCollectionExtensions
         services.AddHostedService<RealtimeSweepService>();
         services.AddHostedService<RealtimeDrainService>();
 
-        // TryAdd: a real authenticator (Talky.Identity, registered with a plain AddSingleton) wins
+        // TryAdd: a real authenticator (Yanki.Identity, registered with a plain AddSingleton) wins
         // regardless of order. Registered before this call, it makes the TryAdd a no-op; registered
         // afterwards, it is the last registration and therefore the one the container resolves.
         if (ResolveAllowDevTokens(section, configure))

@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
-using Talky.Realtime.Configuration;
+using Yanki.Realtime.Configuration;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 public sealed class RealtimeOptionsTests
 {

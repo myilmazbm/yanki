@@ -1,8 +1,8 @@
 using System.Globalization;
 using Microsoft.Win32;
-using Talky.Core.Diagnostics;
+using Yanki.Core.Diagnostics;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
 /// Reports the operating system. Production is Windows Server only; anything else is a lab or a
@@ -32,7 +32,7 @@ internal sealed class OperatingSystemDoctorCheck(IHostEnvironment environment) :
         if (!OperatingSystem.IsWindows())
         {
             return Task.FromResult(DoctorResult.Warning(
-                "Talky is supported on Windows Server only; this process is not running on Windows.",
+                "Yanki is supported on Windows Server only; this process is not running on Windows.",
                 details));
         }
 

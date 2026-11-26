@@ -1,13 +1,13 @@
 import { create } from '@bufbuild/protobuf';
-import type { Ack, ServerFrame, Welcome } from '@talky/protocol/v1';
+import type { Ack, ServerFrame, Welcome } from '@yanki/protocol/v1';
 import {
   ByeSchema,
   ClientInfoSchema,
   ErrorCode,
   HelloSchema,
   PingSchema,
-} from '@talky/protocol/v1';
-import { TalkyWsError } from '../errors.js';
+} from '@yanki/protocol/v1';
+import { YankiWsError } from '../errors.js';
 import { createEmitter } from '../events.js';
 import { noopLogger } from '../logger.js';
 import { systemTimerHost } from '../time.js';
@@ -67,7 +67,7 @@ type TimerName =
 
 interface PendingRequest {
   resolve: (ack: Ack) => void;
-  reject: (error: TalkyWsError) => void;
+  reject: (error: YankiWsError) => void;
   timer: TimerHandle;
 }
 
@@ -91,7 +91,7 @@ function resolveOptions(options: WsClientOptions): ResolvedWsClientOptions {
   };
 }
 
-class TalkyWsClient implements WsClient {
+class YankiWsClient implements WsClient {
   private readonly options: ResolvedWsClientOptions;
   private readonly emitter = createEmitter<WsClientEvents>();
   private readonly deduper;
@@ -178,7 +178,7 @@ class TalkyWsClient implements WsClient {
 
     const socket = this.socket;
     if (socket === null) {
-      this.rejectPending(new TalkyWsError({ reason: 'closed', message: 'client closed' }));
+      this.rejectPending(new YankiWsError({ reason: 'closed', message: 'client closed' }));
       this.setState('closed');
       return;
     }
@@ -202,7 +202,7 @@ class TalkyWsClient implements WsClient {
     return new Promise<Ack>((resolve, reject) => {
       if (this.currentState !== 'open') {
         reject(
-          new TalkyWsError({
+          new YankiWsError({
             reason: this.closedByUser ? 'closed' : 'disconnected',
             message: `cannot send a request while the client is '${this.currentState}'`,
             rid,
@@ -213,7 +213,7 @@ class TalkyWsClient implements WsClient {
       const timer = this.options.timers.setTimeout(() => {
         this.pending.delete(rid);
         reject(
-          new TalkyWsError({
+          new YankiWsError({
             reason: 'timeout',
             message: `no reply within ${timeoutMs.toString()} ms`,
             rid,
@@ -227,9 +227,9 @@ class TalkyWsClient implements WsClient {
         this.pending.delete(rid);
         this.options.timers.clearTimeout(timer);
         reject(
-          error instanceof TalkyWsError
+          error instanceof YankiWsError
             ? error
-            : new TalkyWsError({ reason: 'transport', message: 'send failed', rid, cause: error }),
+            : new YankiWsError({ reason: 'transport', message: 'send failed', rid, cause: error }),
         );
       }
     });
@@ -254,7 +254,7 @@ class TalkyWsClient implements WsClient {
     } catch (error) {
       if (this.isSuperseded(id)) return;
       this.emitError(
-        new TalkyWsError({ reason: 'transport', message: 'getToken() rejected', cause: error }),
+        new YankiWsError({ reason: 'transport', message: 'getToken() rejected', cause: error }),
       );
       // An error listener may have called close() (or close() and connect()).
       if (this.isSuperseded(id)) return;
@@ -268,7 +268,7 @@ class TalkyWsClient implements WsClient {
       socket = this.options.webSocketFactory(this.options.url);
     } catch (error) {
       this.emitError(
-        new TalkyWsError({ reason: 'transport', message: 'could not open a socket', cause: error }),
+        new YankiWsError({ reason: 'transport', message: 'could not open a socket', cause: error }),
       );
       if (this.isSuperseded(id)) return;
       this.scheduleBackoffReconnect('transport', undefined);
@@ -312,7 +312,7 @@ class TalkyWsClient implements WsClient {
       );
     } catch (error) {
       this.emitError(
-        new TalkyWsError({ reason: 'transport', message: 'Hello could not be sent', cause: error }),
+        new YankiWsError({ reason: 'transport', message: 'Hello could not be sent', cause: error }),
       );
       this.initiateClose('hello-failed');
       return;
@@ -323,7 +323,7 @@ class TalkyWsClient implements WsClient {
       () => {
         if (this.currentState !== 'authenticating') return;
         this.emitError(
-          new TalkyWsError({
+          new YankiWsError({
             reason: 'timeout',
             message: `no Welcome within ${this.options.requestTimeoutMs.toString()} ms`,
           }),
@@ -337,7 +337,7 @@ class TalkyWsClient implements WsClient {
   private handleSocketError(id: number, event: unknown): void {
     if (this.connectionId !== id) return;
     this.emitError(
-      new TalkyWsError({ reason: 'transport', message: 'socket error', cause: event }),
+      new YankiWsError({ reason: 'transport', message: 'socket error', cause: event }),
     );
     // Every conforming implementation fires `close` right after `error`; the watchdog covers
     // the ones that do not, so the client can never get stuck without a live connection.
@@ -354,7 +354,7 @@ class TalkyWsClient implements WsClient {
     if (this.connectionId !== id) return;
     if (typeof data !== 'string') {
       this.emitError(
-        new TalkyWsError({
+        new YankiWsError({
           reason: 'decode',
           message: 'protocol v1 carries proto3 JSON in text frames; got a non-string payload',
         }),
@@ -366,7 +366,7 @@ class TalkyWsClient implements WsClient {
       frame = decodeServerFrame(data);
     } catch (error) {
       this.emitError(
-        new TalkyWsError({ reason: 'decode', message: 'malformed server frame', cause: error }),
+        new YankiWsError({ reason: 'decode', message: 'malformed server frame', cause: error }),
       );
       return;
     }
@@ -405,7 +405,7 @@ class TalkyWsClient implements WsClient {
         return;
       case undefined:
         this.emitError(
-          new TalkyWsError({
+          new YankiWsError({
             reason: 'protocol',
             code: ErrorCode.INVALID_FRAME,
             message: 'server frame carried no known body',
@@ -446,7 +446,7 @@ class TalkyWsClient implements WsClient {
     message: string;
     retryAfterMs: number;
   }): void {
-    const error = new TalkyWsError({
+    const error = new YankiWsError({
       reason: 'protocol',
       code: frame.code,
       message: frame.message === '' ? `server error ${ErrorCode[frame.code]}` : frame.message,
@@ -540,7 +540,7 @@ class TalkyWsClient implements WsClient {
     this.helloLate = false;
 
     this.rejectPending(
-      new TalkyWsError({
+      new YankiWsError({
         reason: this.closedByUser ? 'closed' : 'disconnected',
         message: `connection closed (${code.toString()}${reason === '' ? '' : `: ${reason}`})`,
         closeCode: code,
@@ -559,7 +559,7 @@ class TalkyWsClient implements WsClient {
       this.setState('closed');
       this.emitSafe('evicted', evictionReason);
       this.emitError(
-        new TalkyWsError({
+        new YankiWsError({
           reason: 'evicted',
           message: `server evicted this connection (${evictionReason}); a newer connection of the same user is live`,
           closeCode: code,
@@ -579,7 +579,7 @@ class TalkyWsClient implements WsClient {
     if (wasFatalFrame || this.isPermanentCloseCode(code)) {
       if (!wasFatalFrame) {
         this.emitError(
-          new TalkyWsError({
+          new YankiWsError({
             reason: 'protocol',
             message: `server closed the connection with code ${code.toString()}; not retrying`,
             closeCode: code,
@@ -700,7 +700,7 @@ class TalkyWsClient implements WsClient {
 
   private onPongTimeout(): void {
     this.emitError(
-      new TalkyWsError({
+      new YankiWsError({
         reason: 'heartbeat',
         message: `no Pong within ${this.options.pongTimeoutMs.toString()} ms; treating the link as dead`,
       }),
@@ -736,7 +736,7 @@ class TalkyWsClient implements WsClient {
   private writeFrame(frame: Parameters<typeof encodeClientFrame>[0]): void {
     const socket = this.socket;
     if (socket?.readyState !== WS_OPEN) {
-      throw new TalkyWsError({
+      throw new YankiWsError({
         reason: this.closedByUser ? 'closed' : 'disconnected',
         message: `cannot send while the client is '${this.currentState}'`,
       });
@@ -744,7 +744,7 @@ class TalkyWsClient implements WsClient {
     socket.send(encodeClientFrame(frame));
   }
 
-  private rejectPending(error: TalkyWsError): void {
+  private rejectPending(error: YankiWsError): void {
     if (this.pending.size === 0) return;
     const entries = [...this.pending.values()];
     this.pending.clear();
@@ -790,7 +790,7 @@ class TalkyWsClient implements WsClient {
         continue;
       }
       this.emitError(
-        new TalkyWsError({
+        new YankiWsError({
           reason: 'handler',
           message: `a listener for '${event}' threw`,
           cause,
@@ -799,7 +799,7 @@ class TalkyWsClient implements WsClient {
     }
   }
 
-  private emitError(error: TalkyWsError): void {
+  private emitError(error: YankiWsError): void {
     if (this.emitter.listenerCount('error') === 0) {
       this.options.logger.warn('unobserved client error', {
         reason: error.reason,
@@ -812,13 +812,13 @@ class TalkyWsClient implements WsClient {
 }
 
 /**
- * Create a Talky realtime client.
+ * Create a Yanki realtime client.
  *
  * The client is inert until {@link WsClient.connect} is called.
  *
  * ```ts
  * const client = createWsClient({
- *   url: 'wss://talky.local/ws',
+ *   url: 'wss://yanki.local/ws',
  *   getToken: async () => session.token,
  *   deviceId,
  *   client: { platform: 'web', appVersion: '0.1.0', os: 'Windows 11', locale: 'tr-TR' },
@@ -829,5 +829,5 @@ class TalkyWsClient implements WsClient {
  * ```
  */
 export function createWsClient(options: WsClientOptions): WsClient {
-  return new TalkyWsClient(options);
+  return new YankiWsClient(options);
 }

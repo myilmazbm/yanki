@@ -2,7 +2,7 @@ using System.Buffers;
 using System.Globalization;
 using System.Text;
 
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// A <see cref="TextWriter"/> that appends into a pooled character buffer, so formatting a frame

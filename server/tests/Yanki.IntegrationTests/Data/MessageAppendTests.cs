@@ -2,17 +2,17 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using Talky.Core.Data;
-using Talky.Core.Domain;
 using Xunit.Abstractions;
+using Yanki.Core.Data;
+using Yanki.Core.Domain;
 
-namespace Talky.IntegrationTests.Data;
+namespace Yanki.IntegrationTests.Data;
 
 /// <summary>
 /// The message write and read hot paths against a real SQL Server.
 /// </summary>
-public sealed class MessageAppendTests(TalkyDatabaseFixture fixture, ITestOutputHelper output)
-    : IClassFixture<TalkyDatabaseFixture>
+public sealed class MessageAppendTests(YankiDatabaseFixture fixture, ITestOutputHelper output)
+    : IClassFixture<YankiDatabaseFixture>
 {
     private const int Workers = 64;
     private const int MessagesPerWorker = 50;

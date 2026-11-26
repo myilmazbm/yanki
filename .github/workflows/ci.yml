@@ -48,12 +48,12 @@ jobs:
         run: dotnet --version
 
       - name: Restore
-        run: dotnet restore server/Talky.slnx
+        run: dotnet restore server/Yanki.slnx
 
       # -m:1 keeps MSBuild single-node: the runners are 2-core and node reuse has caused
       # flaky file locks on Windows.
       - name: Build
-        run: dotnet build server/Talky.slnx --no-restore -warnaserror -m:1 -p:NodeReuse=false
+        run: dotnet build server/Yanki.slnx --no-restore -warnaserror -m:1 -p:NodeReuse=false
 
       # SQL Server Express LocalDB comes with Visual Studio on the windows runner image.
       # Integration tests use it instead of a container, since production is SQL Server and
@@ -67,7 +67,7 @@ jobs:
           sqllocaldb info MSSQLLocalDB
 
       - name: Test
-        run: dotnet test server/Talky.slnx --no-build --logger trx --results-directory artifacts/test-results -m:1
+        run: dotnet test server/Yanki.slnx --no-build --logger trx --results-directory artifacts/test-results -m:1
 
       - name: Upload test results
         if: always()
@@ -108,10 +108,10 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
-      # buf comes from the @bufbuild/buf devDependency of @talky/protocol, run through its
+      # buf comes from the @bufbuild/buf devDependency of @yanki/protocol, run through its
       # scripts so CI and developers use the same version.
       - name: buf lint
-        run: pnpm --filter @talky/protocol run lint:proto
+        run: pnpm --filter @yanki/protocol run lint:proto
 
       # Contracts are additive only. Pull requests compare against main; pushes to main
       # compare against the commit before the push. Skipped on tags (the tagged commit is
@@ -126,7 +126,7 @@ jobs:
           BUF_BASE: ${{ github.event_name == 'pull_request' && 'origin/main' || github.event.before }}
         run: |
           git branch -f buf-base "$BUF_BASE"
-          pnpm --filter @talky/protocol exec buf breaking ../../../api/proto --against '../../../.git#branch=buf-base,subdir=api/proto'
+          pnpm --filter @yanki/protocol exec buf breaking ../../../api/proto --against '../../../.git#branch=buf-base,subdir=api/proto'
 
       - name: Generate protocol code
         run: pnpm gen
@@ -171,7 +171,7 @@ jobs:
         run: dotnet --version
 
       # Publishes win-x64 self-contained single file, restores the wix local tool and
-      # builds artifacts/Talky.Server-<version>.msi. A tag v1.2.3 gives ProductVersion
+      # builds artifacts/Yanki.Server-<version>.msi. A tag v1.2.3 gives ProductVersion
       # 1.2.3; a manual run passes no version, so Build-Msi.ps1 uses VersionPrefix from
       # server/Directory.Build.props.
       - name: Build MSI
@@ -199,7 +199,7 @@ jobs:
         if: github.ref_type == 'tag'
         uses: actions/upload-artifact@v7
         with:
-          name: Talky.Server-msi
+          name: Yanki.Server-msi
           path: artifacts/*.msi
           if-no-files-found: error
 

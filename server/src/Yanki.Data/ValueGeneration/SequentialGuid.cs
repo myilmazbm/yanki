@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore.ValueGeneration;
 
-namespace Talky.Data.ValueGeneration;
+namespace Yanki.Data.ValueGeneration;
 
 /// <summary>
 /// Produces GUIDs that are ascending in SQL Server's <c>uniqueidentifier</c> collation.

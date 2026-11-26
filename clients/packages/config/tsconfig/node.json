@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Talky Node (tooling, tests, mock server)",
+  "display": "Yanki Node (tooling, tests, mock server)",
   "extends": "./base.json",
   "compilerOptions": {
     "lib": ["ES2022"],

@@ -3,14 +3,14 @@ using System.Net.WebSockets;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Talky.Core.Hosting;
-using Talky.Core.Sessions;
-using Talky.Protocol.V1;
-using Talky.Realtime.Configuration;
-using Talky.Realtime.Diagnostics;
-using Talky.Realtime.Protocol;
+using Yanki.Core.Hosting;
+using Yanki.Core.Sessions;
+using Yanki.Protocol.V1;
+using Yanki.Realtime.Configuration;
+using Yanki.Realtime.Diagnostics;
+using Yanki.Realtime.Protocol;
 
-namespace Talky.Realtime.Connections;
+namespace Yanki.Realtime.Connections;
 
 /// <summary>
 /// Per-connection state machine: accepts the WebSocket, runs the inbound read loop on the request

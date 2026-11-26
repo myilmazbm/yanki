@@ -1,6 +1,6 @@
 import { fromJsonString } from '@bufbuild/protobuf';
-import type { ClientFrameJson, ErrorCodeJson, ServerFrameJson } from '@talky/protocol/v1';
-import { ClientFrameSchema } from '@talky/protocol/v1';
+import type { ClientFrameJson, ErrorCodeJson, ServerFrameJson } from '@yanki/protocol/v1';
+import { ClientFrameSchema } from '@yanki/protocol/v1';
 import {
   ackFrame,
   clientFrameCase,
@@ -265,7 +265,7 @@ function withRid(frame: ServerFrameJson, rid: string): ServerFrameJson {
 }
 
 /**
- * Transport-independent mock Talky server.
+ * Transport-independent mock Yanki server.
  *
  * `startMockServer` (real `ws` sockets) and `startMemoryServer` (in-process sockets) are thin
  * shells over this class, so both speak exactly the same protocol and honour exactly the same

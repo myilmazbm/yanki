@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Talky.Core\Talky.Core.csproj" />
+    <ProjectReference Include="..\Yanki.Core\Yanki.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

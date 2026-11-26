@@ -2,27 +2,27 @@ using System.Globalization;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Logging;
+namespace Yanki.Server.Logging;
 
 /// <summary>
 /// Serilog composition. Three sinks, all optional:
 /// a human readable console (development), a rolling compact-JSON file (always, when the directory
 /// is writable) and the Windows event log for warnings and above (services).
 /// </summary>
-internal static class TalkyLogging
+internal static class YankiLogging
 {
     private const string ConsoleTemplate =
         "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}";
 
     /// <summary>File name pattern; Serilog inserts the date before the extension.</summary>
-    public const string LogFileName = "talky.log";
+    public const string LogFileName = "yanki.log";
 
     /// <summary>Configures the logger used by the host.</summary>
     /// <param name="configuration">Serilog configuration to fill in.</param>
-    /// <param name="options">Bound <c>Talky:Logging</c> section.</param>
+    /// <param name="options">Bound <c>Yanki:Logging</c> section.</param>
     /// <param name="node">Node identity used for enrichment.</param>
     /// <param name="isDevelopment">True in the Development environment.</param>
     /// <param name="isWindowsService">True when the process runs as a Windows service.</param>
@@ -43,7 +43,7 @@ internal static class TalkyLogging
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
             .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
             .Enrich.FromLogContext()
-            .Enrich.WithProperty("Application", "talky")
+            .Enrich.WithProperty("Application", "yanki")
             .Enrich.WithProperty("MachineName", Environment.MachineName)
             .Enrich.WithProperty("NodeId", node.NodeId);
 
@@ -78,7 +78,7 @@ internal static class TalkyLogging
     }
 
     /// <summary>Expands environment variables in a configured directory and makes the path absolute.</summary>
-    /// <param name="configured">Raw <c>Talky:Logging:Directory</c> value.</param>
+    /// <param name="configured">Raw <c>Yanki:Logging:Directory</c> value.</param>
     /// <returns>The absolute directory path.</returns>
     public static string ExpandDirectory(string configured)
     {
@@ -97,7 +97,7 @@ internal static class TalkyLogging
     /// <returns>Null when the directory is writable, otherwise the reason it is not.</returns>
     public static string? ProbeWritable(string directory)
     {
-        var probe = Path.Combine(directory, ".talky-probe-" + Guid.NewGuid().ToString("N"));
+        var probe = Path.Combine(directory, ".yanki-probe-" + Guid.NewGuid().ToString("N"));
         try
         {
             System.IO.Directory.CreateDirectory(directory);
@@ -118,7 +118,7 @@ internal static class TalkyLogging
     /// <summary>
     /// Creates the log directory if needed. Returns null when it cannot be created, so that a node
     /// with a misconfigured log path still starts and still logs to the other sinks;
-    /// <c>talky serve</c> logs a warning once the logger exists and <c>talky doctor</c> reports the reason.
+    /// <c>yanki serve</c> logs a warning once the logger exists and <c>yanki doctor</c> reports the reason.
     /// </summary>
     private static string? ResolveDirectory(string configured)
     {

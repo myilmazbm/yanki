@@ -1,9 +1,9 @@
 using System.Data;
 using System.Globalization;
-using Talky.Core.Data;
-using Talky.Core.Hosting;
+using Yanki.Core.Data;
+using Yanki.Core.Hosting;
 
-namespace Talky.Data.Cluster;
+namespace Yanki.Data.Cluster;
 
 /// <summary>
 /// Cluster membership in the <c>cluster_nodes</c> table.

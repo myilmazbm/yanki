@@ -1,6 +1,6 @@
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.UnitTests.Hosting;
+namespace Yanki.UnitTests.Hosting;
 
 public sealed class NodeRolesTests
 {

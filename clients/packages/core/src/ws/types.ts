@@ -1,5 +1,5 @@
-import type { Ack, ResyncRequired, ServerFrame, Welcome } from '@talky/protocol/v1';
-import type { TalkyWsError } from '../errors.js';
+import type { Ack, ResyncRequired, ServerFrame, Welcome } from '@yanki/protocol/v1';
+import type { YankiWsError } from '../errors.js';
 import type { EventSubscriber } from '../events.js';
 import type { Logger } from '../logger.js';
 import type { TimerHost } from '../time.js';
@@ -55,7 +55,7 @@ export interface WsClientEvents extends Record<string, unknown[]> {
   /** Every server frame that survived de-duplication, before it is routed internally. */
   frame: [frame: ServerFrame];
   /** Any error that is not the rejection of a specific in-flight request. */
-  error: [error: TalkyWsError];
+  error: [error: YankiWsError];
   /** Fired on every transition; `previous` is the state being left. */
   stateChange: [state: WsClientState, previous: WsClientState];
   /** The server could not replay the gap — the app must call `GET /api/v1/sync`. */
@@ -74,7 +74,7 @@ export interface WsClientEvents extends Record<string, unknown[]> {
 
 /** Options for {@link createWsClient}. */
 export interface WsClientOptions {
-  /** Absolute `ws://` / `wss://` endpoint, e.g. `wss://talky.local/ws`. */
+  /** Absolute `ws://` / `wss://` endpoint, e.g. `wss://yanki.local/ws`. */
   url: string;
   /**
    * Resolves the session token for `Hello.token`. Called before **every** connection attempt,
@@ -124,7 +124,7 @@ export interface RequestOptions {
 }
 
 /**
- * Talky realtime client.
+ * Yanki realtime client.
  *
  * One instance owns one logical session: it connects, performs the `Hello`/`Welcome`
  * handshake, keeps the link alive, reconnects with backoff and resumes with a `since` cursor.
@@ -155,14 +155,14 @@ export interface WsClient extends EventSubscriber<WsClientEvents> {
   /**
    * Fire-and-forget send. The frame carries an empty `rid`.
    *
-   * @throws {TalkyWsError} with `reason: 'disconnected'` when the session is not open.
+   * @throws {YankiWsError} with `reason: 'disconnected'` when the session is not open.
    */
   send(body: ClientFrameBody): void;
 
   /**
    * Send a frame with a fresh UUIDv7 `rid` and wait for its reply.
    *
-   * Resolves with the matching `Ack`; rejects with a `TalkyWsError` on a matching `Error`
+   * Resolves with the matching `Ack`; rejects with a `YankiWsError` on a matching `Error`
    * frame (`reason: 'protocol'`), on timeout (`reason: 'timeout'`), or when the connection
    * drops first (`reason: 'disconnected'`).
    */

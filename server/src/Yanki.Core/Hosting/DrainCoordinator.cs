@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Talky.Core.Hosting;
+namespace Yanki.Core.Hosting;
 
 /// <summary>
 /// Default <see cref="IDrainCoordinator"/>. Thread-safe and idempotent: the first caller starts the

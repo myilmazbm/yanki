@@ -2,7 +2,7 @@ using System.Globalization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Talky.Data.Diagnostics;
+namespace Yanki.Data.Diagnostics;
 
 /// <summary>
 /// Readiness probe for SQL Server: registered as <c>sql</c> with tag <c>ready</c>.
@@ -14,7 +14,7 @@ namespace Talky.Data.Diagnostics;
 /// The same round trip checks that at least one migration has been applied: a reachable database
 /// without the schema is not ready either, including one whose first migration failed after EF had
 /// created the (still empty) history table. Pending migrations are deliberately not checked here (a
-/// node may serve a compatible older schema during a rolling upgrade); <c>talky doctor</c> reports
+/// node may serve a compatible older schema during a rolling upgrade); <c>yanki doctor</c> reports
 /// them.
 /// </remarks>
 public sealed class SqlHealthCheck(SqlConnectionSource connections) : IHealthCheck
@@ -41,13 +41,13 @@ public sealed class SqlHealthCheck(SqlConnectionSource connections) : IHealthChe
             var schemaPresent = Convert.ToInt32(await command.ExecuteScalarAsync(timeout.Token), CultureInfo.InvariantCulture) == 1;
             return schemaPresent
                 ? HealthCheckResult.Healthy("SQL Server reachable.")
-                : HealthCheckResult.Unhealthy("The Talky schema has not been created in this database; run 'talky migrate'.");
+                : HealthCheckResult.Unhealthy("The Yanki schema has not been created in this database; run 'yanki migrate'.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return HealthCheckResult.Unhealthy(
                 $"SQL Server did not answer within {Budget.TotalSeconds:0} s; if the database has not been created " +
-                "yet, run 'talky migrate'; 'talky doctor' shows the cause.");
+                "yet, run 'yanki migrate'; 'yanki doctor' shows the cause.");
         }
         catch (SqlException ex)
         {

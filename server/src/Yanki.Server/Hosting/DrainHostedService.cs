@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
 /// Runs the drain at the very start of shutdown: readiness flips to unhealthy, the load balancer

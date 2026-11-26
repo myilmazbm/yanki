@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Time.Testing;
-using Talky.Core.Configuration;
-using Talky.Core.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Hosting;
 
-namespace Talky.UnitTests.Hosting;
+namespace Yanki.UnitTests.Hosting;
 
 public sealed class NodeInfoTests
 {

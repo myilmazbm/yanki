@@ -1,12 +1,12 @@
-using Talky.Data;
-using Talky.Realtime;
+using Yanki.Data;
+using Yanki.Realtime;
 
-namespace Talky.Server;
+namespace Yanki.Server;
 
 /// <summary>
 /// The single place where feature modules are wired into the host. Each module gets one
 /// registration line in <see cref="AddModules"/> and, when it has endpoints, one mapping line in
-/// <see cref="MapModules"/>. Today Talky.Data and Talky.Realtime are wired; the other module
+/// <see cref="MapModules"/>. Today Yanki.Data and Yanki.Realtime are wired; the other module
 /// projects are referenced but have no code yet.
 /// </summary>
 public static class Modules
@@ -20,13 +20,13 @@ public static class Modules
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.AddTalkyData(builder.Configuration);
-        builder.Services.AddTalkyRealtime(builder.Configuration);
+        builder.Services.AddYankiData(builder.Configuration);
+        builder.Services.AddYankiRealtime(builder.Configuration);
 
         // Contract each module must honour:
         //   - readiness probes register health checks tagged "ready";
         //   - environment checks register IDoctorCheck singletons;
-        //   - Talky.Data registers IMigrationRunner so `talky migrate` works;
+        //   - Yanki.Data registers IMigrationRunner so `yanki migrate` works;
         //   - long running work observes IDrainCoordinator.DrainToken.
     }
 
@@ -42,6 +42,6 @@ public static class Modules
         // WebSocket middleware must precede endpoint execution; WebApplication appends the endpoint
         // middleware after everything added here, so this is early enough.
         app.UseWebSockets();
-        app.MapTalkyRealtime();
+        app.MapYankiRealtime();
     }
 }

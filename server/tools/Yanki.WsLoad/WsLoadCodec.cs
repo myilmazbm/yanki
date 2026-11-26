@@ -1,11 +1,11 @@
 using Google.Protobuf;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.WsLoad;
+namespace Yanki.WsLoad;
 
 /// <summary>
 /// Proto3-JSON helpers for the load tool. Deliberately a local copy rather than a reference to
-/// Talky.Realtime: the tool must stay a plain client that only needs ClientWebSocket.
+/// Yanki.Realtime: the tool must stay a plain client that only needs ClientWebSocket.
 /// </summary>
 internal static class WsLoadCodec
 {

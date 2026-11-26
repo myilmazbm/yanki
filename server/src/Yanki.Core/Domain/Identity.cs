@@ -1,4 +1,4 @@
-namespace Talky.Core.Domain;
+namespace Yanki.Core.Domain;
 
 /// <summary>
 /// A directory (or local store) that users are provisioned from. Table <c>identity_sources</c>.

@@ -1,4 +1,4 @@
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// A <see cref="TextReader"/> over an already-decoded character buffer. Lets the JSON parser read

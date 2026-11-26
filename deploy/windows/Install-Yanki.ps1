@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Installs or upgrades a Talky node on Windows Server: folders, ACLs, configuration,
-    the "Talky" Windows service, firewall rules, and a final `talky doctor` run.
+    Installs or upgrades a Yanki node on Windows Server: folders, ACLs, configuration,
+    the "Yanki" Windows service, firewall rules, and a final `yanki doctor` run.
 
 .DESCRIPTION
     Idempotent. Running it again on an installed node stops the service, refreshes the
@@ -15,35 +15,35 @@
       2. creates InstallDir, DataDir, DataDir\logs and DataDir\index;
       3. grants the service account Read & Execute on InstallDir and Modify on DataDir
          (skipped for LocalSystem, which already has both) and creates the Windows
-         Event Log source "Talky" in the Application log;
+         Event Log source "Yanki" in the Application log;
       4. copies the publish output into InstallDir (service stopped first);
       5. renders deploy\windows\appsettings.template.json into DataDir\appsettings.json
          when the file does not exist yet (or with -Force), keeping a timestamped backup;
-      6. applies the database schema with `talky migrate` (skip with -SkipMigrate);
-      7. registers or updates the "Talky" service: DisplayName "Talky",
+      6. applies the database schema with `yanki migrate` (skip with -SkipMigrate);
+      7. registers or updates the "Yanki" service: DisplayName "Yanki",
          Automatic (Delayed Start), recovery restart after 5 s / 10 s / 30 s;
-      8. adds the firewall rules through Set-TalkyFirewall.ps1;
-      9. starts the service and runs `talky doctor`.
+      8. adds the firewall rules through Set-YankiFirewall.ps1;
+      9. starts the service and runs `yanki doctor`.
 
     Service identity: use a gMSA (passwordless) in production, LocalSystem in a lab.
-    The script deliberately accepts no password: a Talky node must never run under a
+    The script deliberately accepts no password: a Yanki node must never run under a
     standing user account with a stored secret. The gMSA must already be installed on
     the host (Install-ADServiceAccount) and hold "Log on as a service"; both are
-    reported by Test-TalkyPrerequisites.ps1.
+    reported by Test-YankiPrerequisites.ps1.
 
     Every state change honours -WhatIf.
 
 .PARAMETER InstallDir
-    Program directory. Default C:\Program Files\Talky.
+    Program directory. Default C:\Program Files\Yanki.
 
 .PARAMETER DataDir
     Data directory holding appsettings.json, logs and the Lucene index.
-    Default %ProgramData%\Talky for a new node; when the Talky service already exists, the
+    Default %ProgramData%\Yanki for a new node; when the Yanki service already exists, the
     --data-dir of its command line. A -DataDir that differs from that one is refused,
     except with -ConfigOnly, which only warns and renders into the given directory.
 
 .PARAMETER ServiceAccount
-    'LocalSystem' (lab) or a gMSA written as 'CORP\talky$'. Default LocalSystem for a
+    'LocalSystem' (lab) or a gMSA written as 'CORP\yanki$'. Default LocalSystem for a
     new service; an existing service keeps its account unless this is passed.
 
 .PARAMETER Roles
@@ -58,7 +58,7 @@
     (docs/operations.md).
 
 .PARAMETER SqlConnectionString
-    Connection string written to Talky:Database:ConnectionString.
+    Connection string written to Yanki:Database:ConnectionString.
 
 .PARAMETER CertificateThumbprint
     Thumbprint of the TLS certificate in LocalMachine\My that Kestrel binds. Required
@@ -66,7 +66,7 @@
 
 .PARAMETER SourceDir
     Publish output to install from. Default <repo>\artifacts\publish, i.e. the result of
-    dotnet publish server/src/Talky.Server -c Release -r win-x64 --self-contained
+    dotnet publish server/src/Yanki.Server -c Release -r win-x64 --self-contained
     -p:PublishSingleFile=true -o artifacts/publish.
 
 .PARAMETER NodeId
@@ -82,10 +82,10 @@
     Do not touch the firewall.
 
 .PARAMETER SkipDoctor
-    Do not run `talky doctor` at the end.
+    Do not run `yanki doctor` at the end.
 
 .PARAMETER SkipMigrate
-    Do not run `talky migrate`. For sites where a DBA applies the schema.
+    Do not run `yanki migrate`. For sites where a DBA applies the schema.
 
 .PARAMETER NoStart
     Register the service but leave it stopped.
@@ -103,40 +103,40 @@
     keeping it. A timestamped backup is kept.
 
 .EXAMPLE
-    .\Install-Talky.ps1 -Urls http://+:8080 -WhatIf
+    .\Install-Yanki.ps1 -Urls http://+:8080 -WhatIf
     Dry run of a single-node lab install without a certificate.
 
 .EXAMPLE
-    .\Install-Talky.ps1 -ServiceAccount 'CORP\talky$' `
+    .\Install-Yanki.ps1 -ServiceAccount 'CORP\yanki$' `
         -Roles api,worker `
-        -SqlConnectionString 'Server=sql-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true;TrustServerCertificate=false' `
+        -SqlConnectionString 'Server=sql-ag.corp;Database=Yanki;Integrated Security=true;Encrypt=true;TrustServerCertificate=false' `
         -CertificateThumbprint 9A1B2C... `
-        -FileShare \\corp\dfs\talky\files
+        -FileShare \\corp\dfs\yanki\files
 
 .EXAMPLE
-    .\Install-Talky.ps1 -AclOnly -ServiceAccount 'CORP\talky$'
+    .\Install-Yanki.ps1 -AclOnly -ServiceAccount 'CORP\yanki$'
     Apply the ACLs and the event log source after an MSI install.
 
 .NOTES
     Requires an elevated session. PowerShell 5.1 compatible.
-    Related: Test-TalkyPrerequisites.ps1, Set-TalkyFirewall.ps1, Uninstall-Talky.ps1.
+    Related: Test-YankiPrerequisites.ps1, Set-YankiFirewall.ps1, Uninstall-Yanki.ps1.
 #>
-# These are read by Write-TalkyConfig from the script scope, which PSScriptAnalyzer
+# These are read by Write-YankiConfig from the script scope, which PSScriptAnalyzer
 # cannot follow.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'SqlConnectionString',
-    Justification = 'Read from the script scope by Write-TalkyConfig.')]
+    Justification = 'Read from the script scope by Write-YankiConfig.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'CertificateThumbprint',
-    Justification = 'Read from the script scope by Write-TalkyConfig.')]
+    Justification = 'Read from the script scope by Write-YankiConfig.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'FileShare',
-    Justification = 'Read from the script scope by Write-TalkyConfig.')]
+    Justification = 'Read from the script scope by Write-YankiConfig.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $InstallDir = (Join-Path $env:ProgramFiles 'Talky'),
-    [string] $DataDir = (Join-Path $env:ProgramData 'Talky'),
+    [string] $InstallDir = (Join-Path $env:ProgramFiles 'Yanki'),
+    [string] $DataDir = (Join-Path $env:ProgramData 'Yanki'),
     [string] $ServiceAccount = 'LocalSystem',
     [string[]] $Roles = @('all'),
     [string[]] $Urls = @('https://+:8443'),
-    [string] $SqlConnectionString = 'Server=localhost;Database=Talky;Integrated Security=true;Encrypt=true;TrustServerCertificate=true',
+    [string] $SqlConnectionString = 'Server=localhost;Database=Yanki;Integrated Security=true;Encrypt=true;TrustServerCertificate=true',
     [string] $CertificateThumbprint = '',
     [string] $SourceDir,
     [string] $NodeId = $env:COMPUTERNAME.ToLowerInvariant(),
@@ -158,14 +158,14 @@ $ErrorActionPreference = 'Stop'
 # --data-dir "<DataDir>" on the service command line.
 $DataDir = $DataDir.TrimEnd('\')
 
-$ServiceName = 'Talky'
-$ServiceDisplayName = 'Talky'
-$ServiceDescription = 'Talky server node (chat, calls, meetings, files).'
+$ServiceName = 'Yanki'
+$ServiceDisplayName = 'Yanki'
+$ServiceDescription = 'Yanki server node (chat, calls, meetings, files).'
 
 # Returns the --data-dir value of a service command line, or $null when there is none.
 # Both writers quote it: this script ("<DataDir>") and the MSI ("<DATADIR>\.", the trailing
 # dot keeps the backslash from escaping the closing quote).
-function Get-TalkyDataDirFromCommandLine {
+function Get-YankiDataDirFromCommandLine {
     param([AllowEmptyString()][AllowNull()][string] $CommandLine)
     if ("$CommandLine" -notmatch '--data-dir\s+"([^"]+)"') { return $null }
     $value = $Matches[1]
@@ -180,11 +180,11 @@ function Get-TalkyDataDirFromCommandLine {
 # second configuration next to the real one.
 $installedService = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'"
 if ($installedService) {
-    $installedDataDir = Get-TalkyDataDirFromCommandLine $installedService.PathName
+    $installedDataDir = Get-YankiDataDirFromCommandLine $installedService.PathName
     if (-not $installedDataDir) {
         throw ("Cannot read --data-dir ""..."" from the existing $ServiceName service command line: " +
             "$($installedService.PathName). This run would use DataDir $DataDir. Fix the service " +
-            "command line or remove the service (Uninstall-Talky.ps1) and run again.")
+            "command line or remove the service (Uninstall-Yanki.ps1) and run again.")
     }
     if ($PSBoundParameters.ContainsKey('DataDir')) {
         if ($DataDir -ne $installedDataDir -and $ConfigOnly) {
@@ -195,7 +195,7 @@ if ($installedService) {
         elseif ($DataDir -ne $installedDataDir) {
             throw ("-DataDir $DataDir differs from the data directory of the existing $ServiceName " +
                 "service, $installedDataDir. Pass -DataDir $installedDataDir, or remove the service first " +
-                "(Uninstall-Talky.ps1) to move the node.")
+                "(Uninstall-Yanki.ps1) to move the node.")
         }
     }
     else {
@@ -204,11 +204,11 @@ if ($installedService) {
 }
 
 $TemplatePath = Join-Path $PSScriptRoot 'appsettings.template.json'
-$FirewallScript = Join-Path $PSScriptRoot 'Set-TalkyFirewall.ps1'
+$FirewallScript = Join-Path $PSScriptRoot 'Set-YankiFirewall.ps1'
 $LogsDir = Join-Path $DataDir 'logs'
 $IndexDir = Join-Path $DataDir 'index'
 $ConfigPath = Join-Path $DataDir 'appsettings.json'
-$ExeName = 'talky.exe'
+$ExeName = 'yanki.exe'
 
 # --- helpers --------------------------------------------------------------------------
 
@@ -237,7 +237,7 @@ function Invoke-Sc {
 # Changes the service through the SCM (Win32_Service.Change), honouring -WhatIf. Used for
 # values that sc.exe would need embedded quotes or an empty argument for, which Windows
 # PowerShell 5.1 and PowerShell 7 pass to native commands differently.
-function Set-TalkyService {
+function Set-YankiService {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory)][hashtable] $Change,
@@ -253,7 +253,7 @@ function Set-TalkyService {
     Write-Host "service  $Action"
 }
 
-function New-TalkyDirectory {
+function New-YankiDirectory {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param([Parameter(Mandatory)][string] $Path)
     if (Test-Path -LiteralPath $Path) {
@@ -268,7 +268,7 @@ function New-TalkyDirectory {
 # Adds (or refreshes) a single inheriting ACE for $Identity on $Path. Existing ACEs for the
 # same identity are removed first, so re-running does not pile up entries. Inheritance from
 # the parent is left alone.
-function Grant-TalkyAccess {
+function Grant-YankiAccess {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory)][string] $Path,
@@ -306,7 +306,7 @@ function ConvertTo-JsonScalar {
     return $Value.Replace('\', '\\').Replace('"', '\"')
 }
 
-function Write-TalkyConfig {
+function Write-YankiConfig {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory)][string] $TemplatePath,
@@ -317,7 +317,7 @@ function Write-TalkyConfig {
         throw "Configuration template not found: $TemplatePath"
     }
 
-    # Talky:Server:Urls is a JSON array; the template carries the placeholder between the brackets.
+    # Yanki:Server:Urls is a JSON array; the template carries the placeholder between the brackets.
     $urlsJson = ($Urls | ForEach-Object { '"' + (ConvertTo-JsonScalar $_) + '"' }) -join ', '
 
     $rendered = Get-Content -LiteralPath $TemplatePath -Raw
@@ -376,7 +376,7 @@ if (-not (Test-Elevated)) {
         Write-Warning 'Not elevated. -ConfigOnly only writes inside DataDir; the write fails if that path needs administrator rights.'
     }
     else {
-        throw 'Install-Talky.ps1 must run in an elevated PowerShell session.'
+        throw 'Install-Yanki.ps1 must run in an elevated PowerShell session.'
     }
 }
 if ($AclOnly -and $ConfigOnly) {
@@ -407,7 +407,7 @@ if ($Roles -contains 'all' -and $Roles.Count -gt 1) {
     throw "Role 'all' cannot be combined with other roles."
 }
 if ($ServiceAccount -ne 'LocalSystem' -and $ServiceAccount -notmatch '\\') {
-    throw "ServiceAccount must be 'LocalSystem' or a domain account such as 'CORP\talky$'."
+    throw "ServiceAccount must be 'LocalSystem' or a domain account such as 'CORP\yanki$'."
 }
 
 $isGmsa = ($ServiceAccount -ne 'LocalSystem')
@@ -433,7 +433,7 @@ if ($renderConfig) {
     }
 }
 
-Write-Host "Talky install"
+Write-Host "Yanki install"
 Write-Host "  InstallDir      $InstallDir"
 Write-Host "  DataDir         $DataDir"
 Write-Host "  ServiceAccount  $ServiceAccount"
@@ -449,11 +449,11 @@ Write-Host ''
 
 if ($ConfigOnly) {
     # Rendering into a new folder (a preview) must not fail on the missing directory.
-    New-TalkyDirectory -Path $DataDir
+    New-YankiDirectory -Path $DataDir
 }
 else {
     foreach ($dir in @($InstallDir, $DataDir, $LogsDir, $IndexDir)) {
-        New-TalkyDirectory -Path $dir
+        New-YankiDirectory -Path $dir
     }
 }
 
@@ -461,12 +461,12 @@ else {
 
 if (-not $ConfigOnly) {
     if ($isGmsa) {
-        Grant-TalkyAccess -Path $InstallDir -Identity $ServiceAccount -Rights ReadAndExecute
-        Grant-TalkyAccess -Path $DataDir -Identity $ServiceAccount -Rights Modify
+        Grant-YankiAccess -Path $InstallDir -Identity $ServiceAccount -Rights ReadAndExecute
+        Grant-YankiAccess -Path $DataDir -Identity $ServiceAccount -Rights Modify
         # logs and index inherit from DataDir, but they are granted explicitly so the node
         # keeps working if an operator later breaks inheritance on one of them.
-        Grant-TalkyAccess -Path $LogsDir -Identity $ServiceAccount -Rights Modify
-        Grant-TalkyAccess -Path $IndexDir -Identity $ServiceAccount -Rights Modify
+        Grant-YankiAccess -Path $LogsDir -Identity $ServiceAccount -Rights Modify
+        Grant-YankiAccess -Path $IndexDir -Identity $ServiceAccount -Rights Modify
     }
     else {
         Write-Host 'acl      skipped: LocalSystem already has full access.'
@@ -520,7 +520,7 @@ if (-not $ConfigOnly) {
 # --- 4. configuration -----------------------------------------------------------------
 
 if ($renderConfig) {
-    Write-TalkyConfig -TemplatePath $TemplatePath -Destination $ConfigPath
+    Write-YankiConfig -TemplatePath $TemplatePath -Destination $ConfigPath
 }
 else {
     Write-Host "config   kept existing $ConfigPath (re-render with -ConfigOnly or -Force)"
@@ -545,12 +545,12 @@ if ($ConfigOnly) {
 if ($SkipMigrate) {
     Write-Host 'migrate  skipped (-SkipMigrate).'
 }
-elseif ($PSCmdlet.ShouldProcess($exePath, 'Run talky migrate (apply the database schema)')) {
+elseif ($PSCmdlet.ShouldProcess($exePath, 'Run yanki migrate (apply the database schema)')) {
     Write-Host ''
-    Write-Host '--- talky migrate ---'
+    Write-Host '--- yanki migrate ---'
     & $exePath migrate --data-dir $DataDir
     if ($LASTEXITCODE -ne 0) {
-        throw "talky migrate exited with $LASTEXITCODE; the service was not started. See $LogsDir, or pass -SkipMigrate when a DBA applies the schema."
+        throw "yanki migrate exited with $LASTEXITCODE; the service was not started. See $LogsDir, or pass -SkipMigrate when a DBA applies the schema."
     }
 }
 
@@ -559,7 +559,7 @@ elseif ($PSCmdlet.ShouldProcess($exePath, 'Run talky migrate (apply the database
 $binaryPath = '"{0}" --data-dir "{1}"' -f $exePath, $DataDir
 
 if ($service) {
-    Set-TalkyService -Change @{ PathName = $binaryPath } -Action "Update binary path to: $binaryPath"
+    Set-YankiService -Change @{ PathName = $binaryPath } -Action "Update binary path to: $binaryPath"
 }
 else {
     if ($PSCmdlet.ShouldProcess($ServiceName, "Create service running: $binaryPath")) {
@@ -582,7 +582,7 @@ if ($service -and -not $PSBoundParameters.ContainsKey('ServiceAccount')) {
 }
 else {
     # A gMSA is passwordless and LocalSystem has none: both take an empty password.
-    Set-TalkyService -Change @{ StartName = $ServiceAccount; StartPassword = '' } `
+    Set-YankiService -Change @{ StartName = $ServiceAccount; StartPassword = '' } `
         -Action "Set logon account to $ServiceAccount"
 }
 
@@ -596,7 +596,7 @@ if ($SkipFirewall) {
     Write-Host 'firewall skipped (-SkipFirewall).'
 }
 elseif (-not (Test-Path -LiteralPath $FirewallScript)) {
-    Write-Warning "Set-TalkyFirewall.ps1 not found next to this script; firewall not configured."
+    Write-Warning "Set-YankiFirewall.ps1 not found next to this script; firewall not configured."
 }
 else {
     $firewallArgs = @{}
@@ -646,12 +646,12 @@ elseif ($PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
 if ($SkipDoctor) {
     Write-Host 'doctor   skipped (-SkipDoctor).'
 }
-elseif ($PSCmdlet.ShouldProcess($exePath, 'Run talky doctor')) {
+elseif ($PSCmdlet.ShouldProcess($exePath, 'Run yanki doctor')) {
     Write-Host ''
-    Write-Host "--- talky doctor ---"
+    Write-Host "--- yanki doctor ---"
     & $exePath doctor --data-dir $DataDir
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "talky doctor exited with $LASTEXITCODE. The node is installed but not healthy; see $LogsDir."
+        Write-Warning "yanki doctor exited with $LASTEXITCODE. The node is installed but not healthy; see $LogsDir."
     }
 }
 

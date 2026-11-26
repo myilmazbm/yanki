@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
 /// Readiness check that turns unhealthy the moment the node starts draining, so the load balancer

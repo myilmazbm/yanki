@@ -1,4 +1,4 @@
-namespace Talky.Core.Sessions;
+namespace Yanki.Core.Sessions;
 
 /// <summary>
 /// The authenticated identity behind a session token. Produced by <see cref="ISessionAuthenticator"/>,

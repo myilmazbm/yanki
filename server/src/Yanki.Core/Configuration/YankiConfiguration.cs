@@ -1,37 +1,37 @@
 using System.Text;
 
-namespace Talky.Core.Configuration;
+namespace Yanki.Core.Configuration;
 
 /// <summary>
-/// Configuration section names and the environment-variable naming convention used by talky.exe.
+/// Configuration section names and the environment-variable naming convention used by yanki.exe.
 /// </summary>
-public static class TalkyConfiguration
+public static class YankiConfiguration
 {
-    /// <summary>Root section that holds every Talky-owned setting.</summary>
-    public const string RootSection = "Talky";
+    /// <summary>Root section that holds every Yanki-owned setting.</summary>
+    public const string RootSection = "Yanki";
 
     /// <summary>Section bound to <see cref="NodeOptions"/>.</summary>
-    public const string NodeSection = "Talky:Node";
+    public const string NodeSection = "Yanki:Node";
 
     /// <summary>Section bound to <see cref="ServerOptions"/>.</summary>
-    public const string ServerSection = "Talky:Server";
+    public const string ServerSection = "Yanki:Server";
 
     /// <summary>Section bound to <see cref="LoggingOptions"/>.</summary>
-    public const string LoggingSection = "Talky:Logging";
+    public const string LoggingSection = "Yanki:Logging";
 
     /// <summary>
     /// Prefix of the environment variables that override <see cref="RootSection"/> settings.
-    /// The prefix stands for the root section, so <c>TALKY_Server__Urls__0</c> maps to
-    /// <c>Talky:Server:Urls:0</c>.
+    /// The prefix stands for the root section, so <c>YANKI_Server__Urls__0</c> maps to
+    /// <c>Yanki:Server:Urls:0</c>.
     /// </summary>
-    public const string EnvironmentVariablePrefix = "TALKY_";
+    public const string EnvironmentVariablePrefix = "YANKI_";
 
     /// <summary>
     /// Maps an environment variable name to a configuration key, or returns <see langword="null"/>
-    /// when the variable is not a Talky override.
+    /// when the variable is not a Yanki override.
     /// </summary>
-    /// <param name="variableName">Raw environment variable name, e.g. <c>TALKY_Server__DrainSeconds</c>.</param>
-    /// <returns>The configuration key (<c>Talky:Server:DrainSeconds</c>) or <see langword="null"/>.</returns>
+    /// <param name="variableName">Raw environment variable name, e.g. <c>YANKI_Server__DrainSeconds</c>.</param>
+    /// <returns>The configuration key (<c>Yanki:Server:DrainSeconds</c>) or <see langword="null"/>.</returns>
     public static string? TryMapEnvironmentVariable(string? variableName)
     {
         if (string.IsNullOrEmpty(variableName) ||
@@ -63,7 +63,7 @@ public static class TalkyConfiguration
 
         var key = builder.ToString();
 
-        // Reject malformed names such as "TALKY___Foo" that would produce empty path segments.
+        // Reject malformed names such as "YANKI___Foo" that would produce empty path segments.
         return key.Contains("::", StringComparison.Ordinal) || key.EndsWith(':') ? null : key;
     }
 }

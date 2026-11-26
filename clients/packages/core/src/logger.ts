@@ -2,7 +2,7 @@
 export type LogFields = Record<string, unknown>;
 
 /**
- * Minimal logging seam. `@talky/core` never touches `console` directly so that host apps can
+ * Minimal logging seam. `@yanki/core` never touches `console` directly so that host apps can
  * route diagnostics into their own sink (web console, Tauri log plugin, RN Flipper, …).
  */
 export interface Logger {

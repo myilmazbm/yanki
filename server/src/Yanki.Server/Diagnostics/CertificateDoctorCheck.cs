@@ -1,10 +1,10 @@
 using System.Globalization;
 using Microsoft.Extensions.Options;
-using Talky.Core.Configuration;
-using Talky.Core.Diagnostics;
-using Talky.Server.Hosting;
+using Yanki.Core.Configuration;
+using Yanki.Core.Diagnostics;
+using Yanki.Server.Hosting;
 
-namespace Talky.Server.Diagnostics;
+namespace Yanki.Server.Diagnostics;
 
 /// <summary>
 /// Verifies that the configured TLS certificate can be found, is not expired and is not the
@@ -28,9 +28,9 @@ internal sealed class CertificateDoctorCheck(
 
         try
         {
-            TalkyHostFactory.GuardInsecureConfiguration(options, environment);
+            YankiHostFactory.GuardInsecureConfiguration(options, environment);
         }
-        catch (TalkyStartupException ex)
+        catch (YankiStartupException ex)
         {
             return Task.FromResult(DoctorResult.Error(ex.Message));
         }
@@ -40,7 +40,7 @@ internal sealed class CertificateDoctorCheck(
         {
             resolution = CertificateResolver.Resolve(options.Certificate);
         }
-        catch (TalkyStartupException ex)
+        catch (YankiStartupException ex)
         {
             return Task.FromResult(DoctorResult.Error(ex.Message));
         }

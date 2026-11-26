@@ -56,7 +56,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'livekit/livekit'
-$UserAgent = 'talky-deploy'
+$UserAgent = 'yanki-deploy'
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 

@@ -1,4 +1,4 @@
-// Talky realtime WebSocket contract, protocol version 1.
+// Yanki realtime WebSocket contract, protocol version 1.
 //
 // Wire encoding in v1 is proto3 JSON (one JSON object per WebSocket text frame).
 // The `oneof body` field name doubles as the frame type, e.g.
@@ -14,11 +14,11 @@
 //     conversation, a per-conversation monotonically increasing `seq`.
 syntax = "proto3";
 
-package talky.v1;
+package yanki.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option csharp_namespace = "Talky.Protocol.V1";
+option csharp_namespace = "Yanki.Protocol.V1";
 
 // ---------------------------------------------------------------------------
 // Envelopes

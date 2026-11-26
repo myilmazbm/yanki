@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Talky.Core.Configuration;
+using Yanki.Core.Configuration;
 
-namespace Talky.Server.Hosting;
+namespace Yanki.Server.Hosting;
 
 /// <summary>
 /// A certificate that Kestrel can use, plus a description safe to print and log.
@@ -20,7 +20,7 @@ internal sealed record CertificateResolution(
 
 /// <summary>
 /// Loads the HTTPS server certificate from the Windows certificate store or from a PKCS#12 file.
-/// Used both by Kestrel at startup and by <c>talky doctor</c>.
+/// Used both by Kestrel at startup and by <c>yanki doctor</c>.
 /// </summary>
 internal static class CertificateResolver
 {
@@ -28,9 +28,9 @@ internal static class CertificateResolver
     private const string DevelopmentCertificateOid = "1.3.6.1.4.1.311.84.1.1";
 
     /// <summary>Resolves the configured certificate.</summary>
-    /// <param name="options">Bound <c>Talky:Server:Certificate</c> section.</param>
+    /// <param name="options">Bound <c>Yanki:Server:Certificate</c> section.</param>
     /// <returns>The resolution; the caller owns <see cref="CertificateResolution.Certificate"/>.</returns>
-    /// <exception cref="TalkyStartupException">The certificate cannot be found or loaded.</exception>
+    /// <exception cref="YankiStartupException">The certificate cannot be found or loaded.</exception>
     public static CertificateResolution Resolve(CertificateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -40,15 +40,15 @@ internal static class CertificateResolver
             CertificateSource.DevCert => ResolveDevelopmentCertificate(),
             CertificateSource.Store => ResolveFromStore(options),
             CertificateSource.Pfx => ResolveFromPfx(options),
-            _ => throw new TalkyStartupException(
-                $"Talky:Server:Certificate:Source '{options.Source}' is not supported."),
+            _ => throw new YankiStartupException(
+                $"Yanki:Server:Certificate:Source '{options.Source}' is not supported."),
         };
     }
 
     private static CertificateResolution ResolveDevelopmentCertificate()
     {
         // Kestrel loads the development certificate on its own; this lookup only exists so that
-        // `talky doctor` can report whether it is present and still valid.
+        // `yanki doctor` can report whether it is present and still valid.
         using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
         store.Open(OpenFlags.ReadOnly);
 
@@ -71,8 +71,8 @@ internal static class CertificateResolver
     {
         if (!Enum.TryParse<StoreLocation>(options.StoreLocation, ignoreCase: true, out var storeLocation))
         {
-            throw new TalkyStartupException(
-                $"Talky:Server:Certificate:StoreLocation '{options.StoreLocation}' is invalid. " +
+            throw new YankiStartupException(
+                $"Yanki:Server:Certificate:StoreLocation '{options.StoreLocation}' is invalid. " +
                 "Use 'LocalMachine' or 'CurrentUser'.");
         }
 
@@ -83,7 +83,7 @@ internal static class CertificateResolver
         }
         catch (System.Security.Cryptography.CryptographicException ex)
         {
-            throw new TalkyStartupException(
+            throw new YankiStartupException(
                 $"Certificate store '{storeLocation}\\{options.StoreName}' cannot be opened. " +
                 "Check that the service account may read it.",
                 ex);
@@ -115,13 +115,13 @@ internal static class CertificateResolver
 
         if (certificate is null)
         {
-            throw new TalkyStartupException(
+            throw new YankiStartupException(
                 $"No certificate with {criteria} was found in '{storeLocation}\\{options.StoreName}'.");
         }
 
         if (!certificate.HasPrivateKey)
         {
-            throw new TalkyStartupException(
+            throw new YankiStartupException(
                 $"Certificate {Describe(certificate)} has no private key available to this account.");
         }
 
@@ -135,13 +135,13 @@ internal static class CertificateResolver
     {
         if (string.IsNullOrWhiteSpace(options.PfxPath))
         {
-            throw new TalkyStartupException("Talky:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
+            throw new YankiStartupException("Yanki:Server:Certificate:Source is 'Pfx' but PfxPath is not set.");
         }
 
         var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(options.PfxPath.Trim()));
         if (!File.Exists(path))
         {
-            throw new TalkyStartupException($"Certificate file '{path}' does not exist.");
+            throw new YankiStartupException($"Certificate file '{path}' does not exist.");
         }
 
         string? password = null;
@@ -150,9 +150,9 @@ internal static class CertificateResolver
             password = Environment.GetEnvironmentVariable(options.PfxPasswordEnvVar);
             if (string.IsNullOrEmpty(password))
             {
-                throw new TalkyStartupException(
+                throw new YankiStartupException(
                     $"Environment variable '{options.PfxPasswordEnvVar}' named by " +
-                    "Talky:Server:Certificate:PfxPasswordEnvVar is not set for this process.");
+                    "Yanki:Server:Certificate:PfxPasswordEnvVar is not set for this process.");
             }
         }
 
@@ -169,7 +169,7 @@ internal static class CertificateResolver
         }
         catch (System.Security.Cryptography.CryptographicException ex)
         {
-            throw new TalkyStartupException(
+            throw new YankiStartupException(
                 $"Certificate file '{path}' cannot be loaded. Check the file and the password environment variable.",
                 ex);
         }
@@ -184,7 +184,7 @@ internal static class CertificateResolver
     /// </summary>
     /// <param name="certificate">The resolved server certificate.</param>
     /// <param name="description">Safe description of the certificate, used in the error message.</param>
-    /// <exception cref="TalkyStartupException">There is no usable RSA or ECDSA private key.</exception>
+    /// <exception cref="YankiStartupException">There is no usable RSA or ECDSA private key.</exception>
     public static void EnsurePrivateKeyAccessible(X509Certificate2 certificate, string description)
     {
         ArgumentNullException.ThrowIfNull(certificate);
@@ -216,10 +216,10 @@ internal static class CertificateResolver
         }
         catch (CryptographicException ex)
         {
-            throw new TalkyStartupException(message, ex);
+            throw new YankiStartupException(message, ex);
         }
 
-        throw new TalkyStartupException(message);
+        throw new YankiStartupException(message);
     }
 
     /// <summary>Formats subject, thumbprint and validity of a certificate for logs and the doctor table.</summary>

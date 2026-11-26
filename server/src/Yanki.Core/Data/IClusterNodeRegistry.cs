@@ -1,6 +1,6 @@
-using Talky.Core.Hosting;
+using Yanki.Core.Hosting;
 
-namespace Talky.Core.Data;
+namespace Yanki.Core.Data;
 
 /// <summary>
 /// A node as seen by the registry.

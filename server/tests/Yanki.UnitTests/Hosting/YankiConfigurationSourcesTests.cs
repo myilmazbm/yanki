@@ -1,17 +1,17 @@
 using Microsoft.Extensions.Configuration;
-using Talky.Server.Hosting;
+using Yanki.Server.Hosting;
 
-namespace Talky.UnitTests.Hosting;
+namespace Yanki.UnitTests.Hosting;
 
 /// <summary>
-/// <c>--data-dir</c> is the deployment contract the MSI and Install-Talky.ps1 rely on: the
-/// Windows service is started as <c>talky.exe --role … --data-dir "…"</c>.
+/// <c>--data-dir</c> is the deployment contract the MSI and Install-Yanki.ps1 rely on: the
+/// Windows service is started as <c>yanki.exe --role … --data-dir "…"</c>.
 /// </summary>
-public sealed class TalkyConfigurationSourcesTests : IDisposable
+public sealed class YankiConfigurationSourcesTests : IDisposable
 {
-    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "talky-tests", Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "yanki-tests", Guid.NewGuid().ToString("N"));
 
-    public TalkyConfigurationSourcesTests()
+    public YankiConfigurationSourcesTests()
     {
         Directory.CreateDirectory(_dataDir);
     }
@@ -21,7 +21,7 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
     {
         var configuration = Build(HostStartupArguments.Empty);
 
-        Assert.Equal(TalkyConfigurationSources.ProgramDataDirectory, configuration["Talky:DataDirectory"]);
+        Assert.Equal(YankiConfigurationSources.ProgramDataDirectory, configuration["Yanki:DataDirectory"]);
     }
 
     [Fact]
@@ -29,31 +29,31 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
     {
         File.WriteAllText(
             Path.Combine(_dataDir, "appsettings.json"),
-            """{ "Talky": { "Node": { "Id": "from-data-dir" }, "Server": { "DrainSeconds": 7 } } }""");
+            """{ "Yanki": { "Node": { "Id": "from-data-dir" }, "Server": { "DrainSeconds": 7 } } }""");
         File.WriteAllText(
             Path.Combine(_dataDir, "appsettings.Local.json"),
-            """{ "Talky": { "Server": { "DrainSeconds": 9 } } }""");
+            """{ "Yanki": { "Server": { "DrainSeconds": 9 } } }""");
 
         var configuration = Build(HostStartupArguments.Empty with { DataDirectory = _dataDir });
 
-        Assert.Equal(_dataDir, configuration["Talky:DataDirectory"]);
-        Assert.Equal("from-data-dir", configuration["Talky:Node:Id"]);
-        Assert.Equal("9", configuration["Talky:Server:DrainSeconds"]);
-        Assert.Equal(Path.Combine(_dataDir, "logs"), configuration["Talky:Logging:Directory"]);
+        Assert.Equal(_dataDir, configuration["Yanki:DataDirectory"]);
+        Assert.Equal("from-data-dir", configuration["Yanki:Node:Id"]);
+        Assert.Equal("9", configuration["Yanki:Server:DrainSeconds"]);
+        Assert.Equal(Path.Combine(_dataDir, "logs"), configuration["Yanki:Logging:Directory"]);
 
         // A quoted service argument ending in a backslash arrives with a trailing quote.
         Assert.Equal(
             "from-data-dir",
-            Build(HostStartupArguments.Empty with { DataDirectory = _dataDir + "\"" })["Talky:Node:Id"]);
+            Build(HostStartupArguments.Empty with { DataDirectory = _dataDir + "\"" })["Yanki:Node:Id"]);
     }
 
     [Fact]
     public void Invalid_json_in_the_data_dir_appsettings_is_a_startup_error()
     {
         var path = Path.Combine(_dataDir, "appsettings.json");
-        File.WriteAllText(path, """{ "Talky": { "Server": { "Urls": [__URLS__] } } }""");
+        File.WriteAllText(path, """{ "Yanki": { "Server": { "Urls": [__URLS__] } } }""");
 
-        var error = Assert.Throws<TalkyStartupException>(
+        var error = Assert.Throws<YankiStartupException>(
             () => Build(HostStartupArguments.Empty with { DataDirectory = _dataDir }));
 
         Assert.Contains(path, error.Message, StringComparison.Ordinal);
@@ -64,11 +64,11 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
     {
         File.WriteAllText(
             Path.Combine(_dataDir, "appsettings.json"),
-            """{ "Talky": { "Logging": { "Directory": "D:\\logs\\talky" } } }""");
+            """{ "Yanki": { "Logging": { "Directory": "D:\\logs\\yanki" } } }""");
 
         var configuration = Build(HostStartupArguments.Empty with { DataDirectory = _dataDir });
 
-        Assert.Equal(@"D:\logs\talky", configuration["Talky:Logging:Directory"]);
+        Assert.Equal(@"D:\logs\yanki", configuration["Yanki:Logging:Directory"]);
     }
 
     [Fact]
@@ -76,12 +76,12 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
     {
         File.WriteAllText(
             Path.Combine(_dataDir, "appsettings.json"),
-            """{ "Talky": { "Node": { "Id": "from-data-dir" } } }""");
+            """{ "Yanki": { "Node": { "Id": "from-data-dir" } } }""");
 
         var configuration = Build(
-            HostStartupArguments.Empty with { DataDirectory = _dataDir, Settings = ["Talky:Node:Id=from-set"] });
+            HostStartupArguments.Empty with { DataDirectory = _dataDir, Settings = ["Yanki:Node:Id=from-set"] });
 
-        Assert.Equal("from-set", configuration["Talky:Node:Id"]);
+        Assert.Equal("from-set", configuration["Yanki:Node:Id"]);
     }
 
     [Fact]
@@ -91,14 +91,14 @@ public sealed class TalkyConfigurationSourcesTests : IDisposable
 
         var configuration = Build(HostStartupArguments.Empty with { DataDirectory = missing });
 
-        Assert.Equal(missing, configuration["Talky:DataDirectory"]);
-        Assert.Equal(Path.Combine(missing, "logs"), configuration["Talky:Logging:Directory"]);
+        Assert.Equal(missing, configuration["Yanki:DataDirectory"]);
+        Assert.Equal(Path.Combine(missing, "logs"), configuration["Yanki:Logging:Directory"]);
     }
 
     private static ConfigurationManager Build(HostStartupArguments arguments)
     {
         var manager = new ConfigurationManager();
-        TalkyConfigurationSources.Apply(manager, "Production", AppContext.BaseDirectory, "talky", arguments);
+        YankiConfigurationSources.Apply(manager, "Production", AppContext.BaseDirectory, "yanki", arguments);
         return manager;
     }
 

@@ -1,9 +1,9 @@
 using System.Buffers;
 using System.Text;
 using Google.Protobuf;
-using Talky.Protocol.V1;
+using Yanki.Protocol.V1;
 
-namespace Talky.Realtime.Protocol;
+namespace Yanki.Realtime.Protocol;
 
 /// <summary>
 /// Wire codec for protocol version 1: one WebSocket text frame carries exactly one proto3-JSON

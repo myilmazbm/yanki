@@ -1,13 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
-using Talky.Core.Sessions;
+using Yanki.Core.Sessions;
 
-namespace Talky.Realtime.Sessions;
+namespace Yanki.Realtime.Sessions;
 
 /// <summary>
 /// Development-only authenticator that accepts <c>dev:&lt;userId-guid-or-name&gt;</c> tokens.
-/// Registered only when <c>Talky:Realtime:AllowDevTokens</c> is true and no other
-/// <see cref="ISessionAuthenticator"/> has been registered. Replaced by Talky.Identity in M1.
+/// Registered only when <c>Yanki:Realtime:AllowDevTokens</c> is true and no other
+/// <see cref="ISessionAuthenticator"/> has been registered. Replaced by Yanki.Identity in M1.
 /// </summary>
 /// <remarks>
 /// A name is mapped to a stable, deterministic user id (SHA-256 of the name, formatted as a
@@ -23,7 +23,7 @@ public sealed class DevTokenSessionAuthenticator : ISessionAuthenticator
     /// <summary>Federation domain reported for development principals.</summary>
     public const string DevelopmentDomain = "dev.local";
 
-    private static readonly byte[] NamespaceSalt = Encoding.UTF8.GetBytes("talky/dev-token/v1/");
+    private static readonly byte[] NamespaceSalt = Encoding.UTF8.GetBytes("yanki/dev-token/v1/");
 
     /// <inheritdoc />
     public ValueTask<SessionPrincipal?> AuthenticateAsync(string token, CancellationToken cancellationToken)

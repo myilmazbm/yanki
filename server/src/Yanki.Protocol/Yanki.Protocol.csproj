@@ -13,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="../../../api/proto/talky/v1/*.proto" ProtoRoot="../../../api/proto" GrpcServices="None" Link="proto/talky/v1/%(Filename)%(Extension)" />
-    <Protobuf Include="../../../api/proto/talky/cluster/v1/*.proto" ProtoRoot="../../../api/proto" GrpcServices="Both" Link="proto/talky/cluster/v1/%(Filename)%(Extension)" />
+    <Protobuf Include="../../../api/proto/yanki/v1/*.proto" ProtoRoot="../../../api/proto" GrpcServices="None" Link="proto/yanki/v1/%(Filename)%(Extension)" />
+    <Protobuf Include="../../../api/proto/yanki/cluster/v1/*.proto" ProtoRoot="../../../api/proto" GrpcServices="Both" Link="proto/yanki/cluster/v1/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Talky.Data.Migrations
+namespace Yanki.Data.Migrations
 {
     /// <inheritdoc />
     public partial class Init : Migration
@@ -11,7 +11,7 @@ namespace Talky.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Hand-added, see docs/data-model.md. Talky assumes snapshot semantics for readers:
+            // Hand-added, see docs/data-model.md. Yanki assumes snapshot semantics for readers:
             // every read path (history paging, conversation list, presence) must never block behind a
             // writer, and no read path takes NOLOCK to get there. It has to run outside the migration
             // transaction, and it wants to be the only connection in the database, which is why the

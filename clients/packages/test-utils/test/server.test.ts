@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ClientFrameJson } from '@talky/protocol/v1';
+import type { ClientFrameJson } from '@yanki/protocol/v1';
 import { ackFrame, flush, startMemoryServer, startMockServer } from '../src/index.js';
 
-/** Drive the server the way a client would, without depending on `@talky/core`. */
+/** Drive the server the way a client would, without depending on `@yanki/core`. */
 function open(url = 'ws://mock/ws'): ReturnType<typeof startMemoryServer> {
   return startMemoryServer({ welcome: { sessionId: url } });
 }

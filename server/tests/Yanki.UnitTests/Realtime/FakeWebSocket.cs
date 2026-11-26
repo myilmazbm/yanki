@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 
-namespace Talky.UnitTests.Realtime;
+namespace Yanki.UnitTests.Realtime;
 
 /// <summary>
 /// A <see cref="WebSocket"/> double that records what the writer loop sends and can stall sends so

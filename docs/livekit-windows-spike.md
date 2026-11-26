@@ -4,7 +4,7 @@
 Server 2022/2025 üzerinde, hedef yükte kabul edilebilir kalitede çalışır mı?
 
 **Neden önemli:** Ürün vaadi "mümkün olduğunca az ayrı ürün". Cevap evetse üretim ayak izi
-üç üründe kalır (`talky.exe`, SQL Server 2025, LiveKit). Hayırsa medya, Hyper-V üzerinde
+üç üründe kalır (`yanki.exe`, SQL Server 2025, LiveKit). Hayırsa medya, Hyper-V üzerinde
 mühürlü bir Linux cihaza taşınır (`deploy/hyperv/`) ve müşteri yine yalnızca zaten sahip
 olduğu hipervizörü yönetir.
 
@@ -38,7 +38,7 @@ ERROR livekit hwstats/cpu_null.go:38
 ```
 
 Sonuç: `livekit_node_cpu_load` benzeri düğüm yükü metriği ve LiveKit'in kendi yük tabanlı
-kabul kontrolü yok. Bu, onaylanmış tasarımı **bozmuyor** — oda yerleşimini zaten Talky
+kabul kontrolü yok. Bu, onaylanmış tasarımı **bozmuyor** — oda yerleşimini zaten Yankı
 backend'i yapıyor, LiveKit değil — ama backend'in düğüm yükünü LiveKit'e soramayacağı
 anlamına geliyor. Yük, düğümün kendi performans sayaçlarından okunmalı
 (`Invoke-LiveKitLoadTest.ps1` bunu `Win32_PerfFormattedData_*` üzerinden yapıyor).
@@ -225,7 +225,7 @@ ikisi üçüncü turdan eskiydi. Önce üçüncü tur koduyla, sonra düzeltmeyl
 | Varsayılan log klasöründe izinleri okunamayan bir dosya (VM) | Çıplak `UnauthorizedAccessException`, adım 4'te durdu | Dosyayı adıyla anan uyarı, kurulum tamamlandı |
 | Sahibi çözülemeyen bir SID olan özel log klasörü (VM) | `IdentityNotMappedException`, adım 4'te durdu | SID'i anan uyarı, kurulum tamamlandı |
 | Varsayılan log klasörü bir junction (VM) | Junction'ın DACL'si değişti, gösterdiği klasör açık kaldı, "inheritance off" yazıldı | Betik durur: "is a junction or symbolic link" |
-| `Talky\logs` LOCAL SERVICE'e ait (VM) | Uyarı yok | Uyarı; `acl` satırı yalnızca klasörün kendisini anlatır ve üst klasörlere güvenilmediğini söyler |
+| `Yanki\logs` LOCAL SERVICE'e ait (VM) | Uyarı yok | Uyarı; `acl` satırı yalnızca klasörün kendisini anlatır ve üst klasörlere güvenilmediğini söyler |
 | Yük testi `-Layout 3X3`, 8 yayıncı / 2 abone (VM) | `lk` speaker çalıştırdı: abone başına 6/8, FAIL | `3x3` geçer: 8/8, PASS 16/16 |
 | Kabul testi, `-InstallDir C:\LiveKitAlt` (VM) | Ön koşul FAIL (5 grubun 3'ü); test anahtarı Everyone ve Authenticated Users'a okunur, `livekit.yaml` (üretilen sır) Users'a okunur kaldı | Tam koşu geçti (aşağıda); test sonunda üç dosyayı da siler |
 | Kabul testi ilk kurulumda başarısız (bozuk WinSW önbelleği, VM) | Test anahtarı beş gruba, `livekit.yaml` Users'a okunur kaldı | İkisi de silindi |
@@ -334,7 +334,7 @@ Kurulum:
 ```powershell
 $env:LIVEKIT_API_SECRET = '<secret>'
 .\deploy\livekit\Invoke-LiveKitLoadTest.ps1 `
-    -Url ws://media-01.talky.corp:7880 -ApiKey talky `
+    -Url ws://media-01.yanki.corp:7880 -ApiKey yanki `
     -NodeComputerName media-01 `
     -Room spike -VideoPublishers 8 -Subscribers 100 -Duration 10m -Layout 3x3
 ```
@@ -417,7 +417,7 @@ Her iki yolda da aynı portlar gerekir.
 
 | Port | Protokol | Kim erişir | Not |
 |---|---|---|---|
-| 7880 | TCP | Yalnız Talky API düğümleri | Sinyalleşme; istemciler `https://talky.corp/media/{node}/rtc` üzerinden YARP ile ulaşır |
+| 7880 | TCP | Yalnız Yankı API düğümleri | Sinyalleşme; istemciler `https://yanki.corp/media/{node}/rtc` üzerinden YARP ile ulaşır |
 | 7881 | TCP | İstemciler | UDP engelli istemciler için medya |
 | 7882 | UDP | İstemciler | Birincil medya (SRTP/ICE), tüm eşler tek portta çoğullanır |
 | 3478 | UDP | İstemciler | Gömülü TURN |

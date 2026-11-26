@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Checks that a Windows Server host is ready to run a Talky node.
+    Checks that a Windows Server host is ready to run a Yanki node.
 
 .DESCRIPTION
     Read-only. Runs the checks below and prints one line per check with a
@@ -8,7 +8,7 @@
 
       OS              Windows Server 2022 (build 20348) or later, x64
       PowerShell      5.1 or later
-      Elevation       running elevated (needed by Install-Talky.ps1)
+      Elevation       running elevated (needed by Install-Yanki.ps1)
       ServiceAccount  gMSA resolvable with Test-ADServiceAccount (needs RSAT AD module)
       LogonAsService  the service account holds SeServiceLogonRight
       Sql             reachable with System.Data.SqlClient, version and edition reported
@@ -23,7 +23,7 @@
     the run.
 
 .PARAMETER ServiceAccount
-    Account the service will run as: a gMSA such as 'CORP\talky$', or 'LocalSystem'
+    Account the service will run as: a gMSA such as 'CORP\yanki$', or 'LocalSystem'
     for a lab. Drives the ServiceAccount and LogonAsService checks.
 
 .PARAMETER SqlConnectionString
@@ -33,10 +33,10 @@
     TLS certificate thumbprint expected in LocalMachine\My.
 
 .PARAMETER FileShare
-    UNC path of the SMB/DFS share used by IBlobStore, e.g. \\corp\dfs\talky\files.
+    UNC path of the SMB/DFS share used by IBlobStore, e.g. \\corp\dfs\yanki\files.
 
 .PARAMETER DataDir
-    Data directory whose volume is checked for free space. Default %ProgramData%\Talky.
+    Data directory whose volume is checked for free space. Default %ProgramData%\Yanki.
 
 .PARAMETER HttpsPort
     Client/API port that must be free. Default 8443.
@@ -51,12 +51,12 @@
     Emit the results as JSON on the success stream instead of a table.
 
 .EXAMPLE
-    .\Test-TalkyPrerequisites.ps1
+    .\Test-YankiPrerequisites.ps1
 
 .EXAMPLE
-    .\Test-TalkyPrerequisites.ps1 -ServiceAccount 'CORP\talky$' `
-        -SqlConnectionString 'Server=sql-ag.corp;Database=Talky;Integrated Security=true;Encrypt=true' `
-        -CertificateThumbprint AABBCC... -FileShare \\corp\dfs\talky\files
+    .\Test-YankiPrerequisites.ps1 -ServiceAccount 'CORP\yanki$' `
+        -SqlConnectionString 'Server=sql-ag.corp;Database=Yanki;Integrated Security=true;Encrypt=true' `
+        -CertificateThumbprint AABBCC... -FileShare \\corp\dfs\yanki\files
 
 .NOTES
     Read-only: no -WhatIf because nothing is changed. PowerShell 5.1 compatible.
@@ -67,7 +67,7 @@ param(
     [string] $SqlConnectionString,
     [string] $CertificateThumbprint,
     [string] $FileShare,
-    [string] $DataDir = (Join-Path $env:ProgramData 'Talky'),
+    [string] $DataDir = (Join-Path $env:ProgramData 'Yanki'),
     [ValidateRange(1, 65535)][int] $HttpsPort = 8443,
     [ValidateRange(1, 65535)][int] $HttpPort = 8080,
     [switch] $EnableHttp,
@@ -105,7 +105,7 @@ if (-not $isServer) {
     Add-Result -Check 'OS' -Status 'Warn' -Detail "$osDetail - client Windows: fine for a lab, production requires Windows Server 2022/2025."
 }
 elseif ($build -lt 20348) {
-    Add-Result -Check 'OS' -Status 'Fail' -Detail "$osDetail - Talky requires Windows Server 2022 (build 20348) or later."
+    Add-Result -Check 'OS' -Status 'Fail' -Detail "$osDetail - Yanki requires Windows Server 2022 (build 20348) or later."
 }
 else {
     Add-Result -Check 'OS' -Status 'Pass' -Detail $osDetail
@@ -115,7 +115,7 @@ if ([Environment]::Is64BitOperatingSystem) {
     Add-Result -Check 'Architecture' -Status 'Pass' -Detail 'x64'
 }
 else {
-    Add-Result -Check 'Architecture' -Status 'Fail' -Detail 'talky.exe is published win-x64 only.'
+    Add-Result -Check 'Architecture' -Status 'Fail' -Detail 'yanki.exe is published win-x64 only.'
 }
 
 # --- Shell ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ if (Test-Elevated) {
     Add-Result -Check 'Elevation' -Status 'Pass' -Detail 'Running elevated.'
 }
 else {
-    Add-Result -Check 'Elevation' -Status 'Warn' -Detail 'Not elevated. Install-Talky.ps1 needs an elevated session.'
+    Add-Result -Check 'Elevation' -Status 'Warn' -Detail 'Not elevated. Install-Yanki.ps1 needs an elevated session.'
 }
 
 # --- Service account ------------------------------------------------------------------
@@ -172,7 +172,7 @@ if (-not $ServiceAccount -or $ServiceAccount -eq 'LocalSystem') {
     Add-Result -Check 'LogonAsService' -Status 'Skip' -Detail 'Not applicable for LocalSystem.'
 }
 else {
-    $seceditFile = Join-Path $env:TEMP ("talky-secpol-" + [guid]::NewGuid().ToString('N') + '.inf')
+    $seceditFile = Join-Path $env:TEMP ("yanki-secpol-" + [guid]::NewGuid().ToString('N') + '.inf')
     try {
         # Read-only export of the local security policy.
         $null = & "$env:SystemRoot\System32\secedit.exe" /export /cfg $seceditFile /areas USER_RIGHTS
@@ -235,7 +235,7 @@ else {
         $detail = "connected to $($builder.DataSource), major version $major, $edition, $level"
         # SQL Server 2022 = 16, 2025 = 17.
         if ($major -ge 17) { Add-Result -Check 'Sql' -Status 'Pass' -Detail $detail }
-        elseif ($major -ge 16) { Add-Result -Check 'Sql' -Status 'Warn' -Detail "$detail - Talky targets SQL Server 2025 (major 17)." }
+        elseif ($major -ge 16) { Add-Result -Check 'Sql' -Status 'Warn' -Detail "$detail - Yanki targets SQL Server 2025 (major 17)." }
         else { Add-Result -Check 'Sql' -Status 'Fail' -Detail "$detail - SQL Server 2022 or later required." }
     }
     catch {
@@ -259,8 +259,8 @@ foreach ($entry in $portsToCheck) {
     if ($listener) {
         $owner = (Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue)
         $ownerName = if ($owner) { "$($owner.ProcessName) (pid $($owner.Id))" } else { "pid $($listener.OwningProcess)" }
-        if ($ownerName -match 'talky') {
-            Add-Result -Check "Port $($entry.Port)" -Status 'Warn' -Detail "already held by $ownerName - an existing Talky node; upgrades stop the service first."
+        if ($ownerName -match 'yanki') {
+            Add-Result -Check "Port $($entry.Port)" -Status 'Warn' -Detail "already held by $ownerName - an existing Yanki node; upgrades stop the service first."
         }
         else {
             Add-Result -Check "Port $($entry.Port)" -Status 'Fail' -Detail "TCP $($entry.Port) ($($entry.Purpose)) is in use by $ownerName."
@@ -306,9 +306,9 @@ elseif (-not (Test-Path -LiteralPath $FileShare)) {
     Add-Result -Check 'FileShare' -Status 'Fail' -Detail "$FileShare is not reachable from this host."
 }
 else {
-    $probe = Join-Path $FileShare ('.talky-probe-' + [guid]::NewGuid().ToString('N'))
+    $probe = Join-Path $FileShare ('.yanki-probe-' + [guid]::NewGuid().ToString('N'))
     try {
-        Set-Content -LiteralPath $probe -Value 'talky' -ErrorAction Stop
+        Set-Content -LiteralPath $probe -Value 'yanki' -ErrorAction Stop
         Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
         Add-Result -Check 'FileShare' -Status 'Pass' -Detail "$FileShare is reachable and writable by the current identity."
     }
