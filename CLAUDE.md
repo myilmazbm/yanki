@@ -32,9 +32,8 @@ cd clients && pnpm install && pnpm gen && pnpm typecheck && pnpm lint && pnpm te
 - Proto değişince: `pnpm gen` (TS, commit'lenir) + .NET build (C#, build sırasında üretilir). `buf lint` temiz olmalı.
 
 ## Paralel çalışma (ekip lideri modeli)
-- Bağımsız iş paketleri Opus ajanlarına, her biri **kendi git worktree'sinde** (`../talky-wt/<paket>`, dal `wp/<paket>`) verilir;
+- Bağımsız iş paketleri Opus ajanlarına, her biri **kendi git worktree'sinde** (`../YANKI-wt/<paket>`, dal `wp/<paket>`) verilir;
   ajanlar ana checkout'a dokunmaz. Lider dalları `main`'e merge eder, derleme/test/inceleme yapar.
-- Ana checkout'un ve worktree'lerin diskteki klasör adları ad değişikliğinde (Yankı/Yanki) bilerek değiştirilmedi.
 - Dosya sahipliği listeleri çakışmayı önler; `Directory.Packages.props` yalnızca eklemeyle değiştirilir.
 - Commit mesajı sonu: `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>` (lider) / `Claude Opus 5.5` (ajanlar).
 
